@@ -240,38 +240,12 @@ docker ps
    ```
 
 4. **Configure Environment Variables (.env)**:
-   Create or verify `.env` in the `backend/` directory:
-   ```env
-   SECRET_KEY=your_random_secret_key_here
-   JWT_ALGORITHM=HS256
-   ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-   DATABASE_URL=mysql+pymysql://root:password123@localhost:3307/fastapi_founder
-   REDIS_URL=redis://localhost:6379/0
-
-   MINIO_ENDPOINT=localhost:9000
-   MINIO_ACCESS_KEY=admin
-   MINIO_SECRET_KEY=password123
-   MINIO_BUCKET=product-images
-   MINIO_EXTERNAL_URL=http://localhost:9000
-   CORS_ORIGINS=http://localhost:3000
-
-   # VietQR Configuration
-   VIETQR_BANK_ID=MB
-   VIETQR_BANK_NAME=MB Bank
-   VIETQR_ACCOUNT_NO=0382912048
-   VIETQR_ACCOUNT_NAME=LUXESTORE
-
-   # Email Configuration (ARQ Task)
-   EMAILS_ENABLED=True
-   EMAILS_CONSOLE_LOG=True
-   SMTP_HOST=smtp.gmail.com
-   SMTP_PORT=587
-   SMTP_USER=your_email@gmail.com
-   SMTP_PASSWORD=your_app_password
-   EMAILS_FROM_EMAIL=noreply@luxestore.com
-   EMAILS_FROM_NAME="LuxeStore E-Commerce"
+   Copy the provided `.env.example` template to `.env` and fill in your local credentials:
+   ```bash
+   cp .env.example .env
    ```
+   > **Note**: Ensure you configure your own `SECRET_KEY`, `DATABASE_URL`, and VietQR banking details (`VIETQR_ACCOUNT_NO`, `VIETQR_BANK_ID`) in `.env`. Never commit your real `.env` file.
+
 
 5. **Run Migrations & Seed Database**:
    ```bash
