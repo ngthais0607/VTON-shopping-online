@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:11.2
+    container_name: fastapi_mariadb
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD: password123
+      MARIADB_DATABASE: fastapi_founder
+    ports:
+      - "3307:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck-sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fastapi_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2024-01-18T22-51-28Z
+    container_name: fastapi_minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  arq_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: arq app.worker.WorkerSettings
+    container_name: fastapi_arq_worker
+    restart: always
+    environment:
+      - DATABASE_URL=mysql+pymysql://root:password123@mariadb:3306/fastapi_founder
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - mariadb
+
+volumes:
+  mariadb_data:
+  redis_data:
+  minio_data:

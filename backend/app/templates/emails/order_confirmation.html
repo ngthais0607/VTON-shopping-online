@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Xác nhận Đơn hàng</title></head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 20px; border-radius: 8px;">
+    <h2 style="color: #4F46E5;">LuxeStore - Xác nhận Đơn hàng #{{ order_id }}</h2>
+    <p>Xin chào {{ user_name }},</p>
+    <p>Cảm ơn bạn đã đặt hàng tại LuxeStore! Đơn hàng của bạn đã được ghi nhận với trạng thái: <strong>{{ status }}</strong>.</p>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+      <tr style="background: #EEF2FF;">
+        <th style="padding: 8px; text-align: left;">Sản phẩm</th>
+        <th style="padding: 8px; text-align: right;">Số lượng</th>
+        <th style="padding: 8px; text-align: right;">Tổng tiền</th>
+      </tr>
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">{{ product_name }}</td>
+        <td style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd;">{{ quantity }}</td>
+        <td style="padding: 8px; text-align: right; border-bottom: 1px solid #ddd;">{{ total_amount }} {{ currency }}</td>
+      </tr>
+    </table>
+    <p style="margin-top: 20px;">Vui lòng hoàn tất thanh toán trước khi đơn hàng hết hạn vào: <strong>{{ expires_at }}</strong>.</p>
+  </div>
+</body>
+</html>

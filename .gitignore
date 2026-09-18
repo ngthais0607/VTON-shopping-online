@@ -1,0 +1,44 @@
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+*.env
+.env.*
+!.env.example
+!.env.*.example
+.env.local
+.env.*.local
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+*.db
+*.sqlite
+*.sqlite3
+server.log
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Superpowers and specifications
+.superpowers/
+docs/superpowers/
+*superpowers*
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
