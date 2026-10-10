@@ -20,9 +20,3 @@ class CheckoutCartRequest(BaseModel):
     shipping_address: Optional[str] = None
     notes: Optional[str] = None
     payment_method: str = "vietqr"
-
-class VietQRWebhookPayload(BaseModel):
-    content: str
-    amount: float
-    transaction_id: Optional[str] = None
-    bank_account: Optional[str] = None

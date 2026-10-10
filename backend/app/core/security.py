@@ -68,12 +68,17 @@ def get_current_user(token: str | None = Depends(oauth2_password_bearer),
         raise credentials_exeception 
     try :
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "access":
+            raise credentials_exeception
         email: str  = payload.get("sub")
         if email is None :
             raise credentials_exeception
     except jwt.PyJWTError:
         raise credentials_exeception 
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(
+        User.email == email,
+        User.is_deleted == False,
+    ).first()
     if user is None :
         raise credentials_exeception
     return user
@@ -85,7 +90,4 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Admin privileges required"
         )
     return current_user
-    
-
-    
     

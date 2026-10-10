@@ -1,5 +1,6 @@
 # Path: backend/tests/test_users.py
 import pytest
+from app.core.security import create_access_token, create_refresh_token
 from app.seed import seed_database
 from app.features.users.model import User
 
@@ -90,4 +91,43 @@ def test_refresh_token_flow(client, db_session):
     client.cookies.clear()
     no_cookie_res = client.post("/users/refresh")
     assert no_cookie_res.status_code == 401
+
+
+def test_refresh_token_cannot_authenticate_protected_route(client, db_session):
+    user = User(
+        username="refresh_only",
+        email="refresh-only@example.com",
+        password_hash="unused",
+        role="customer",
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    refresh_token = create_refresh_token({"sub": user.email})
+    response = client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {refresh_token}"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_deleted_user_access_token_is_rejected(client, db_session):
+    user = User(
+        username="deleted_user",
+        email="deleted@example.com",
+        password_hash="unused",
+        role="customer",
+        is_deleted=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    access_token = create_access_token({"sub": user.email})
+    response = client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    assert response.status_code == 401
 

@@ -236,7 +236,7 @@ def get_orders(
     return [order_to_json(order) for order in orders]
 
 @router.get(
-    "/{order_id}",
+    "/{order_id:int}",
     summary="Get order by ID"
 )
 def get_order(
@@ -365,14 +365,15 @@ def get_orders_by_user(
 
 @router.get(
     "/track/{order_id}",
-    summary="Track order status publicly by order ID"
+    summary="Track order status by order ID"
 )
 def track_order_public(
     order_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     order = db.query(Order).filter(Order.id == order_id).first()
-    if not order:
+    if not order or (current_user.role != "admin" and order.user_id != current_user.id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Order not found"
@@ -433,47 +434,3 @@ def track_order_public(
     }
     res["timeline"] = steps
     return res
-
-
-@router.post(
-    "/vietqr-webhook",
-    summary="VietQR bank transfer webhook listener for automated payment reconciliation"
-)
-async def vietqr_webhook(
-    payload: schema.VietQRWebhookPayload,
-    db: Session = Depends(get_db)
-):
-    import re
-    order_ids = [int(num) for num in re.findall(r'\d+', payload.content)]
-    reconciled_ids = []
-
-    for oid in order_ids:
-        order = db.query(Order).filter(Order.id == oid).first()
-        if order and order.status == "pending":
-            product = order.product
-            if product:
-                product.reserved_quantity = max(0, product.reserved_quantity - order.quantity)
-                product.sold_quantity += order.quantity
-            
-            order.status = "paid"
-            order.paid_at = datetime.now(timezone.utc)
-
-            payment = Payment(
-                order_id=order.id,
-                provider="vietqr",
-                provider_transaction_id=payload.transaction_id or f"TXN_{order.id}",
-                amount=order.total_amount,
-                currency=order.currency,
-                status="paid",
-                paid_at=datetime.now(timezone.utc)
-            )
-            db.add(payment)
-            reconciled_ids.append(order.id)
-            await enqueue_task("send_payment_received_email_task", order.id)
-
-    db.commit()
-    return {
-        "status": "success",
-        "message": f"Successfully reconciled {len(reconciled_ids)} orders",
-        "reconciled_orders": reconciled_ids
-    }
