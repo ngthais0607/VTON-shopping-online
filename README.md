@@ -1,6 +1,6 @@
 # AI-VTON - E-Commerce Platform & Admin Dashboard
 
-A modern, full-stack E-Commerce platform combining a **luxury customer-facing storefront**, a **comprehensive admin management dashboard**, automated **VietQR bank webhook reconciliation**, **MinIO S3 object storage**, and an **ARQ + Redis background job queue**.
+A modern, full-stack E-Commerce platform combining a **luxury customer-facing storefront**, a **comprehensive admin management dashboard**, secure **VietQR and COD checkout**, **MinIO S3 object storage**, and an **ARQ + Redis background job queue**.
 
 ---
 
@@ -39,7 +39,7 @@ A modern, full-stack E-Commerce platform combining a **luxury customer-facing st
 |   - Products & Categories (Eager loading, S3 Storage)                   |
 |   - Orders & Checkout Cart (Multi-item, Stock Reservation)              |
 |   - Dashboard Analytics (KPIs, Low Stock, Recent Orders)                |
-|   - VietQR Webhook Listener & Tracking Timeline                         |
+|   - Authenticated Order Tracking & Payment Timeline                     |
 +-------------+----------------------+--------------------+---------------+
               |                      |                    |
         SQLAlchemy ORM          Redis Message         S3 API
@@ -111,11 +111,12 @@ A modern, full-stack E-Commerce platform combining a **luxury customer-facing st
 - **Multi-Item Cart Checkout**:
   - Single-transaction checkout for multiple cart items via `/orders/checkout-cart`.
   - Supports **VietQR Bank Transfer** and **COD (Cash On Delivery)**.
-- **Automated VietQR Payment & Webhook Reconciliation**:
+- **VietQR Payment Flow**:
   - Dynamic QR code generation containing bank ID, account number, amount, and order memo `LUXESTORE_{order_id}`.
-  - **Automated Webhook**: The `/orders/vietqr-webhook` endpoint automatically receives incoming bank notifications, parses the order ID from payment descriptions, marks the order as `paid`, adjusts inventory, and enqueues confirmation emails.
-- **Public Order Tracking Page**:
-  - Real-time order progress tracking at `/store/orders/{id}` with an interactive 4-step timeline (Order Placed ➔ Payment Verified ➔ Processing & Packing ➔ Delivered) and on-screen VietQR payment info.
+  - There is no bank webhook integration. Customers cannot confirm their own payment; an administrator confirms payment after external verification.
+- **Authenticated Order Tracking Page**:
+  - Tracking at `/store/orders/{id}` requires authentication. Customers can view only their own orders, while administrators can inspect any order.
+  - COD checkout creates a `confirmed` order without a payment-expiration deadline; VietQR creates a `pending` order with a 30-minute deadline.
 - **Standard Informational Subpages**:
   - Fully written subpages for About Us, Contact, Help Center, Careers, Blog, Press, Return Policy, Privacy Policy, Terms of Service, and Cookie Policy.
 
@@ -129,7 +130,7 @@ A modern, full-stack E-Commerce platform combining a **luxury customer-facing st
 - **Category Management (`/categories`)**:
   - Full CRUD operations with auto-calculated linked product counts.
 - **Order Management (`/orders`)**:
-  - Centralized order oversight with status transitions (`pending`, `paid`, `cancelled`), audit timestamps, and automated stock reconciliation.
+  - Centralized order oversight with validated transitions (`pending`, `confirmed`, `paid`, `cancelled`, `expired`), audit timestamps, and stock reconciliation.
 - **Customer Management (`/customers`)**:
   - User directory, search by name/email, and role-based permissions (`admin` / `customer`).
 
@@ -160,7 +161,7 @@ AI-VTON/
 │   │   │   ├── users/              # Auth, profile, user management
 │   │   │   ├── products/           # Catalog CRUD, image upload, reviews
 │   │   │   ├── categories/         # Category CRUD
-│   │   │   ├── orders/             # Multi-item checkout, VietQR, Webhook, tracking
+│   │   │   ├── orders/             # Atomic checkout, lifecycle rules, tracking
 │   │   │   └── dashboard/          # Analytics metrics, charts, low stock alerts
 │   │   ├── integrations/           # MinIO client, VietQR generator, Paddle
 │   │   ├── jobs/                   # Order expiration logic
@@ -325,8 +326,20 @@ FastAPI provides automated interactive documentation interfaces:
 - `/users`: Authentication, login, register, token refresh, profile updates, and admin user administration.
 - `/products`: Catalog listing, multi-field search and filters, MinIO image upload, product reviews and ratings.
 - `/categories`: Category CRUD and product associations.
-- `/orders`: Multi-item cart checkout (`/checkout-cart`), order details, public order tracking (`/track/{id}`), and VietQR webhook reconciliation (`/vietqr-webhook`).
+- `/orders`: Sole order-creation API via atomic multi-item checkout (`/checkout-cart`), authenticated owner/admin tracking (`/track/{id}`), and admin-only lifecycle updates. No VietQR webhook route is exposed.
 - `/dashboard`: High-level metrics, revenue stats, recent orders, and low-stock alerts.
+
+### MariaDB checkout concurrency regression
+
+Use a dedicated empty database to verify that two simultaneous checkouts cannot oversell the final unit:
+
+```powershell
+$env:DATABASE_URL = "mysql+pymysql://root:password123@localhost:3307/fastapi_founder_test"
+$env:TEST_DATABASE_URL = $env:DATABASE_URL
+cd backend
+.\.venv\Scripts\alembic.exe upgrade head
+.\.venv\Scripts\python.exe -m pytest tests/integration/test_checkout_concurrency.py -v
+```
 
 ---
 

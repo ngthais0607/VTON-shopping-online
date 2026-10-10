@@ -12,15 +12,16 @@ const faqs = [
   {
     category: "VietQR Payment & Orders",
     questions: [
-      { q: "How do I pay using VietQR instant transfer?", a: "After placing an order, a QR code containing the exact amount and memo will be displayed. Scan it using your banking app for instant automated payment verification." },
-      { q: "How long is a pending order valid?", a: "Pending orders remain active for 30 minutes. If unpaid, the system automatically cancels the order and releases reserved stock." }
+      { q: "How do I pay using VietQR instant transfer?", a: "After placing an order, scan the QR code containing the exact amount and memo. Your order remains pending until an administrator verifies the transfer." },
+      { q: "How long is a pending order valid?", a: "VietQR orders remain pending for 30 minutes. If unverified, they expire and release reserved stock." },
+      { q: "What happens when I choose cash on delivery?", a: "COD orders are confirmed immediately for fulfillment and do not enter the VietQR payment-expiration flow." }
     ]
   },
   {
     category: "Shipping & Delivery",
     questions: [
       { q: "How fast is shipping?", a: "Major metropolitan orders deliver within 1-2 business days. Regional and nationwide shipping takes 2-4 business days." },
-      { q: "How can I track my shipment?", a: "You can navigate to the 'My Orders' section in your account dashboard to view real-time shipping updates." }
+      { q: "How can I track my shipment?", a: "Sign in and open My Orders. Tracking is private: customers can view only their own orders." }
     ]
   },
   {
