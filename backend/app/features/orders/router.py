@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 import logging
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query 
 from sqlalchemy.orm import Session
@@ -13,7 +13,14 @@ from app.features.users.model import User
 from app.integrations.vietqr import generate_vietqr_url, get_vietqr_bank_config
 from app.core.queue import enqueue_task
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
-from app.features.orders.service import InvalidOrderTransition, transition_order
+from app.features.orders.service import (
+    InsufficientStockError,
+    InvalidCartItemError,
+    InvalidOrderTransition,
+    ProductNotFoundError,
+    create_cart_orders,
+    transition_order,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,64 +45,14 @@ async def checkout_cart(
             detail="Cart items cannot be empty"
         )
 
-    created_orders: List[Order] = []
-    total_amount = 0.0
-
-    # Verify stock for all items first
-    for item in checkout_data.items:
-        if item.quantity <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid quantity {item.quantity} for product ID {item.product_id}"
-            )
-        product = db.query(Product).filter(
-            Product.id == item.product_id,
-            Product.is_deleted == False,
-            Product.is_active == True
-        ).first()
-
-        if not product:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Product ID {item.product_id} not found"
-            )
-
-        available_stock = product.stock_quantity - product.reserved_quantity - product.sold_quantity
-        if available_stock < item.quantity:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Not enough stock available for product '{product.name}'. Requested: {item.quantity}, Available: {available_stock}"
-            )
-
-    # Process order creation
-    for item in checkout_data.items:
-        product = db.query(Product).filter(Product.id == item.product_id).first()
-        if not product:
-            continue
-        item_total = product.price * item.quantity
-        total_amount += item_total
-
-        is_vietqr = checkout_data.payment_method == OrderPaymentMethod.VIETQR
-        new_order = Order(
-            user_id=current_user.id,
-            product_id=product.id,
-            product_name=product.name,
-            unit_price=product.price,
-            quantity=item.quantity,
-            total_amount=item_total,
-            currency=product.currency,
-            status=OrderStatus.PENDING.value if is_vietqr else OrderStatus.CONFIRMED.value,
-            customer_name=checkout_data.customer_name,
-            customer_phone=checkout_data.customer_phone,
-            shipping_address=checkout_data.shipping_address,
-            notes=checkout_data.notes,
-            payment_method=checkout_data.payment_method.value,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30) if is_vietqr else None,
-        )
-
-        product.reserved_quantity += item.quantity
-        db.add(new_order)
-        created_orders.append(new_order)
+    try:
+        created_orders = create_cart_orders(db, current_user, checkout_data)
+    except InvalidCartItemError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ProductNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InsufficientStockError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     db.commit()
     for o in created_orders:
@@ -107,6 +64,7 @@ async def checkout_cart(
 
     order_ids_str = "_".join(str(o.id) for o in created_orders)
     memo = f"LUXESTORE_{order_ids_str}"
+    total_amount = sum(order.total_amount for order in created_orders)
     
     bank_config = get_vietqr_bank_config()
     vietqr_url = generate_vietqr_url(

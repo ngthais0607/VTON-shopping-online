@@ -3,7 +3,13 @@ from app.core.database import save_to_db
 from app.core.security import get_current_user
 from app.features.orders.model import Order
 from app.features.orders.constants import OrderStatus
-from app.features.orders.service import InvalidOrderTransition, transition_order
+from app.features.orders.schema import CheckoutCartRequest
+from app.features.orders.service import (
+    InvalidOrderTransition,
+    ProductNotFoundError,
+    create_cart_orders,
+    transition_order,
+)
 from app.features.users.model import User
 from app.main import app
 from unittest.mock import AsyncMock, patch
@@ -69,7 +75,7 @@ def test_create_order_out_of_stock(client, db_session, mock_user_auth):
     response = _checkout(client, product.id, quantity=2)
 
     # Hệ thống phải báo lỗi 400 Bad Request do hết hàng
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert response.json()["detail"].startswith("Not enough stock available")
 
 def test_update_order_status_to_paid(client, db_session, mock_user_auth, mock_admin_auth):
@@ -381,3 +387,81 @@ def test_unknown_order_status_returns_422(client, db_session, mock_user_auth, mo
     response = client.put(f"/orders/{order_id}/status", json={"status": "shipped"})
 
     assert response.status_code == 422
+
+
+def test_duplicate_cart_items_are_aggregated(client, db_session, mock_user_auth):
+    product = Product(name="Duplicate cart", price=20, stock_quantity=10)
+    save_to_db(db_session, product)
+    payload = {
+        "items": [
+            {"product_id": product.id, "quantity": 2},
+            {"product_id": product.id, "quantity": 3},
+        ],
+        "customer_name": "Duplicate Buyer",
+        "customer_phone": "0123456789",
+        "shipping_address": "123 Duplicate Street",
+        "payment_method": "vietqr",
+    }
+
+    response = client.post("/orders/checkout-cart", json=payload)
+
+    assert response.status_code == 201
+    assert len(response.json()["orders"]) == 1
+    assert response.json()["orders"][0]["quantity"] == 5
+    db_session.refresh(product)
+    assert product.reserved_quantity == 5
+
+
+def test_invalid_item_rolls_back_all_orders_and_reservations(client, db_session, mock_user_auth):
+    product = Product(name="Atomic cart", price=20, stock_quantity=10)
+    save_to_db(db_session, product)
+    payload = {
+        "items": [
+            {"product_id": product.id, "quantity": 2},
+            {"product_id": 999999, "quantity": 1},
+        ],
+        "customer_name": "Atomic Buyer",
+        "customer_phone": "0123456789",
+        "shipping_address": "123 Atomic Street",
+        "payment_method": "vietqr",
+    }
+
+    checkout = CheckoutCartRequest(**payload)
+
+    with pytest.raises(ProductNotFoundError):
+        create_cart_orders(db_session, mock_user_auth, checkout)
+
+    assert db_session.query(Order).filter(Order.product_id == product.id).count() == 0
+    assert product.reserved_quantity == 0
+
+
+def test_out_of_stock_returns_409(client, db_session, mock_user_auth):
+    product = Product(name="Stock conflict", price=20, stock_quantity=1)
+    save_to_db(db_session, product)
+
+    response = _checkout(client, product.id, quantity=2)
+
+    assert response.status_code == 409
+
+
+def test_checkout_enqueues_emails_only_after_commit(client, db_session, mock_user_auth):
+    product = Product(name="Commit ordering", price=20, stock_quantity=2)
+    save_to_db(db_session, product)
+    events = []
+    original_commit = db_session.commit
+
+    def record_commit():
+        events.append("commit")
+        return original_commit()
+
+    async def record_enqueue(*args):
+        events.append("enqueue")
+
+    with patch.object(db_session, "commit", side_effect=record_commit), patch(
+        "app.features.orders.router.enqueue_task",
+        new=AsyncMock(side_effect=record_enqueue),
+    ):
+        response = _checkout(client, product.id)
+
+    assert response.status_code == 201
+    assert events[:2] == ["commit", "enqueue"]
