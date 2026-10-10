@@ -157,6 +157,11 @@ def seed_database(db=None):
                     total_amount=total,
                     currency="USD",
                     status=status,
+                    customer_name=customer.full_name if customer else "Seed Customer",
+                    customer_phone="0000000000",
+                    shipping_address="Seed address",
+                    notes=None,
+                    payment_method="vietqr",
                     created_at=created_date,
                     paid_at=created_date + timedelta(minutes=5) if status == "paid" else None,
                     expires_at=created_date + timedelta(minutes=30) if status == "pending" else None

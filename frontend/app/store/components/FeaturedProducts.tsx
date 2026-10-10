@@ -5,10 +5,12 @@ import { ShoppingCart, Star, Zap, Heart, Check, X, Plus, Minus, Package } from "
 import { motion, AnimatePresence } from "motion/react";
 import Image from "next/image";
 import { Product as DBProduct, User } from "@/lib/types";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 import { QuickViewModal } from "./QuickViewModal";
+import { useCart } from "../context/CartContext";
 
 interface ProductUI {
+  source: DBProduct;
   id: number;
   name: string;
   category: string;
@@ -51,6 +53,7 @@ function PurchaseModal({ product, currentUser, onClose, onOrderSuccess }: Purcha
   const [success, setSuccess] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const router = useRouter();
+  const { addToCart } = useCart();
 
   async function handlePurchase() {
     if (!currentUser) {
@@ -58,19 +61,9 @@ function PurchaseModal({ product, currentUser, onClose, onOrderSuccess }: Purcha
       return;
     }
     setOrdering(true);
-    try {
-      await apiPost("/orders/", {
-        product_id: product.id,
-        quantity: qty,
-        user_id: currentUser?.id || null
-      });
-      setSuccess(true);
-      onOrderSuccess();
-    } catch (err: any) {
-      alert(err.message || "Failed to place order.");
-    } finally {
-      setOrdering(false);
-    }
+    addToCart(product.source, qty);
+    onOrderSuccess();
+    router.push("/store/checkout");
   }
 
   return (
@@ -400,6 +393,7 @@ export function FeaturedProducts({
     }
     
     return {
+      source: p,
       id: p.id,
       name: p.name,
       category: p.category?.name || "General",

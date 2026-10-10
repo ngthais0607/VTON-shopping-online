@@ -59,8 +59,6 @@ import {
   Product,
   Category,
   ProductFormData,
-  Order,
-  OrderCreate,
 } from "@/lib/types";
 import { format } from "date-fns";
 import Image from "next/image";
@@ -149,13 +147,6 @@ export default function ProductsPage() {
       is_active: true,
     });
     setSelectedImage(null);
-  };
-  const handleCreateOrder = async (product: Product) => {
-    await apiPost<Order, OrderCreate>("/orders/", {
-      product_id: product.id,
-      quantity: 1,
-    });
-    await mutateProducts();
   };
   const handleCreateProduct = async () => {
     const createdProduct = await apiPost<Product, ProductFormData>(
@@ -593,11 +584,6 @@ export default function ProductsPage() {
                               Edit Product
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleCreateOrder(product)}
-                            >
-                              Create Order
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
                               onClick={() => openEditProduct(product)}
                             >
                               Upload Image
@@ -737,11 +723,6 @@ export default function ProductsPage() {
                           onClick={() => openEditProduct(product)}
                         >
                           Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleCreateOrder(product)}
-                        >
-                          Create Order
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => openEditProduct(product)}

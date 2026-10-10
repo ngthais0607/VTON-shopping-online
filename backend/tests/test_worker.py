@@ -36,7 +36,11 @@ async def test_send_order_confirmation_email_task(db_session):
         quantity=1,
         total_amount=100.0,
         currency="USD",
-        status="pending"
+        status="pending",
+        customer_name="Worker User",
+        customer_phone="0123456789",
+        shipping_address="123 Worker Street",
+        payment_method="vietqr",
     )
     db_session.add(order)
     db_session.commit()
@@ -75,7 +79,11 @@ async def test_send_payment_received_email_task(db_session):
         quantity=2,
         total_amount=500.0,
         currency="USD",
-        status="paid"
+        status="paid",
+        customer_name="Paid User",
+        customer_phone="0123456789",
+        shipping_address="123 Paid Street",
+        payment_method="vietqr",
     )
     db_session.add(order)
     db_session.commit()

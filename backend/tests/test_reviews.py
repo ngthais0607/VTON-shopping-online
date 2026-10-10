@@ -54,12 +54,15 @@ def test_create_review_verified_buyer(client, mock_user_auth, db_session):
     db_session.add(product)
     db_session.commit()
 
-    order_resp = client.post("/orders/", json={
-        "product_id": product.id,
-        "quantity": 1
+    order_resp = client.post("/orders/checkout-cart", json={
+        "items": [{"product_id": product.id, "quantity": 1}],
+        "customer_name": "Verified Buyer",
+        "customer_phone": "0123456789",
+        "shipping_address": "123 Review Street",
+        "payment_method": "vietqr",
     })
     assert order_resp.status_code == 201
-    order_id = order_resp.json()["id"]
+    order_id = order_resp.json()["orders"][0]["id"]
 
     order = db_session.query(Order).filter(Order.id == order_id).first()
     order.status = "paid"

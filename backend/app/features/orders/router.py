@@ -1,4 +1,5 @@
 from datetime import datetime, timezone, timedelta
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query 
@@ -11,6 +12,9 @@ from app.core.security import get_current_user, get_current_admin
 from app.features.users.model import User
 from app.integrations.vietqr import generate_vietqr_url, get_vietqr_bank_config
 from app.core.queue import enqueue_task
+from app.features.orders.constants import OrderPaymentMethod, OrderStatus
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/orders",
@@ -70,6 +74,7 @@ async def checkout_cart(
         item_total = product.price * item.quantity
         total_amount += item_total
 
+        is_vietqr = checkout_data.payment_method == OrderPaymentMethod.VIETQR
         new_order = Order(
             user_id=current_user.id,
             product_id=product.id,
@@ -78,8 +83,13 @@ async def checkout_cart(
             quantity=item.quantity,
             total_amount=item_total,
             currency=product.currency,
-            status="pending",
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
+            status=OrderStatus.PENDING.value if is_vietqr else OrderStatus.CONFIRMED.value,
+            customer_name=checkout_data.customer_name,
+            customer_phone=checkout_data.customer_phone,
+            shipping_address=checkout_data.shipping_address,
+            notes=checkout_data.notes,
+            payment_method=checkout_data.payment_method.value,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30) if is_vietqr else None,
         )
 
         product.reserved_quantity += item.quantity
@@ -89,7 +99,10 @@ async def checkout_cart(
     db.commit()
     for o in created_orders:
         db.refresh(o)
-        await enqueue_task("send_order_confirmation_email_task", o.id)
+        try:
+            await enqueue_task("send_order_confirmation_email_task", o.id)
+        except Exception:
+            logger.exception("Failed to enqueue confirmation email for order %s", o.id)
 
     order_ids_str = "_".join(str(o.id) for o in created_orders)
     memo = f"LUXESTORE_{order_ids_str}"
@@ -160,67 +173,16 @@ def order_to_json(order: Order):
         "total": order.total_amount,
         "currency": order.currency,
         "status": order.status,
+        "customer_name": order.customer_name,
+        "customer_phone": order.customer_phone,
+        "shipping_address": order.shipping_address,
+        "notes": order.notes,
+        "payment_method": order.payment_method,
         "payment_status": payment_status,
         "expires_at": order.expires_at,
         "paid_at": order.paid_at,
         "created_at": order.created_at,
     }
-
-@router.post(
-    "/",
-    status_code=status.HTTP_201_CREATED,
-    summary="Create order"
-)
-def create_order(
-    order_data: schema.OrderCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    if order_data.quantity <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Quantity must be greater than 0"
-        )
-   
-    product = db.query(Product).filter(
-        Product.id == order_data.product_id,
-        Product.is_deleted == False,
-        Product.is_active == True
-    ).first()
-   
-    if not product:
-        raise HTTPException(
-            status_code=404,
-            detail="Product not found"
-        )
-   
-    available_stock = product.stock_quantity - product.reserved_quantity - product.sold_quantity
-
-    if available_stock < order_data.quantity:
-        raise HTTPException(
-            status_code=400,
-            detail="Not enough stock available"
-        )
-
-    total_amount = product.price * order_data.quantity
-
-    new_order = Order(
-        user_id=current_user.id,
-        product_id=product.id,
-        product_name=product.name,
-        unit_price=product.price,
-        quantity=order_data.quantity,
-        total_amount=total_amount,
-        currency=product.currency,
-        status="pending",
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15)
-    )
-   
-    product.reserved_quantity += order_data.quantity
-    db.add(new_order)
-    db.commit()
-    db.refresh(new_order)
-    return order_to_json(new_order)
 
 @router.get(
     "/",

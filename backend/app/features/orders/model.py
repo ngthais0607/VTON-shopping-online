@@ -16,6 +16,11 @@ class Order(Base):
 
     currency = Column(String(10), nullable=False, default="USD")
     status = Column(String(50), nullable=False, default="pending", index=True)
+    customer_name = Column(String(255), nullable=False)
+    customer_phone = Column(String(50), nullable=False)
+    shipping_address = Column(String(1000), nullable=False)
+    notes = Column(String(2000), nullable=True)
+    payment_method = Column(String(20), nullable=False)
 
     expires_at = Column(DateTime, nullable=True)
     paid_at = Column(DateTime, nullable=True)

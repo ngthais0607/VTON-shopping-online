@@ -1,10 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
-
-class OrderCreate(BaseModel):
-    product_id: int
-    quantity: int = 1
-    user_id: Optional[int] = None
+from app.features.orders.constants import OrderPaymentMethod
 
 class OrderStatusUpdate(BaseModel):
     status: str 
@@ -15,8 +11,8 @@ class CartItemRequest(BaseModel):
 
 class CheckoutCartRequest(BaseModel):
     items: List[CartItemRequest]
-    customer_name: Optional[str] = None
-    customer_phone: Optional[str] = None
-    shipping_address: Optional[str] = None
+    customer_name: str
+    customer_phone: str
+    shipping_address: str
     notes: Optional[str] = None
-    payment_method: str = "vietqr"
+    payment_method: OrderPaymentMethod = OrderPaymentMethod.VIETQR
