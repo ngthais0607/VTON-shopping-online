@@ -137,6 +137,12 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           color: "bg-sky-100 text-sky-800 border-sky-200 animate-pulse",
           icon: <Clock className="w-4 h-4 text-sky-600 animate-spin" style={{ animationDuration: "4s" }} />
         };
+      case "confirmed":
+        return {
+          label: "COD Confirmed",
+          color: "bg-blue-100 text-blue-800 border-blue-200",
+          icon: <CheckCircle2 className="w-4 h-4 text-blue-600" />
+        };
       case "expired":
         return {
           label: "Order Expired",

@@ -34,6 +34,9 @@ export interface Category {
   product_count: number;
 }
 
+export type OrderStatus = "pending" | "confirmed" | "paid" | "cancelled" | "expired";
+export type OrderPaymentMethod = "vietqr" | "cod";
+
 export interface Order {
   id: number;
   user_id?: number;
@@ -43,16 +46,16 @@ export interface Order {
   quantity: number;
   total: number;
   total_amount?: number;
-  status: 'pending' | 'paid' | 'expired' | 'cancelled';
-  payment_status: 'pending' | 'completed' | 'failed';
+  status: OrderStatus;
+  payment_method: OrderPaymentMethod;
+  payment_status: 'pending' | 'paid' | 'failed';
+  customer_name: string;
+  customer_phone: string;
+  shipping_address: string;
+  notes?: string | null;
   expires_at?: string;
   paid_at?: string;
   created_at: string;
-}
-
-export interface OrderCreate {
-  product_id: number;
-  quantity: number;
 }
 
 export interface User {

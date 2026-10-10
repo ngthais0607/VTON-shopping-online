@@ -13,7 +13,11 @@ const mockProduct: Product = {
   sold_quantity: 0,
   is_active: true,
   currency: "USD",
-  description: "Luxury watch"
+  description: "Luxury watch",
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+  category: null,
+  images: [],
 };
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (

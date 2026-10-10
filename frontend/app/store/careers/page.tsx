@@ -29,7 +29,7 @@ export default function CareersPage() {
               Build The Future Of E-Commerce
             </h1>
             <p className="text-slate-500 text-sm">
-              We're looking for passionate individuals to help shape high-quality retail experiences worldwide.
+              We&apos;re looking for passionate individuals to help shape high-quality retail experiences worldwide.
             </p>
           </div>
 

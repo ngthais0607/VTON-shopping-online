@@ -22,7 +22,8 @@ interface QuickStatusModalProps {
 
 const statusOptions: { label: string; value: Order["status"]; icon: any; color: string }[] = [
   { label: "Pending", value: "pending", icon: Clock, color: "text-amber-600 bg-amber-50 border-amber-200" },
-  { label: "Paid / Confirmed", value: "paid", icon: CheckCircle2, color: "text-blue-600 bg-blue-50 border-blue-200" },
+  { label: "COD Confirmed", value: "confirmed", icon: CheckCircle2, color: "text-blue-600 bg-blue-50 border-blue-200" },
+  { label: "Paid", value: "paid", icon: CheckCircle2, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   { label: "Cancelled", value: "cancelled", icon: XCircle, color: "text-rose-600 bg-rose-50 border-rose-200" },
   { label: "Expired", value: "expired", icon: XCircle, color: "text-slate-600 bg-slate-50 border-slate-200" },
 ];

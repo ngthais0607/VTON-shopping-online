@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { Order, User } from "@/lib/types";
+import { getOrderStatusPresentation } from "@/lib/order-status";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { ShoppingBag, ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCw, CreditCard } from "lucide-react";
@@ -50,6 +51,8 @@ export default function CustomerOrdersPage() {
                 return "bg-emerald-50 text-emerald-700 border-emerald-200";
             case "pending":
                 return "bg-amber-50 text-amber-700 border-amber-200";
+            case "confirmed":
+                return "bg-blue-50 text-blue-700 border-blue-200";
             case "expired":
                 return "bg-slate-100 text-slate-500 border-slate-200";
             case "cancelled":
@@ -65,6 +68,8 @@ export default function CustomerOrdersPage() {
                 return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
             case "pending":
                 return <Clock className="w-4 h-4 text-amber-600" />;
+            case "confirmed":
+                return <CheckCircle2 className="w-4 h-4 text-blue-600" />;
             case "cancelled":
                 return <XCircle className="w-4 h-4 text-rose-600" />;
             default:
@@ -163,7 +168,7 @@ export default function CustomerOrdersPage() {
                                             )}`}
                                         >
                                             {getStatusIcon(order.status)}
-                                            {order.status}
+                                            {getOrderStatusPresentation(order.status).label}
                                         </span>
                                     </div>
                                 </div>

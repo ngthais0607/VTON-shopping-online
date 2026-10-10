@@ -48,12 +48,7 @@ export default function CustomerAccountPage() {
   // Wishlist state
   const [wishlist, setWishlist] = useState<any[]>([]);
 
-  useEffect(() => {
-    fetchProfile();
-    loadWishlist();
-  }, []);
-
-  const fetchProfile = async () => {
+  async function fetchProfile() {
     setLoading(true);
     setError(null);
     try {
@@ -69,9 +64,9 @@ export default function CustomerAccountPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const fetchUserOrders = async (userId: number) => {
+  async function fetchUserOrders(userId: number) {
     setOrdersLoading(true);
     try {
       const data = await apiGet<OrderItem[]>(`/orders/user/${userId}`);
@@ -81,9 +76,9 @@ export default function CustomerAccountPage() {
     } finally {
       setOrdersLoading(false);
     }
-  };
+  }
 
-  const loadWishlist = () => {
+  function loadWishlist() {
     try {
       const stored = localStorage.getItem('luxestore_wishlist');
       if (stored) {
@@ -92,7 +87,12 @@ export default function CustomerAccountPage() {
     } catch (e) {
       console.error('Failed to load wishlist from localStorage', e);
     }
-  };
+  }
+
+  useEffect(() => {
+    fetchProfile();
+    loadWishlist();
+  }, []);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,6 +128,12 @@ export default function CustomerAccountPage() {
         return (
           <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-amber-700 bg-amber-50 rounded-full border border-amber-200">
             <Clock className="w-3.5 h-3.5" /> Pending Payment
+          </span>
+        );
+      case 'confirmed':
+        return (
+          <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-blue-700 bg-blue-50 rounded-full border border-blue-200">
+            <CheckCircle2 className="w-3.5 h-3.5" /> COD Confirmed
           </span>
         );
       case 'expired':

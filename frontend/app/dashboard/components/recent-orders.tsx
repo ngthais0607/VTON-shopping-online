@@ -22,6 +22,8 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
         return 'bg-green-100 text-green-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
+      case 'confirmed':
+        return 'bg-blue-100 text-blue-800';
       case 'expired':
         return 'bg-gray-100 text-gray-800';
       case 'cancelled':
@@ -33,7 +35,7 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
 
   const getPaymentStatusColor = (status: Order['payment_status']) => {
     switch (status) {
-      case 'completed':
+      case 'paid':
         return 'bg-green-50 text-green-700 border-green-200';
       case 'pending':
         return 'bg-yellow-50 text-yellow-700 border-yellow-200';

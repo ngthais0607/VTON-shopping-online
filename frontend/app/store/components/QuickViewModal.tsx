@@ -58,7 +58,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
     fetchReviews();
   }, [product.id]);
 
-  const fetchReviews = async () => {
+  async function fetchReviews() {
     setLoadingReviews(true);
     try {
       const data = await apiGet<ProductReviewsData>(`/products/${product.id}/reviews`);
@@ -68,7 +68,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
     } finally {
       setLoadingReviews(false);
     }
-  };
+  }
 
   const handleAddToCart = () => {
     addToCart(product, quantity);

@@ -1,11 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Copy, Check, QrCode, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
+import { X, Copy, Check, QrCode, ShieldCheck, ArrowRight } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { apiPut } from "@/lib/api";
 
 export interface VietQRData {
   qr_url: string;
@@ -33,7 +32,6 @@ export function VietQRModal({
   onPaymentSuccess,
 }: VietQRModalProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
 
   if (!isOpen) return null;
 
@@ -41,23 +39,6 @@ export function VietQRModal({
     navigator.clipboard.writeText(text);
     setCopiedField(fieldName);
     setTimeout(() => setCopiedField(null), 2000);
-  };
-
-  const handleConfirmPayment = async () => {
-    setConfirming(true);
-    try {
-      // Update all orders in the batch to "paid"
-      await Promise.all(
-        orderIds.map((id) => apiPut(`/orders/${id}/status`, { status: "paid" }))
-      );
-      onPaymentSuccess();
-    } catch (err: any) {
-      console.error("Failed to update status", err);
-      // Fallback: trigger success anyway
-      onPaymentSuccess();
-    } finally {
-      setConfirming(false);
-    }
   };
 
   return (
@@ -171,22 +152,12 @@ export function VietQRModal({
             {/* Confirmation CTA */}
             <div className="space-y-3 pt-2">
               <Button
-                disabled={confirming}
-                onClick={handleConfirmPayment}
+                onClick={onPaymentSuccess}
                 className="w-full h-12 bg-primary hover:bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
               >
-                {confirming ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Verifying Transfer...</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4 text-emerald-300" />
-                    <span>I Have Completed Payment</span>
-                    <ArrowRight className="w-4 h-4 ml-1" />
-                  </>
-                )}
+                <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                <span>View Pending Orders</span>
+                <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
               <p className="text-[11px] text-slate-400 text-center">
                 Your order will be verified automatically upon transfer receipt.
