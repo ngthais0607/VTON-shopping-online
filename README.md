@@ -143,7 +143,7 @@ A modern, full-stack E-Commerce platform combining a **luxury customer-facing st
   - `send_welcome_email_task`: Sends a branded welcome email upon user registration.
   - `send_order_confirmation_email_task`: Dispatches detailed invoice emails upon order creation.
   - `send_payment_received_email_task`: Confirms successful payment reconciliation.
-  - Scheduled cron task running every minute to automatically expire unfulfilled `pending` orders older than 15 minutes.
+  - Scheduled cron task running every minute to automatically expire unverified VietQR `pending` orders after 30 minutes.
 
 ---
 

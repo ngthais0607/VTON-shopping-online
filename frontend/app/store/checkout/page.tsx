@@ -356,7 +356,6 @@ export default function CheckoutPage() {
       {/* VietQR Payment Modal */}
       {vietqrData && (
         <VietQRModal
-          orderIds={createdOrderIds}
           vietqrData={vietqrData}
           isOpen={vietqrModalOpen}
           onClose={() => setVietqrModalOpen(false)}

@@ -167,6 +167,9 @@ def test_track_order_owner_can_view(client, db_session, mock_user_auth):
 
     assert response.status_code == 200
     assert response.json()["id"] == order_id
+    timeline_copy = " ".join(step["description"] for step in response.json()["timeline"])
+    assert "Automated" not in timeline_copy
+    assert "administrator" in timeline_copy
 
 
 def test_track_order_admin_can_view_any_order(client, db_session, mock_user_auth):
@@ -219,6 +222,17 @@ def test_vietqr_webhook_route_is_removed(client, db_session, mock_user_auth):
     assert order.status == "pending"
 
 
+def test_public_expire_route_is_removed(client, db_session, mock_user_auth):
+    order_id = _create_trackable_order(client, db_session, mock_user_auth)
+    app.dependency_overrides.pop(get_current_user, None)
+
+    response = client.post(f"/orders/{order_id}/expire")
+
+    assert response.status_code == 404
+    order = db_session.query(Order).filter(Order.id == order_id).one()
+    assert order.status == "pending"
+
+
 def test_checkout_persists_fulfillment_fields(client, db_session, mock_user_auth):
     product = Product(name="Fulfillment Test", price=25.0, currency="USD", stock_quantity=5)
     save_to_db(db_session, product)
@@ -255,6 +269,11 @@ def test_cod_checkout_is_confirmed_without_expiration(client, db_session, mock_u
     data = response.json()["orders"][0]
     assert data["status"] == "confirmed"
     assert data["expires_at"] is None
+    assert "vietqr" not in response.json()
+
+    tracking_response = client.get(f"/orders/track/{data['id']}")
+    assert tracking_response.status_code == 200
+    assert "vietqr" not in tracking_response.json()
 
 
 def test_checkout_rejects_unknown_payment_method_with_422(client, db_session, mock_user_auth):
@@ -465,3 +484,24 @@ def test_checkout_enqueues_emails_only_after_commit(client, db_session, mock_use
 
     assert response.status_code == 201
     assert events[:2] == ["commit", "enqueue"]
+
+
+def test_payment_email_failure_does_not_fail_committed_status_update(
+    client,
+    db_session,
+    mock_user_auth,
+    mock_admin_auth,
+):
+    product = Product(name="Payment queue failure", price=20, stock_quantity=2)
+    save_to_db(db_session, product)
+    checkout = _checkout(client, product.id)
+    order_id = checkout.json()["orders"][0]["id"]
+
+    with patch(
+        "app.features.orders.router.enqueue_task",
+        new=AsyncMock(side_effect=RuntimeError("redis down")),
+    ):
+        response = client.put(f"/orders/{order_id}/status", json={"status": "paid"})
+
+    assert response.status_code == 200
+    assert db_session.get(Order, order_id).status == "paid"

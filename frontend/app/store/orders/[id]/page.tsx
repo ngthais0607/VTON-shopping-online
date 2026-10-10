@@ -56,7 +56,7 @@ interface OrderTrackData {
   expires_at: string | null;
   paid_at: string | null;
   created_at: string;
-  vietqr: VietQRData;
+  vietqr?: VietQRData;
   timeline: TimelineStep[];
 }
 
@@ -228,12 +228,12 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
 
-            {/* Auto-reconciling Banner for Pending Orders */}
+            {/* Payment verification banner for pending orders */}
             {order.status === "pending" && (
               <div className="bg-sky-50/80 border border-sky-200 rounded-2xl p-4 flex items-center justify-between gap-4 text-xs font-semibold text-sky-900 backdrop-blur-md">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-ping" />
-                  <span>Real-time payment reconciliation active. Checking status every 5s...</span>
+                  <span>Awaiting administrator payment verification. Refreshing every 5s...</span>
                 </div>
                 <span className="text-sky-700 font-bold hidden sm:inline">Keep window open</span>
               </div>
@@ -280,11 +280,11 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
               >
                 <div className="text-center md:text-left space-y-4">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-100 text-sky-800 text-xs font-bold uppercase tracking-wider">
-                    <QrCode className="w-3.5 h-3.5 text-sky-600" /> Automated VietQR
+                    <QrCode className="w-3.5 h-3.5 text-sky-600" /> VietQR Transfer
                   </span>
                   <h3 className="text-xl font-extrabold text-slate-900">Scan QR Code to Pay</h3>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Open your banking app (MB, Vietcombank, Techcombank, etc.) and scan the QR code. Your order will reconcile automatically in seconds.
+                    Open your banking app (MB, Vietcombank, Techcombank, etc.) and scan the QR code. An administrator verifies the transfer before updating your order.
                   </p>
 
                   <div className="space-y-3 pt-2">
@@ -298,7 +298,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-slate-900 font-mono">{order.vietqr.account_no}</span>
                         <button
-                          onClick={() => handleCopy(order.vietqr.account_no, "account")}
+                          onClick={() => handleCopy(order.vietqr!.account_no, "account")}
                           className="p-1 text-slate-400 hover:text-sky-600 transition-colors"
                           title="Copy Account Number"
                         >
@@ -312,7 +312,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-sky-700 font-mono">{order.vietqr.memo}</span>
                         <button
-                          onClick={() => handleCopy(order.vietqr.memo, "memo")}
+                          onClick={() => handleCopy(order.vietqr!.memo, "memo")}
                           className="p-1 text-sky-600 hover:text-sky-800 transition-colors"
                           title="Copy Transfer Memo"
                         >
@@ -361,7 +361,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                   <span className="font-bold text-emerald-600">FREE</span>
                 </div>
                 <div className="flex justify-between pt-3 border-t border-slate-100 text-sm font-extrabold text-slate-900">
-                  <span>Total Paid</span>
+                  <span>Order Total</span>
                   <span className="text-sky-600 text-base">${order.total_amount.toFixed(2)}</span>
                 </div>
               </div>

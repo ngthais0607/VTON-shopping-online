@@ -15,7 +15,7 @@ def expire_pending_orders():
             Order.status == "pending",
             Order.payment_method == "vietqr",
             Order.expires_at <= datetime.now(timezone.utc)
-        ).all()
+        ).with_for_update().all()
 
         for order in orders:
             transition_order(order, OrderStatus.EXPIRED)

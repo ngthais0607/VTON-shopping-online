@@ -17,7 +17,6 @@ export interface VietQRData {
 }
 
 interface VietQRModalProps {
-  orderIds: number[];
   vietqrData: VietQRData;
   isOpen: boolean;
   onClose: () => void;
@@ -25,7 +24,6 @@ interface VietQRModalProps {
 }
 
 export function VietQRModal({
-  orderIds,
   vietqrData,
   isOpen,
   onClose,
@@ -160,7 +158,7 @@ export function VietQRModal({
                 <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
               <p className="text-[11px] text-slate-400 text-center">
-                Your order will be verified automatically upon transfer receipt.
+                An administrator verifies the transfer before updating your order.
               </p>
             </div>
           </div>

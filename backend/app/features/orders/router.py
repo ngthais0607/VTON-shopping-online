@@ -1,4 +1,3 @@
-from datetime import datetime, timezone, timedelta
 import logging
 from typing import Optional
 
@@ -62,48 +61,34 @@ async def checkout_cart(
         except Exception:
             logger.exception("Failed to enqueue confirmation email for order %s", o.id)
 
-    order_ids_str = "_".join(str(o.id) for o in created_orders)
-    memo = f"LUXESTORE_{order_ids_str}"
     total_amount = sum(order.total_amount for order in created_orders)
-    
-    bank_config = get_vietqr_bank_config()
-    vietqr_url = generate_vietqr_url(
-        bank_id=bank_config["bank_id"],
-        account_no=bank_config["account_no"],
-        account_name=bank_config["account_name"],
-        amount=total_amount,
-        memo=memo
-    )
-
-    return {
+    response = {
         "message": "Checkout created successfully",
         "orders": [order_to_json(o) for o in created_orders],
         "total_amount": total_amount,
         "payment_method": checkout_data.payment_method,
-        "vietqr": {
+    }
+    if checkout_data.payment_method == OrderPaymentMethod.VIETQR:
+        order_ids_str = "_".join(str(order.id) for order in created_orders)
+        memo = f"LUXESTORE_{order_ids_str}"
+        bank_config = get_vietqr_bank_config()
+        vietqr_url = generate_vietqr_url(
+            bank_id=bank_config["bank_id"],
+            account_no=bank_config["account_no"],
+            account_name=bank_config["account_name"],
+            amount=total_amount,
+            memo=memo,
+        )
+        response["vietqr"] = {
             "qr_url": vietqr_url,
             "bank_id": bank_config["bank_id"],
             "bank_name": bank_config["bank_name"],
             "account_no": bank_config["account_no"],
             "account_name": bank_config["account_name"],
             "memo": memo,
-            "amount": total_amount
+            "amount": total_amount,
         }
-    }
-
-def expire_order_if_needed(order: Order) -> bool:
-    if order.status != "pending":
-        return False
-    
-    if not order.expires_at:
-        return False
-    
-    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
-    if now_naive < order.expires_at:
-        return False
-    
-    transition_order(order, OrderStatus.EXPIRED)
-    return True
+    return response
 
 def order_to_json(order: Order):
     payment = order.payments[-1] if order.payments else None
@@ -176,36 +161,6 @@ def get_order(
         )
     return order_to_json(order)
 
-@router.post(
-    "/{order_id}/expire",
-    summary="Expire an order"
-)
-def expire_order(
-    order_id: int,
-    db: Session = Depends(get_db)
-):
-    order = db.query(Order).filter(
-        Order.id == order_id
-    ).first()
-
-    if not order:
-        raise HTTPException(
-            status_code=404,
-            detail="Order not found"
-        )
-    
-    expired = expire_order_if_needed(order)
-    if not expired:
-        return {
-            "message": "Order is not expired",
-            "order": order_to_json(order)
-        }
-    db.commit()
-    return {
-        "message": "Order expired successfully",
-        "order": order_to_json(order)
-    }
-
 @router.put("/{order_id}/status", summary="Update order status")
 async def update_order_status(
     order_id: int,
@@ -215,7 +170,7 @@ async def update_order_status(
 ):
     order = db.query(Order).filter(
         Order.id == order_id
-    ).first()
+    ).with_for_update().first()
 
     if not order:
         raise HTTPException(
@@ -232,7 +187,10 @@ async def update_order_status(
     db.refresh(order)
 
     if new_status == OrderStatus.PAID:
-        await enqueue_task("send_payment_received_email_task", order.id)
+        try:
+            await enqueue_task("send_payment_received_email_task", order.id)
+        except Exception:
+            logger.exception("Failed to enqueue payment email for order %s", order.id)
 
     return order_to_json(order)
 
@@ -274,18 +232,6 @@ def track_order_public(
             detail="Order not found"
         )
     
-    expire_order_if_needed(order)
-
-    bank_config = get_vietqr_bank_config()
-    memo = f"LUXESTORE_{order.id}"
-    vietqr_url = generate_vietqr_url(
-        bank_id=bank_config["bank_id"],
-        account_no=bank_config["account_no"],
-        account_name=bank_config["account_name"],
-        amount=order.total_amount,
-        memo=memo
-    )
-
     steps = [
         {
             "step": 1,
@@ -297,7 +243,7 @@ def track_order_public(
         {
             "step": 2,
             "title": "Payment Verified",
-            "description": "Automated VietQR bank transfer reconciled successfully.",
+            "description": "VietQR bank transfer verified by an administrator.",
             "completed": order.status == "paid",
             "timestamp": order.paid_at if order.status == "paid" else None
         },
@@ -318,14 +264,24 @@ def track_order_public(
     ]
 
     res = order_to_json(order)
-    res["vietqr"] = {
-        "qr_url": vietqr_url,
-        "bank_id": bank_config["bank_id"],
-        "bank_name": bank_config["bank_name"],
-        "account_no": bank_config["account_no"],
-        "account_name": bank_config["account_name"],
-        "memo": memo,
-        "amount": order.total_amount
-    }
+    if order.payment_method == OrderPaymentMethod.VIETQR:
+        bank_config = get_vietqr_bank_config()
+        memo = f"LUXESTORE_{order.id}"
+        vietqr_url = generate_vietqr_url(
+            bank_id=bank_config["bank_id"],
+            account_no=bank_config["account_no"],
+            account_name=bank_config["account_name"],
+            amount=order.total_amount,
+            memo=memo,
+        )
+        res["vietqr"] = {
+            "qr_url": vietqr_url,
+            "bank_id": bank_config["bank_id"],
+            "bank_name": bank_config["bank_name"],
+            "account_no": bank_config["account_no"],
+            "account_name": bank_config["account_name"],
+            "memo": memo,
+            "amount": order.total_amount,
+        }
     res["timeline"] = steps
     return res

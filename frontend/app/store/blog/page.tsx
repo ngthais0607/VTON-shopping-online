@@ -29,8 +29,8 @@ const posts = [
   },
   {
     id: 3,
-    title: "Instant VietQR Banking Payments Explained",
-    excerpt: "How LuxeStore leverages real-time banking webhooks for instant order fulfillment.",
+    title: "Secure VietQR Banking Payments Explained",
+    excerpt: "How to transfer with the exact VietQR memo while your order awaits administrator verification.",
     category: "Technology",
     date: "Sep 05, 2026",
     author: "Tech Team",

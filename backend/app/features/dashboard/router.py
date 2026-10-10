@@ -6,7 +6,7 @@ from app.features.products.model import Product
 from app.features.orders.model import Order
 from app.core.database import get_db
 from app.features.products.router import product_to_json
-from app.features.orders.router import order_to_json, expire_order_if_needed
+from app.features.orders.router import order_to_json
 from app.core.security import get_current_admin
 from app.features.users.model import User
 
