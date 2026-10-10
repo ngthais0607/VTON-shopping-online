@@ -13,6 +13,7 @@ from app.features.users.model import User
 from app.integrations.vietqr import generate_vietqr_url, get_vietqr_bank_config
 from app.core.queue import enqueue_task
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
+from app.features.orders.service import InvalidOrderTransition, transition_order
 
 logger = logging.getLogger(__name__)
 
@@ -143,20 +144,15 @@ def expire_order_if_needed(order: Order) -> bool:
     if now_naive < order.expires_at:
         return False
     
-    product = order.product
-    if product:
-        product.reserved_quantity = max(0, product.reserved_quantity - order.quantity)
-    order.status = "expired"
-
-    for payment in order.payments:
-        if payment.status == "pending":
-            payment.status = "expired"
+    transition_order(order, OrderStatus.EXPIRED)
     return True
 
 def order_to_json(order: Order):
     payment = order.payments[-1] if order.payments else None
     if payment:
         payment_status = payment.status
+    elif order.status == "paid":
+        payment_status = "paid"
     elif order.status == "expired":
         payment_status = "failed"
     else:
@@ -269,36 +265,15 @@ async def update_order_status(
             detail="Order not found"
         )
 
-    old_status = order.status
-    new_status = status_data.status.lower()
-
-    if old_status == new_status:
-        return order_to_json(order)
-    
-    product = order.product
-
-    if new_status == "paid":
-        if old_status == "pending" and product:
-            product.reserved_quantity = max(0, product.reserved_quantity - order.quantity)
-        if product:
-            product.sold_quantity += order.quantity
-        order.paid_at = datetime.now(timezone.utc)
-    elif new_status == "cancelled":
-        if old_status == "pending" and product:
-            product.reserved_quantity = max(0, product.reserved_quantity - order.quantity)
-        elif old_status == "paid" and product:
-            product.sold_quantity = max(0, product.sold_quantity - order.quantity)
-    elif new_status == "pending" and old_status != "pending":
-        if product:
-            product.reserved_quantity += order.quantity
-        if old_status == "paid" and product:
-            product.sold_quantity = max(0, product.sold_quantity - order.quantity)
-    
-    order.status = new_status
+    new_status = status_data.status
+    try:
+        transition_order(order, new_status)
+    except InvalidOrderTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     db.commit()
     db.refresh(order)
 
-    if new_status == "paid":
+    if new_status == OrderStatus.PAID:
         await enqueue_task("send_payment_received_email_task", order.id)
 
     return order_to_json(order)

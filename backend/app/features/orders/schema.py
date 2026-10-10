@@ -1,9 +1,9 @@
 from pydantic import BaseModel
 from typing import List, Optional
-from app.features.orders.constants import OrderPaymentMethod
+from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 
 class OrderStatusUpdate(BaseModel):
-    status: str 
+    status: OrderStatus
 
 class CartItemRequest(BaseModel):
     product_id: int

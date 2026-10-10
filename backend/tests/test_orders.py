@@ -2,9 +2,12 @@ from app.features.products.model import Product
 from app.core.database import save_to_db
 from app.core.security import get_current_user
 from app.features.orders.model import Order
+from app.features.orders.constants import OrderStatus
+from app.features.orders.service import InvalidOrderTransition, transition_order
 from app.features.users.model import User
 from app.main import app
 from unittest.mock import AsyncMock, patch
+import pytest
 
 
 def _checkout(client, product_id, quantity=1, payment_method="vietqr", **overrides):
@@ -275,3 +278,106 @@ def test_enqueue_failure_does_not_rollback_committed_order(client, db_session, m
 
     assert response.status_code == 201
     assert db_session.query(Order).filter(Order.product_id == product.id).count() == 1
+
+
+@pytest.mark.parametrize(
+    ("payment_method", "new_status", "expected_reserved", "expected_sold"),
+    [
+        ("vietqr", "paid", 0, 2),
+        ("vietqr", "cancelled", 0, 0),
+        ("vietqr", "expired", 0, 0),
+        ("cod", "paid", 0, 2),
+        ("cod", "cancelled", 0, 0),
+    ],
+)
+def test_allowed_order_transitions_update_inventory(
+    client,
+    db_session,
+    mock_user_auth,
+    mock_admin_auth,
+    payment_method,
+    new_status,
+    expected_reserved,
+    expected_sold,
+):
+    product = Product(name=f"Transition {payment_method} {new_status}", price=30, stock_quantity=5)
+    save_to_db(db_session, product)
+    checkout = _checkout(client, product.id, quantity=2, payment_method=payment_method)
+    order_id = checkout.json()["orders"][0]["id"]
+
+    response = client.put(f"/orders/{order_id}/status", json={"status": new_status})
+
+    assert response.status_code == 200
+    db_session.refresh(product)
+    assert product.reserved_quantity == expected_reserved
+    assert product.sold_quantity == expected_sold
+
+
+@pytest.mark.parametrize(
+    ("payment_method", "initial_terminal", "rejected_status"),
+    [
+        ("vietqr", "paid", "pending"),
+        ("vietqr", "expired", "paid"),
+        ("cod", None, "expired"),
+        ("vietqr", None, "confirmed"),
+        ("vietqr", "paid", "paid"),
+    ],
+)
+def test_rejected_order_transitions_do_not_mutate_inventory(
+    client,
+    db_session,
+    mock_user_auth,
+    mock_admin_auth,
+    payment_method,
+    initial_terminal,
+    rejected_status,
+):
+    product = Product(name=f"Rejected {payment_method} {rejected_status}", price=30, stock_quantity=5)
+    save_to_db(db_session, product)
+    checkout = _checkout(client, product.id, quantity=2, payment_method=payment_method)
+    order_id = checkout.json()["orders"][0]["id"]
+    if initial_terminal:
+        assert client.put(f"/orders/{order_id}/status", json={"status": initial_terminal}).status_code == 200
+    response = client.put(f"/orders/{order_id}/status", json={"status": rejected_status})
+
+    assert response.status_code == 409
+
+
+def test_rejected_transition_service_does_not_mutate_inventory():
+    product = Product(
+        name="Immutable terminal inventory",
+        price=30,
+        stock_quantity=5,
+        reserved_quantity=0,
+        sold_quantity=2,
+    )
+    order = Order(
+        product=product,
+        product_name=product.name,
+        unit_price=30,
+        quantity=2,
+        total_amount=60,
+        currency="USD",
+        status="paid",
+        payment_method="vietqr",
+        customer_name="Customer",
+        customer_phone="1",
+        shipping_address="Address",
+    )
+
+    with pytest.raises(InvalidOrderTransition):
+        transition_order(order, OrderStatus.PENDING)
+
+    assert product.reserved_quantity == 0
+    assert product.sold_quantity == 2
+
+
+def test_unknown_order_status_returns_422(client, db_session, mock_user_auth, mock_admin_auth):
+    product = Product(name="Unknown status", price=30, stock_quantity=5)
+    save_to_db(db_session, product)
+    checkout = _checkout(client, product.id)
+    order_id = checkout.json()["orders"][0]["id"]
+
+    response = client.put(f"/orders/{order_id}/status", json={"status": "shipped"})
+
+    assert response.status_code == 422

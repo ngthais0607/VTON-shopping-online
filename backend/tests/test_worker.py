@@ -1,5 +1,6 @@
 import pytest
 import unittest.mock
+from datetime import datetime, timedelta, timezone
 from app.features.orders.model import Order
 from app.features.users.model import User
 from app.features.products.model import Product
@@ -9,6 +10,7 @@ from app.worker import (
     send_welcome_email_task,
     cron_expire_pending_orders
 )
+from app.jobs.order_jobs import expire_pending_orders
 
 @pytest.mark.anyio
 async def test_send_order_confirmation_email_task(db_session):
@@ -124,3 +126,33 @@ async def test_cron_expire_pending_orders():
     with unittest.mock.patch("app.worker.expire_pending_orders") as mock_expire:
         await cron_expire_pending_orders({})
         mock_expire.assert_called_once()
+
+
+def test_expiration_only_changes_expired_vietqr_pending_orders(db_session):
+    product = Product(name="Expiration product", price=100, stock_quantity=10, reserved_quantity=2)
+    db_session.add(product)
+    db_session.commit()
+    expired_vietqr = Order(
+        product_id=product.id, product_name=product.name, unit_price=100, quantity=1,
+        total_amount=100, currency="USD", status="pending", payment_method="vietqr",
+        customer_name="VietQR", customer_phone="1", shipping_address="Address",
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+    )
+    confirmed_cod = Order(
+        product_id=product.id, product_name=product.name, unit_price=100, quantity=1,
+        total_amount=100, currency="USD", status="confirmed", payment_method="cod",
+        customer_name="COD", customer_phone="2", shipping_address="Address",
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+    )
+    db_session.add_all([expired_vietqr, confirmed_cod])
+    db_session.commit()
+    expired_vietqr_id = expired_vietqr.id
+    confirmed_cod_id = confirmed_cod.id
+    product_id = product.id
+
+    with unittest.mock.patch("app.jobs.order_jobs.SessionLocal", return_value=db_session):
+        expire_pending_orders()
+
+    assert db_session.get(Order, expired_vietqr_id).status == "expired"
+    assert db_session.get(Order, confirmed_cod_id).status == "confirmed"
+    assert db_session.get(Product, product_id).reserved_quantity == 1
