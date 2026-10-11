@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from app.features.categories import schema
-from app.core import database
 from app.core.database import get_db, save_to_db
 from app.features.categories.model import Category
 from app.core.security import get_current_admin

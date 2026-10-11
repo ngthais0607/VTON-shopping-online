@@ -1,12 +1,10 @@
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query 
 from sqlalchemy.orm import Session
 from app.features.orders import schema
-from app.features.orders.model import Order, Payment 
-from app.features.products.model import Product
-from app.core.database import get_db, save_to_db
+from app.features.orders.model import Order
+from app.core.database import get_db
 from app.core.security import get_current_user, get_current_admin
 from app.features.users.model import User
 from app.integrations.vietqr import generate_vietqr_url, get_vietqr_bank_config

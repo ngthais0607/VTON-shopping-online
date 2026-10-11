@@ -3,13 +3,12 @@ from app.features.categories.model import Category
 from app.features.orders.model import Order
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
-from sqlalchemy import or_, func
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 from datetime import datetime, timezone
 from uuid import uuid4
 from app.integrations.minio_client import minio_client, MINIO_BUCKET, MINIO_EXTERNAL_URL
 from app.features.products import schema
-from app.core import database
 from app.core.database import get_db, save_to_db
 from app.features.products.model import Product
 from app.core.security import get_current_admin, get_current_user
