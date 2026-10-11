@@ -14,12 +14,12 @@ from app.features.dashboard.router import router as dashboard_router
 from app.features.orders.router import router as order_router
 from app.features.products.router import router as product_router
 from app.features.users.router import router as user_router
-from app.integrations.minio_client import ensure_bucket_exists
+from app.integrations.storage import MinioProductStorage
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    ensure_bucket_exists()
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    application.state.product_storage.ensure_bucket()
     yield
 
 
@@ -31,6 +31,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     application.state.settings = application_settings
+    application.state.product_storage = MinioProductStorage(application_settings)
     application.state.limiter = limiter
     application.add_exception_handler(
         RateLimitExceeded,

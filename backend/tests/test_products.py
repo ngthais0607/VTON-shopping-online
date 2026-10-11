@@ -269,7 +269,6 @@ def test_get_product_returns_category_and_public_image_url(client, db_session):
     assert response.json()["images"] == [
         {
             "id": "camera-front",
-            "object_name": "products/camera-front.png",
             "url": "http://localhost:9000/product-images/products/camera-front.png",
         }
     ]

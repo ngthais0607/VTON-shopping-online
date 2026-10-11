@@ -1,4 +1,5 @@
 import os
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
@@ -9,20 +10,11 @@ os.environ["SECRET_KEY"] = "super-secret-test-key-must-be-32-bytes-long-for-jwt-
 os.environ["JWT_ALGORITHM"] = "HS256"
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 
-# Giả lập minio client để không kết nối tới server MinIO thật khi chạy test
-import unittest.mock
-import sys
-mock_minio = unittest.mock.MagicMock()
-mock_minio.MINIO_EXTERNAL_URL = "http://localhost:9000"
-mock_minio.MINIO_BUCKET = "product-images"
-mock_minio.ensure_bucket_exists = lambda: None
-mock_minio.minio_client = unittest.mock.MagicMock()
-sys.modules['app.integrations.minio_client'] = mock_minio
-
 # Import các thành phần của ứng dụng sau khi đã thiết lập biến môi trường
-from app.main import app
 from app.core.database import Base, get_db
 from app.features.users.model import User
+from app.integrations.storage import get_product_storage
+from app.main import app
 
 # Sử dụng database sqlite tạm thời cho test
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
@@ -67,9 +59,9 @@ def db_session():
         bind=connection,
         join_transaction_mode="create_savepoint",
     )
-    
+
     yield session
-    
+
     session.close()
     if transaction.is_active:
         transaction.rollback()
@@ -77,7 +69,34 @@ def db_session():
 
 
 @pytest.fixture
-def client(db_session):
+def product_storage():
+    class FakeProductStorage:
+        def __init__(self):
+            self.ensure_bucket_calls = 0
+            self.put_objects = []
+            self.put_payloads = []
+            self.content_types = []
+            self.deleted = []
+
+        def ensure_bucket(self):
+            self.ensure_bucket_calls += 1
+
+        def put(self, object_name, stream, content_type):
+            self.put_objects.append(object_name)
+            self.put_payloads.append(stream.read())
+            self.content_types.append(content_type)
+
+        def delete(self, object_name):
+            self.deleted.append(object_name)
+
+        def public_url(self, object_name):
+            return f"https://images.example.test/{object_name}"
+
+    return FakeProductStorage()
+
+
+@pytest.fixture
+def client(db_session, product_storage):
     # Ghi đè database dependency để sử dụng Database Test Session
     def override_get_db():
         try:
@@ -88,6 +107,8 @@ def client(db_session):
             raise
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_product_storage] = lambda: product_storage
+    app.state.product_storage = product_storage
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.clear()
@@ -105,7 +126,7 @@ def mock_admin_auth(client, db_session):
             password_hash="mock_hash",
             role="admin",
             first_name="Admin",
-            last_name="Test"
+            last_name="Test",
         )
         db_session.add(mock_admin)
         db_session.commit()
@@ -114,10 +135,12 @@ def mock_admin_auth(client, db_session):
         mock_admin = existing
 
     from app.core.security import get_current_admin
+
     app.dependency_overrides[get_current_admin] = lambda: mock_admin
     yield mock_admin
     if get_current_admin in app.dependency_overrides:
         del app.dependency_overrides[get_current_admin]
+
 
 @pytest.fixture
 def mock_user_auth(client, db_session):
@@ -131,7 +154,7 @@ def mock_user_auth(client, db_session):
             password_hash="mock_hash",
             role="customer",
             first_name="Customer",
-            last_name="Test"
+            last_name="Test",
         )
         db_session.add(mock_user)
         db_session.commit()
@@ -140,6 +163,7 @@ def mock_user_auth(client, db_session):
         mock_user = existing
 
     from app.core.security import get_current_user
+
     app.dependency_overrides[get_current_user] = lambda: mock_user
     yield mock_user
     if get_current_user in app.dependency_overrides:

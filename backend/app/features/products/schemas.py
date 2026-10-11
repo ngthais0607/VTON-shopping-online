@@ -3,11 +3,12 @@ from enum import StrEnum
 from typing import Any, Self
 
 from pydantic import (
+    AliasChoices,
     AliasPath,
     BaseModel,
     ConfigDict,
     Field,
-    computed_field,
+    field_validator,
     model_validator,
 )
 
@@ -109,14 +110,16 @@ class ProductImageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    object_name: str
+    url: str = Field(validation_alias=AliasChoices("url", "object_name"))
 
-    @computed_field
-    @property
-    def url(self) -> str:
+    @field_validator("url", mode="before")
+    @classmethod
+    def build_public_url(cls, value: str) -> str:
+        if value.startswith(("http://", "https://")):
+            return value
         settings = get_settings()
         base_url = settings.minio_external_url.rstrip("/")
-        return f"{base_url}/{settings.minio_bucket}/{self.object_name}"
+        return f"{base_url}/{settings.minio_bucket}/{value}"
 
 
 class ProductResponse(BaseModel):

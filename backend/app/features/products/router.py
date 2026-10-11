@@ -1,17 +1,16 @@
 from typing import Annotated
-from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db, save_to_db
+from app.core.database import get_db
 from app.core.schemas import Page
 from app.core.security import get_current_admin, get_current_user
-from app.features.products import reviews, service
-from app.features.products.model import Product, ProductImage
+from app.features.products import images, reviews, service
 from app.features.products.schemas import (
     ProductCreate,
     ProductFilters,
+    ProductImageResponse,
     ProductPatch,
     ProductResponse,
     ReviewCreate,
@@ -19,11 +18,7 @@ from app.features.products.schemas import (
     ReviewSummary,
 )
 from app.features.users.model import User
-from app.integrations.minio_client import (
-    MINIO_BUCKET,
-    MINIO_EXTERNAL_URL,
-    minio_client,
-)
+from app.integrations.storage import ProductStorage, get_product_storage
 
 router = APIRouter(prefix="/api/v1/products", tags=["Products"])
 
@@ -90,60 +85,27 @@ def delete_product(
     service.delete_product(db, product_id)
 
 
-# Image and review behavior remains in this router until Tasks 4 and 5. Task 3 only
-# moves these existing endpoints under the versioned product prefix.
 @router.post(
     "/{product_id}/upload-image",
+    response_model=ProductImageResponse,
+    status_code=status.HTTP_201_CREATED,
     summary="Upload product image",
 )
 def upload_product_image(
     product_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin),
+    storage: ProductStorage = Depends(get_product_storage),
+    _current_admin: User = Depends(get_current_admin),
 ):
-    product = (
-        db.query(Product)
-        .filter(
-            Product.id == product_id,
-            Product.is_deleted == False,
-        )
-        .first()
+    return images.store_product_image(
+        db,
+        storage,
+        product_id,
+        file.file,
+        file.filename or "",
+        file.content_type or "",
     )
-
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    image_id = str(uuid4())
-    file_extension = file.filename.split(".")[-1]
-    object_name = f"products/{image_id}.{file_extension}"
-
-    minio_client.put_object(
-        bucket_name=MINIO_BUCKET,
-        object_name=object_name,
-        data=file.file,
-        length=-1,
-        part_size=10 * 1024 * 1024,
-        content_type=file.content_type,
-    )
-    new_image = ProductImage(
-        id=image_id,
-        product_id=product.id,
-        object_name=object_name,
-    )
-
-    save_to_db(db, new_image)
-
-    image_url = f"{MINIO_EXTERNAL_URL}/{MINIO_BUCKET}/{object_name}"
-    return {
-        "message": "Image uploaded successfully",
-        "product_id": product.id,
-        "image": {
-            "id": new_image.id,
-            "object_name": new_image.object_name,
-            "image_url": image_url,
-        },
-    }
 
 
 @router.get(
