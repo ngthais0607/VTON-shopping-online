@@ -159,7 +159,7 @@ def test_update_profile_me(client, mock_user_auth):
         "first_name": "John",
         "last_name": "Doe",
     }
-    resp = client.put("/users/me", json=update_payload)
+    resp = client.patch("/api/v1/users/me", json=update_payload)
     assert resp.status_code == 200
     data = resp.json()
     assert data["first_name"] == "John"

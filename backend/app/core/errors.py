@@ -47,6 +47,11 @@ class ForbiddenError(ApplicationError):
     code = "forbidden"
 
 
+class AuthenticationError(ApplicationError):
+    status_code = 401
+    code = "authentication_failed"
+
+
 class BusinessRuleError(ApplicationError):
     status_code = 400
     code = "business_rule_violation"

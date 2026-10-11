@@ -1,147 +1,172 @@
-# Path: backend/tests/test_users.py
+from datetime import timedelta
+
 import pytest
-from app.core.security import create_access_token, create_refresh_token
-from app.seed import seed_database
-from app.features.users.model import User
-
-def test_seed_database_and_login(client, db_session):
-    """Test that seed_database executes correctly and creates admin and customer users."""
-    seed_database(db_session)
-
-    # Verify admin user created in DB
-    admin = db_session.query(User).filter(User.email == "admin@example.com").first()
-    assert admin is not None
-    assert admin.username == "admin"
-    assert admin.role == "admin"
-
-    # Verify customer user created in DB
-    customer = db_session.query(User).filter(User.email == "user@example.com").first()
-    assert customer is not None
-    assert customer.username == "demouser"
-    assert customer.role == "customer"
-
-    # Test Admin Login via API /users/login
-    response = client.post("/users/login", json={
-        "email": "admin@example.com",
-        "password": "Admin@123456"
-    })
-    assert response.status_code == 200
-    data = response.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
-
-def test_seed_database_idempotency(db_session):
-    """Test that running seed_database multiple times does not throw duplicate user errors."""
-    seed_database(db_session)
-    # Running a second time should safely report existing users
-    seed_database(db_session)
-
+from sqlalchemy.exc import IntegrityError
 
 from app.core.rate_limiter import limiter
-
-def test_login_rate_limiting(client):
-    """Test that rate limiting enforces HTTP 429 after 5 requests per minute."""
-    limiter.reset()
-    payload = {
-        "email": "nonexistent@example.com",
-        "password": "wrongpassword"
-    }
-
-    # First 5 login attempts return 401 Unauthorized
-    for _ in range(5):
-        res = client.post("/users/login", json=payload)
-        assert res.status_code == 401
-
-    # 6th attempt should be blocked with 429 Too Many Requests
-    res_6th = client.post("/users/login", json=payload)
-    assert res_6th.status_code == 429
+from app.core.security import create_access_token, create_refresh_token
+from app.features.users import service
+from app.features.users.model import User
+from app.features.users.schemas import UserPatch
+from app.integrations.queue import get_task_queue
+from app.seed import seed_database
 
 
-def test_refresh_token_flow(client, db_session):
-    """Test that login issues a refresh token, /users/refresh returns a new access token, and logout clears cookie."""
-    limiter.reset()
-    seed_database(db_session)
+class RecordingQueue:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+        self.error = error
 
-    # 1. Login
-    login_res = client.post("/users/login", json={
-        "email": "admin@example.com",
-        "password": "Admin@123456"
-    })
-    assert login_res.status_code == 200
-    login_data = login_res.json()
-    assert "access_token" in login_data
-    assert "refresh_token" in login_data
-
-    refresh_tok = login_data["refresh_token"]
-
-    # 2. Call /users/refresh with refresh token in body
-    refresh_res = client.post("/users/refresh", json={"refresh_token": refresh_tok})
-    assert refresh_res.status_code == 200
-    refresh_data = refresh_res.json()
-    assert "access_token" in refresh_data
-    assert "refresh_token" in refresh_data
-
-    # 3. Call /users/refresh with invalid token
-    bad_res = client.post("/users/refresh", json={"refresh_token": "invalidtoken"})
-    assert bad_res.status_code == 401
-
-    # 4. Logout
-    logout_res = client.post("/users/logout")
-    assert logout_res.status_code == 200
-    client.cookies.clear()
-    no_cookie_res = client.post("/users/refresh")
-    assert no_cookie_res.status_code == 401
+    async def enqueue(self, task_name: str, *args: object) -> None:
+        self.calls.append((task_name, args))
+        if self.error is not None:
+            raise self.error
 
 
-def test_refresh_token_cannot_authenticate_protected_route(client, db_session):
+def _make_user(db_session, suffix: str, *, role: str = "customer", **values) -> User:
     user = User(
-        username="refresh_only",
-        email="refresh-only@example.com",
-        password_hash="unused",
-        role="customer",
+        username=values.pop("username", f"user_{suffix}"),
+        email=values.pop("email", f"user-{suffix}@example.com"),
+        password_hash=values.pop("password_hash", "unused"),
+        role=role,
+        **values,
     )
     db_session.add(user)
     db_session.commit()
+    db_session.refresh(user)
+    return user
 
-    refresh_token = create_refresh_token({"sub": user.email})
-    response = client.get(
-        "/users/me",
-        headers={"Authorization": f"Bearer {refresh_token}"},
+
+def test_seed_database_and_versioned_login(client, db_session):
+    seed_database(db_session)
+
+    admin = db_session.query(User).filter(User.email == "admin@example.com").one()
+    customer = db_session.query(User).filter(User.email == "user@example.com").one()
+    assert (admin.username, admin.role) == ("admin", "admin")
+    assert (customer.username, customer.role) == ("demouser", "customer")
+
+    limiter.reset()
+    response = client.post(
+        "/api/v1/users/login",
+        json={"identifier": "admin@example.com", "password": "Admin@123456"},
     )
 
+    assert response.status_code == 200
+    assert response.json()["token_type"] == "bearer"
+    assert response.json()["access_token"]
+    assert response.cookies["refresh_token"] == response.json()["refresh_token"]
+
+
+def test_seed_database_is_idempotent(db_session):
+    seed_database(db_session)
+    seed_database(db_session)
+
+
+def test_login_rate_limiting_uses_versioned_route(client):
+    limiter.reset()
+    payload = {"identifier": "nobody@example.com", "password": "wrongpassword"}
+
+    for _ in range(5):
+        response = client.post("/api/v1/users/login", json=payload)
+        assert response.status_code == 401
+        assert response.json()["code"] == "invalid_credentials"
+
+    assert client.post("/api/v1/users/login", json=payload).status_code == 429
+
+
+def test_refresh_rotates_cookie_and_logout_deletes_it(client, db_session):
+    seed_database(db_session)
+    limiter.reset()
+    login = client.post(
+        "/api/v1/users/login",
+        json={"identifier": "admin", "password": "Admin@123456"},
+    )
+    old_refresh = login.json()["refresh_token"]
+
+    refreshed = client.post(
+        "/api/v1/users/refresh",
+        json={"refresh_token": old_refresh},
+    )
+
+    assert refreshed.status_code == 200
+    assert refreshed.json()["access_token"]
+    assert refreshed.cookies["refresh_token"] == refreshed.json()["refresh_token"]
+
+    logged_out = client.post("/api/v1/users/logout")
+    assert logged_out.status_code == 204
+    assert "refresh_token=" in logged_out.headers["set-cookie"]
+    client.cookies.clear()
+    missing = client.post("/api/v1/users/refresh")
+    assert missing.status_code == 401
+    assert missing.json()["code"] == "invalid_token"
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        None,
+        "not-a-jwt",
+        create_access_token(
+            {"sub": "expired@example.com"},
+            expires_delta=timedelta(seconds=-1),
+        ),
+        create_refresh_token({"sub": "refresh-only@example.com"}),
+    ],
+    ids=["missing", "malformed", "expired", "refresh-as-access"],
+)
+def test_access_token_failures_use_common_error(client, token):
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    response = client.get("/api/v1/users/me", headers=headers)
+
     assert response.status_code == 401
+    assert response.json() == {
+        "code": "invalid_token",
+        "message": "Could not validate credentials",
+        "details": None,
+    }
 
 
 def test_deleted_user_access_token_is_rejected(client, db_session):
-    user = User(
-        username="deleted_user",
-        email="deleted@example.com",
-        password_hash="unused",
-        role="customer",
-        is_deleted=True,
-    )
-    db_session.add(user)
-    db_session.commit()
+    user = _make_user(db_session, "deleted", is_deleted=True)
+    token = create_access_token({"sub": user.email})
 
-    access_token = create_access_token({"sub": user.email})
     response = client.get(
-        "/users/me",
-        headers={"Authorization": f"Bearer {access_token}"},
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {token}"},
     )
 
     assert response.status_code == 401
+    assert response.json()["code"] == "invalid_token"
 
 
-def test_registration_queue_failure_keeps_committed_user(
-    client, db_session, monkeypatch
+@pytest.mark.parametrize("identifier_field", ["username", "email"])
+def test_registration_duplicate_returns_409_common_error(
+    client, db_session, identifier_field
 ):
-    async def fail_to_enqueue(*_args, **_kwargs):
-        raise RuntimeError("queue unavailable")
+    existing = _make_user(db_session, "existing")
+    payload = {
+        "username": "new_username",
+        "email": "new@example.com",
+        "password": "StrongPassword123!",
+    }
+    payload[identifier_field] = getattr(existing, identifier_field)
 
-    monkeypatch.setattr("app.features.users.router.enqueue_task", fail_to_enqueue)
+    response = client.post("/api/v1/users/register", json=payload)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "duplicate_user"
+    assert db_session.query(User).filter(User.email == "new@example.com").count() == 0
+
+
+def test_registration_commits_before_best_effort_queue_failure(
+    client, db_session, caplog
+):
+    queue = RecordingQueue(RuntimeError("queue unavailable"))
+    client.app.dependency_overrides[get_task_queue] = lambda: queue
 
     response = client.post(
-        "/users/register",
+        "/api/v1/users/register",
         json={
             "username": "queue_survivor",
             "email": "queue-survivor@example.com",
@@ -150,57 +175,141 @@ def test_registration_queue_failure_keeps_committed_user(
     )
 
     assert response.status_code == 201
-    assert (
-        db_session.query(User)
-        .filter(User.email == "queue-survivor@example.com")
-        .one()
-        .username
-        == "queue_survivor"
+    saved = (
+        db_session.query(User).filter(User.email == "queue-survivor@example.com").one()
     )
+    assert queue.calls == [("send_welcome_email_task", (saved.id,))]
+    assert "Failed to enqueue welcome email" in caplog.text
 
 
-@pytest.mark.parametrize(
-    ("field", "collision_value"),
-    [
-        ("username", "existing_user"),
-        ("email", "existing@example.com"),
-    ],
-)
-def test_admin_update_collision_returns_400_without_mutating_users(
-    client, db_session, mock_admin_auth, field, collision_value
+def test_profile_patch_is_partial_and_returns_typed_response(
+    client, db_session, mock_user_auth
 ):
-    target = User(
-        username="target_user",
-        email="target@example.com",
-        password_hash="unused",
-        role="customer",
+    response = client.patch(
+        "/api/v1/users/me",
+        json={"first_name": "Updated"},
     )
-    existing = User(
-        username="existing_user",
-        email="existing@example.com",
-        password_hash="unused",
-        role="customer",
-    )
-    db_session.add_all([target, existing])
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": mock_user_auth.id,
+        "username": mock_user_auth.username,
+        "email": mock_user_auth.email,
+        "first_name": "Updated",
+        "last_name": mock_user_auth.last_name,
+        "role": "customer",
+        "created_at": response.json()["created_at"],
+        "updated_at": response.json()["updated_at"],
+    }
+
+
+def test_password_change_returns_204(client, db_session, mock_user_auth):
+    from app.core.security import hash_password
+
+    mock_user_auth.password_hash = hash_password("OldPassword123!")
     db_session.commit()
 
-    payload = {
-        "username": "target_user",
-        "email": "target@example.com",
-        "first_name": "Changed",
-        "last_name": "Name",
-    }
-    payload[field] = collision_value
+    response = client.patch(
+        "/api/v1/users/me/password",
+        json={
+            "current_password": "OldPassword123!",
+            "new_password": "NewPassword123!",
+        },
+    )
 
-    response = client.put(f"/users/{target.id}", json=payload)
+    assert response.status_code == 204
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Username or email already exists"
+
+def test_admin_crud_uses_page_patch_204_and_common_not_found(
+    client, db_session, mock_admin_auth
+):
+    created = client.post(
+        "/api/v1/users",
+        json={
+            "username": "managed_user",
+            "email": "managed@example.com",
+            "password": "StrongPassword123!",
+            "first_name": "Managed",
+        },
+    )
+    assert created.status_code == 201
+    user_id = created.json()["id"]
+
+    listed = client.get("/api/v1/users?limit=10&offset=0")
+    assert listed.status_code == 200
+    assert listed.json().keys() == {"items", "total", "limit", "offset"}
+    assert any(item["id"] == user_id for item in listed.json()["items"])
+
+    patched = client.patch(f"/api/v1/users/{user_id}", json={"last_name": "User"})
+    assert patched.status_code == 200
+    assert patched.json()["last_name"] == "User"
+    assert patched.json()["first_name"] == "Managed"
+
+    assert client.delete(f"/api/v1/users/{user_id}").status_code == 204
+    missing = client.get(f"/api/v1/users/{user_id}")
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "user_not_found"
+
+
+def test_admin_update_duplicate_does_not_mutate_target(
+    client, db_session, mock_admin_auth
+):
+    target = _make_user(
+        db_session,
+        "target",
+        first_name="Original",
+    )
+    existing = _make_user(db_session, "existing_collision")
+
+    response = client.patch(
+        f"/api/v1/users/{target.id}",
+        json={"username": existing.username, "first_name": "Changed"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "duplicate_user"
     db_session.refresh(target)
-    db_session.refresh(existing)
-    assert target.username == "target_user"
-    assert target.email == "target@example.com"
-    assert target.first_name is None
-    assert existing.username == "existing_user"
-    assert existing.email == "existing@example.com"
+    assert target.username == "user_target"
+    assert target.first_name == "Original"
 
+
+def test_integrity_error_is_rolled_back_and_translated(monkeypatch):
+    target = User(
+        id=10,
+        username="original",
+        email="original@example.com",
+        password_hash="unused",
+        role="customer",
+        first_name="Original",
+    )
+
+    class RaceSession:
+        def __init__(self) -> None:
+            self.rolled_back = False
+
+        def commit(self) -> None:
+            raise IntegrityError("UPDATE users", {}, Exception("duplicate"))
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+            target.username = "original"
+            target.first_name = "Original"
+
+        def refresh(self, _user: User) -> None:
+            raise AssertionError("failed writes must not refresh")
+
+    session = RaceSession()
+    monkeypatch.setattr(service, "_get_active_user", lambda _db, _id: target)
+    monkeypatch.setattr(service, "_find_duplicate_user", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(service.DuplicateUserError) as exc_info:
+        service.update_user(
+            session,
+            target.id,
+            UserPatch(username="racing-name", first_name="Changed"),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "duplicate_user"
+    assert session.rolled_back is True
+    assert (target.username, target.first_name) == ("original", "Original")
