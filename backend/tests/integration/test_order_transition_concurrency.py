@@ -7,19 +7,16 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.features.orders.constants import OrderStatus
+from app.features.orders.domain import InvalidOrderTransition, apply_order_transition
 from app.features.orders.model import Order
-from app.features.orders.router import update_order_status
-from app.features.orders.schema import OrderStatusUpdate
-from app.features.orders.service import transition_order
+from app.features.orders.service import change_order_status
 from app.features.products.model import Product
 from app.features.users.model import User
 from app.jobs.order_jobs import expire_pending_orders
-
 
 pytestmark = pytest.mark.integration
 
@@ -33,7 +30,9 @@ def _create_pending_order(session_factory):
         password_hash="unused",
         role="admin",
     )
-    product = Product(name=f"Transition {suffix}", price=100, stock_quantity=1, reserved_quantity=1)
+    product = Product(
+        name=f"Transition {suffix}", price=100, stock_quantity=1, reserved_quantity=1
+    )
     session.add_all([admin, product])
     session.flush()
     order = Order(
@@ -68,7 +67,7 @@ def _session_factory():
 
 def test_admin_transition_rechecks_status_after_waiting_for_lock():
     engine, session_factory = _session_factory()
-    admin_id, product_id, order_id = _create_pending_order(session_factory)
+    _, product_id, order_id = _create_pending_order(session_factory)
     locking_session = session_factory()
     locked_order = (
         locking_session.query(Order)
@@ -76,25 +75,20 @@ def test_admin_transition_rechecks_status_after_waiting_for_lock():
         .with_for_update()
         .one()
     )
-    transition_order(locked_order, OrderStatus.EXPIRED)
+    apply_order_transition(locked_order, OrderStatus.EXPIRED)
     locking_session.flush()
 
     def mark_paid():
         session = session_factory()
         try:
-            admin = session.get(User, admin_id)
-            with patch("app.features.orders.router.enqueue_task", new=AsyncMock()):
-                try:
-                    asyncio.run(
-                        update_order_status(
-                            order_id,
-                            OrderStatusUpdate(status="paid"),
-                            session,
-                            admin,
-                        )
+            try:
+                asyncio.run(
+                    change_order_status(
+                        session, order_id, OrderStatus.PAID, AsyncMock()
                     )
-                except HTTPException as exc:
-                    return exc.status_code
+                )
+            except InvalidOrderTransition as exc:
+                return exc.status_code
             return 200
         finally:
             session.close()
@@ -125,7 +119,7 @@ def test_expiration_worker_rechecks_status_after_waiting_for_lock():
         .with_for_update()
         .one()
     )
-    transition_order(locked_order, OrderStatus.PAID)
+    apply_order_transition(locked_order, OrderStatus.PAID)
     locking_session.flush()
 
     with patch("app.jobs.order_jobs.SessionLocal", session_factory):

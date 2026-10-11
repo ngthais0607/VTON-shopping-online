@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_admin
 from app.features.orders.model import Order
-from app.features.orders.router import order_to_json
+from app.features.orders.service import order_to_json
 from app.features.products.model import Product
 from app.features.products.schemas import ProductResponse
 from app.features.users.model import User

@@ -1,19 +1,114 @@
-from app.features.products.model import Product
+import asyncio
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from app.core.database import save_to_db
 from app.core.security import get_current_user
-from app.features.orders.model import Order
 from app.features.orders.constants import OrderStatus
-from app.features.orders.schema import CheckoutCartRequest
+from app.features.orders.domain import InvalidOrderTransition, apply_order_transition
+from app.features.orders.model import Order
+from app.features.orders.schemas import CheckoutCommand
 from app.features.orders.service import (
-    InvalidOrderTransition,
     ProductNotFoundError,
-    create_cart_orders,
-    transition_order,
+    checkout_cart,
 )
+from app.features.products.model import Product
 from app.features.users.model import User
+from app.integrations.queue import get_task_queue
 from app.main import app
-from unittest.mock import AsyncMock, patch
-import pytest
+
+
+@pytest.fixture(autouse=True)
+def fake_order_queue(client):
+    queue = AsyncMock()
+    app.dependency_overrides[get_task_queue] = lambda: queue
+    yield queue
+
+
+def test_admin_order_list_uses_page_contract(client, db_session, mock_admin_auth):
+    response = client.get("/api/v1/orders", params={"limit": 2, "offset": 0})
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0, "limit": 2, "offset": 0}
+
+
+def test_order_lookup_hides_another_customers_order(client, db_session, mock_user_auth):
+    product = Product(name="Hidden order", price=20, stock_quantity=2)
+    save_to_db(db_session, product)
+    created = client.post(
+        "/api/v1/orders/checkout-cart",
+        json={
+            "items": [{"product_id": product.id, "quantity": 1}],
+            "customer_name": "Buyer",
+            "customer_phone": "123",
+            "shipping_address": "Address",
+        },
+    )
+    assert created.status_code == 201
+    order_id = created.json()["orders"][0]["id"]
+    other = User(
+        username="other-order-user",
+        email="other-order@example.com",
+        password_hash="unused",
+    )
+    db_session.add(other)
+    db_session.commit()
+    app.dependency_overrides[get_current_user] = lambda: other
+
+    response = client.get(f"/api/v1/orders/{order_id}")
+    assert response.status_code == 404
+    assert response.json()["code"] == "order_not_found"
+
+
+def test_checkout_reports_typed_stock_conflict(client, db_session, mock_user_auth):
+    product = Product(name="One left", price=20, stock_quantity=1)
+    save_to_db(db_session, product)
+    response = client.post(
+        "/api/v1/orders/checkout-cart",
+        json={
+            "items": [{"product_id": product.id, "quantity": 2}],
+            "customer_name": "Buyer",
+            "customer_phone": "123",
+            "shipping_address": "Address",
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "insufficient_stock"
+
+
+def test_order_list_paginates_newest_first(
+    client, db_session, mock_user_auth, mock_admin_auth
+):
+    product = Product(name="Page order", price=12, stock_quantity=4)
+    save_to_db(db_session, product)
+    first = _checkout(client, product.id)
+    second = _checkout(client, product.id)
+    assert first.status_code == second.status_code == 201
+    first_id = first.json()["orders"][0]["id"]
+    second_id = second.json()["orders"][0]["id"]
+
+    response = client.get("/api/v1/orders", params={"limit": 1, "offset": 0})
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+    assert response.json()["limit"] == 1
+    assert response.json()["offset"] == 0
+    assert [item["id"] for item in response.json()["items"]] == [second_id]
+    assert first_id != second_id
+
+
+def test_user_order_list_forbids_other_customer_with_common_body(
+    client, db_session, mock_user_auth
+):
+    response = client.get("/api/v1/orders/user/987654")
+    assert response.status_code == 403
+    assert response.json()["code"] == "forbidden"
+    assert "permission" in response.json()["message"]
+
+
+def test_missing_order_uses_common_not_found_body(client, db_session, mock_user_auth):
+    response = client.get("/api/v1/orders/987654")
+    assert response.status_code == 404
+    assert response.json()["code"] == "order_not_found"
 
 
 def _checkout(client, product_id, quantity=1, payment_method="vietqr", **overrides):
@@ -26,7 +121,8 @@ def _checkout(client, product_id, quantity=1, payment_method="vietqr", **overrid
         "payment_method": payment_method,
     }
     payload.update(overrides)
-    return client.post("/orders/checkout-cart", json=payload)
+    return client.post("/api/v1/orders/checkout-cart", json=payload)
+
 
 def test_create_order_success(client, db_session, mock_user_auth):
     """Kiểm tra luồng đặt hàng thành công và tự động giữ chỗ kho hàng"""
@@ -38,7 +134,7 @@ def test_create_order_success(client, db_session, mock_user_auth):
         stock_quantity=10,
         reserved_quantity=0,
         sold_quantity=0,
-        is_active=True
+        is_active=True,
     )
     save_to_db(db_session, product)
 
@@ -67,7 +163,7 @@ def test_create_order_out_of_stock(client, db_session, mock_user_auth):
         stock_quantity=1,
         reserved_quantity=0,
         sold_quantity=0,
-        is_active=True
+        is_active=True,
     )
     save_to_db(db_session, product)
 
@@ -76,9 +172,13 @@ def test_create_order_out_of_stock(client, db_session, mock_user_auth):
 
     # Hệ thống phải báo lỗi 400 Bad Request do hết hàng
     assert response.status_code == 409
-    assert response.json()["detail"].startswith("Not enough stock available")
+    assert response.json()["code"] == "insufficient_stock"
+    assert response.json()["message"].startswith("Not enough stock available")
 
-def test_update_order_status_to_paid(client, db_session, mock_user_auth, mock_admin_auth):
+
+def test_update_order_status_to_paid(
+    client, db_session, mock_user_auth, mock_admin_auth
+):
     """Kiểm tra: Khi đơn hàng chuyển sang 'paid', kho reserved giảm và sold tăng"""
     # 1. Tạo sản phẩm mẫu có sẵn
     product = Product(
@@ -88,7 +188,7 @@ def test_update_order_status_to_paid(client, db_session, mock_user_auth, mock_ad
         stock_quantity=5,
         reserved_quantity=0,
         sold_quantity=0,
-        is_active=True
+        is_active=True,
     )
     save_to_db(db_session, product)
 
@@ -99,7 +199,7 @@ def test_update_order_status_to_paid(client, db_session, mock_user_auth, mock_ad
     # 3. Admin cập nhật trạng thái đơn hàng sang "paid"
     # Lưu ý: Cần sử dụng mock_admin_auth vì API update status yêu cầu quyền Admin
     payload_status = {"status": "paid"}
-    resp_update = client.put(f"/orders/{order_id}/status", json=payload_status)
+    resp_update = client.put(f"/api/v1/orders/{order_id}/status", json=payload_status)
 
     # 4. Xác nhận phản hồi thành công
     assert resp_update.status_code == 200
@@ -111,7 +211,9 @@ def test_update_order_status_to_paid(client, db_session, mock_user_auth, mock_ad
     assert product.sold_quantity == 2
 
 
-def test_update_order_status_to_cancelled(client, db_session, mock_user_auth, mock_admin_auth):
+def test_update_order_status_to_cancelled(
+    client, db_session, mock_user_auth, mock_admin_auth
+):
     """Kiểm tra: Khi đơn hàng chuyển sang 'cancelled', kho reserved được giải phóng"""
     # 1. Tạo sản phẩm
     product = Product(
@@ -121,7 +223,7 @@ def test_update_order_status_to_cancelled(client, db_session, mock_user_auth, mo
         stock_quantity=10,
         reserved_quantity=0,
         sold_quantity=0,
-        is_active=True
+        is_active=True,
     )
     save_to_db(db_session, product)
 
@@ -131,7 +233,7 @@ def test_update_order_status_to_cancelled(client, db_session, mock_user_auth, mo
 
     # 3. Admin cập nhật đơn hàng thành "cancelled"
     payload_status = {"status": "cancelled"}
-    resp_update = client.put(f"/orders/{order_id}/status", json=payload_status)
+    resp_update = client.put(f"/api/v1/orders/{order_id}/status", json=payload_status)
 
     assert resp_update.status_code == 200
     assert resp_update.json()["status"] == "cancelled"
@@ -155,7 +257,7 @@ def test_track_order_requires_authentication(client, db_session, mock_user_auth)
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
     app.dependency_overrides.pop(get_current_user, None)
 
-    response = client.get(f"/orders/track/{order_id}")
+    response = client.get(f"/api/v1/orders/track/{order_id}")
 
     assert response.status_code == 401
 
@@ -163,11 +265,13 @@ def test_track_order_requires_authentication(client, db_session, mock_user_auth)
 def test_track_order_owner_can_view(client, db_session, mock_user_auth):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
 
-    response = client.get(f"/orders/track/{order_id}")
+    response = client.get(f"/api/v1/orders/track/{order_id}")
 
     assert response.status_code == 200
     assert response.json()["id"] == order_id
-    timeline_copy = " ".join(step["description"] for step in response.json()["timeline"])
+    timeline_copy = " ".join(
+        step["description"] for step in response.json()["timeline"]
+    )
     assert "Automated" not in timeline_copy
     assert "administrator" in timeline_copy
 
@@ -184,13 +288,15 @@ def test_track_order_admin_can_view_any_order(client, db_session, mock_user_auth
     db_session.commit()
     app.dependency_overrides[get_current_user] = lambda: admin
 
-    response = client.get(f"/orders/track/{order_id}")
+    response = client.get(f"/api/v1/orders/track/{order_id}")
 
     assert response.status_code == 200
     assert response.json()["id"] == order_id
 
 
-def test_track_order_hides_order_from_other_customer(client, db_session, mock_user_auth):
+def test_track_order_hides_order_from_other_customer(
+    client, db_session, mock_user_auth
+):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
     other_customer = User(
         username="other_customer",
@@ -202,7 +308,7 @@ def test_track_order_hides_order_from_other_customer(client, db_session, mock_us
     db_session.commit()
     app.dependency_overrides[get_current_user] = lambda: other_customer
 
-    response = client.get(f"/orders/track/{order_id}")
+    response = client.get(f"/api/v1/orders/track/{order_id}")
 
     assert response.status_code == 404
 
@@ -211,11 +317,14 @@ def test_vietqr_webhook_route_is_removed(client, db_session, mock_user_auth):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
     app.dependency_overrides.pop(get_current_user, None)
 
-    response = client.post("/orders/vietqr-webhook", json={
-        "content": f"LUXESTORE_{order_id}",
-        "amount": 150.0,
-        "transaction_id": "TXN_TEST_999",
-    })
+    response = client.post(
+        "/api/v1/orders/vietqr-webhook",
+        json={
+            "content": f"LUXESTORE_{order_id}",
+            "amount": 150.0,
+            "transaction_id": "TXN_TEST_999",
+        },
+    )
 
     assert response.status_code == 404
     order = db_session.query(Order).filter(Order.id == order_id).one()
@@ -226,7 +335,7 @@ def test_public_expire_route_is_removed(client, db_session, mock_user_auth):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
     app.dependency_overrides.pop(get_current_user, None)
 
-    response = client.post(f"/orders/{order_id}/expire")
+    response = client.post(f"/api/v1/orders/{order_id}/expire")
 
     assert response.status_code == 404
     order = db_session.query(Order).filter(Order.id == order_id).one()
@@ -234,7 +343,9 @@ def test_public_expire_route_is_removed(client, db_session, mock_user_auth):
 
 
 def test_checkout_persists_fulfillment_fields(client, db_session, mock_user_auth):
-    product = Product(name="Fulfillment Test", price=25.0, currency="USD", stock_quantity=5)
+    product = Product(
+        name="Fulfillment Test", price=25.0, currency="USD", stock_quantity=5
+    )
     save_to_db(db_session, product)
 
     response = _checkout(client, product.id)
@@ -260,7 +371,9 @@ def test_vietqr_checkout_is_pending_and_expires(client, db_session, mock_user_au
     assert data["expires_at"] is not None
 
 
-def test_cod_checkout_is_confirmed_without_expiration(client, db_session, mock_user_auth):
+def test_cod_checkout_is_confirmed_without_expiration(
+    client, db_session, mock_user_auth
+):
     product = Product(name="COD Test", price=25.0, currency="USD", stock_quantity=5)
     save_to_db(db_session, product)
 
@@ -271,13 +384,17 @@ def test_cod_checkout_is_confirmed_without_expiration(client, db_session, mock_u
     assert data["expires_at"] is None
     assert "vietqr" not in response.json()
 
-    tracking_response = client.get(f"/orders/track/{data['id']}")
+    tracking_response = client.get(f"/api/v1/orders/track/{data['id']}")
     assert tracking_response.status_code == 200
     assert "vietqr" not in tracking_response.json()
 
 
-def test_checkout_rejects_unknown_payment_method_with_422(client, db_session, mock_user_auth):
-    product = Product(name="Invalid Payment", price=25.0, currency="USD", stock_quantity=5)
+def test_checkout_rejects_unknown_payment_method_with_422(
+    client, db_session, mock_user_auth
+):
+    product = Product(
+        name="Invalid Payment", price=25.0, currency="USD", stock_quantity=5
+    )
     save_to_db(db_session, product)
 
     response = _checkout(client, product.id, payment_method="cashapp")
@@ -286,20 +403,28 @@ def test_checkout_rejects_unknown_payment_method_with_422(client, db_session, mo
 
 
 def test_legacy_single_order_endpoint_is_removed(client, db_session, mock_user_auth):
-    product = Product(name="Legacy Endpoint", price=25.0, currency="USD", stock_quantity=5)
+    product = Product(
+        name="Legacy Endpoint", price=25.0, currency="USD", stock_quantity=5
+    )
     save_to_db(db_session, product)
 
-    response = client.post("/orders/", json={"product_id": product.id, "quantity": 1})
+    response = client.post(
+        "/api/v1/orders/", json={"product_id": product.id, "quantity": 1}
+    )
 
     assert response.status_code == 405
 
 
-def test_enqueue_failure_does_not_rollback_committed_order(client, db_session, mock_user_auth):
-    product = Product(name="Queue Failure", price=25.0, currency="USD", stock_quantity=5)
+def test_enqueue_failure_does_not_rollback_committed_order(
+    client, db_session, mock_user_auth, fake_order_queue
+):
+    product = Product(
+        name="Queue Failure", price=25.0, currency="USD", stock_quantity=5
+    )
     save_to_db(db_session, product)
 
-    with patch("app.features.orders.router.enqueue_task", new=AsyncMock(side_effect=RuntimeError("redis down"))):
-        response = _checkout(client, product.id)
+    fake_order_queue.enqueue.side_effect = RuntimeError("redis down")
+    response = _checkout(client, product.id)
 
     assert response.status_code == 201
     assert db_session.query(Order).filter(Order.product_id == product.id).count() == 1
@@ -325,12 +450,16 @@ def test_allowed_order_transitions_update_inventory(
     expected_reserved,
     expected_sold,
 ):
-    product = Product(name=f"Transition {payment_method} {new_status}", price=30, stock_quantity=5)
+    product = Product(
+        name=f"Transition {payment_method} {new_status}", price=30, stock_quantity=5
+    )
     save_to_db(db_session, product)
     checkout = _checkout(client, product.id, quantity=2, payment_method=payment_method)
     order_id = checkout.json()["orders"][0]["id"]
 
-    response = client.put(f"/orders/{order_id}/status", json={"status": new_status})
+    response = client.put(
+        f"/api/v1/orders/{order_id}/status", json={"status": new_status}
+    )
 
     assert response.status_code == 200
     db_session.refresh(product)
@@ -357,15 +486,25 @@ def test_rejected_order_transitions_do_not_mutate_inventory(
     initial_terminal,
     rejected_status,
 ):
-    product = Product(name=f"Rejected {payment_method} {rejected_status}", price=30, stock_quantity=5)
+    product = Product(
+        name=f"Rejected {payment_method} {rejected_status}", price=30, stock_quantity=5
+    )
     save_to_db(db_session, product)
     checkout = _checkout(client, product.id, quantity=2, payment_method=payment_method)
     order_id = checkout.json()["orders"][0]["id"]
     if initial_terminal:
-        assert client.put(f"/orders/{order_id}/status", json={"status": initial_terminal}).status_code == 200
-    response = client.put(f"/orders/{order_id}/status", json={"status": rejected_status})
+        assert (
+            client.put(
+                f"/api/v1/orders/{order_id}/status", json={"status": initial_terminal}
+            ).status_code
+            == 200
+        )
+    response = client.put(
+        f"/api/v1/orders/{order_id}/status", json={"status": rejected_status}
+    )
 
     assert response.status_code == 409
+    assert response.json()["code"] == "invalid_order_transition"
 
 
 def test_rejected_transition_service_does_not_mutate_inventory():
@@ -391,19 +530,23 @@ def test_rejected_transition_service_does_not_mutate_inventory():
     )
 
     with pytest.raises(InvalidOrderTransition):
-        transition_order(order, OrderStatus.PENDING)
+        apply_order_transition(order, OrderStatus.PENDING)
 
     assert product.reserved_quantity == 0
     assert product.sold_quantity == 2
 
 
-def test_unknown_order_status_returns_422(client, db_session, mock_user_auth, mock_admin_auth):
+def test_unknown_order_status_returns_422(
+    client, db_session, mock_user_auth, mock_admin_auth
+):
     product = Product(name="Unknown status", price=30, stock_quantity=5)
     save_to_db(db_session, product)
     checkout = _checkout(client, product.id)
     order_id = checkout.json()["orders"][0]["id"]
 
-    response = client.put(f"/orders/{order_id}/status", json={"status": "shipped"})
+    response = client.put(
+        f"/api/v1/orders/{order_id}/status", json={"status": "shipped"}
+    )
 
     assert response.status_code == 422
 
@@ -422,7 +565,7 @@ def test_duplicate_cart_items_are_aggregated(client, db_session, mock_user_auth)
         "payment_method": "vietqr",
     }
 
-    response = client.post("/orders/checkout-cart", json=payload)
+    response = client.post("/api/v1/orders/checkout-cart", json=payload)
 
     assert response.status_code == 201
     assert len(response.json()["orders"]) == 1
@@ -431,7 +574,9 @@ def test_duplicate_cart_items_are_aggregated(client, db_session, mock_user_auth)
     assert product.reserved_quantity == 5
 
 
-def test_invalid_item_rolls_back_all_orders_and_reservations(client, db_session, mock_user_auth):
+def test_invalid_item_rolls_back_all_orders_and_reservations(
+    client, db_session, mock_user_auth
+):
     product = Product(name="Atomic cart", price=20, stock_quantity=10)
     save_to_db(db_session, product)
     payload = {
@@ -445,10 +590,10 @@ def test_invalid_item_rolls_back_all_orders_and_reservations(client, db_session,
         "payment_method": "vietqr",
     }
 
-    checkout = CheckoutCartRequest(**payload)
+    checkout = CheckoutCommand(**payload)
 
     with pytest.raises(ProductNotFoundError):
-        create_cart_orders(db_session, mock_user_auth, checkout)
+        asyncio.run(checkout_cart(db_session, mock_user_auth, checkout, AsyncMock()))
 
     assert db_session.query(Order).filter(Order.product_id == product.id).count() == 0
     assert product.reserved_quantity == 0
@@ -463,7 +608,9 @@ def test_out_of_stock_returns_409(client, db_session, mock_user_auth):
     assert response.status_code == 409
 
 
-def test_checkout_enqueues_emails_only_after_commit(client, db_session, mock_user_auth):
+def test_checkout_enqueues_emails_only_after_commit(
+    client, db_session, mock_user_auth, fake_order_queue
+):
     product = Product(name="Commit ordering", price=20, stock_quantity=2)
     save_to_db(db_session, product)
     events = []
@@ -476,14 +623,20 @@ def test_checkout_enqueues_emails_only_after_commit(client, db_session, mock_use
     async def record_enqueue(*args):
         events.append("enqueue")
 
-    with patch.object(db_session, "commit", side_effect=record_commit), patch(
-        "app.features.orders.router.enqueue_task",
-        new=AsyncMock(side_effect=record_enqueue),
-    ):
-        response = _checkout(client, product.id)
+    fake_order_queue.enqueue.side_effect = record_enqueue
+    command = CheckoutCommand(
+        items=[{"product_id": product.id, "quantity": 1}],
+        customer_name="Buyer",
+        customer_phone="123",
+        shipping_address="Address",
+    )
+    with patch.object(db_session, "commit", side_effect=record_commit):
+        response = asyncio.run(
+            checkout_cart(db_session, mock_user_auth, command, fake_order_queue)
+        )
 
-    assert response.status_code == 201
-    assert events[:2] == ["commit", "enqueue"]
+    assert response.orders[0].product_id == product.id
+    assert events == ["commit", "enqueue"]
 
 
 def test_payment_email_failure_does_not_fail_committed_status_update(
@@ -491,17 +644,15 @@ def test_payment_email_failure_does_not_fail_committed_status_update(
     db_session,
     mock_user_auth,
     mock_admin_auth,
+    fake_order_queue,
 ):
     product = Product(name="Payment queue failure", price=20, stock_quantity=2)
     save_to_db(db_session, product)
     checkout = _checkout(client, product.id)
     order_id = checkout.json()["orders"][0]["id"]
 
-    with patch(
-        "app.features.orders.router.enqueue_task",
-        new=AsyncMock(side_effect=RuntimeError("redis down")),
-    ):
-        response = client.put(f"/orders/{order_id}/status", json={"status": "paid"})
+    fake_order_queue.enqueue.side_effect = RuntimeError("redis down")
+    response = client.put(f"/api/v1/orders/{order_id}/status", json={"status": "paid"})
 
     assert response.status_code == 200
     assert db_session.get(Order, order_id).status == "paid"

@@ -1,6 +1,8 @@
+import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -8,11 +10,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.features.orders.model import Order
-from app.features.orders.schema import CheckoutCartRequest
-from app.features.orders.service import InsufficientStockError, create_cart_orders
+from app.features.orders.schemas import CheckoutCommand
+from app.features.orders.service import InsufficientStockError, checkout_cart
 from app.features.products.model import Product
 from app.features.users.model import User
-
 
 pytestmark = pytest.mark.integration
 
@@ -39,7 +40,7 @@ def test_checkout_final_unit_cannot_be_oversold():
     product_id = product.id
     setup_session.close()
 
-    checkout = CheckoutCartRequest(
+    checkout = CheckoutCommand(
         items=[{"product_id": product_id, "quantity": 1}],
         customer_name="Concurrent Buyer",
         customer_phone="0123456789",
@@ -53,8 +54,7 @@ def test_checkout_final_unit_cannot_be_oversold():
         try:
             current_user = session.get(User, user_id)
             barrier.wait()
-            create_cart_orders(session, current_user, checkout)
-            session.commit()
+            asyncio.run(checkout_cart(session, current_user, checkout, AsyncMock()))
             return "success"
         except InsufficientStockError:
             session.rollback()
@@ -67,7 +67,9 @@ def test_checkout_final_unit_cannot_be_oversold():
 
     verify_session = session_factory()
     final_product = verify_session.get(Product, product_id)
-    order_count = verify_session.query(Order).filter(Order.product_id == product_id).count()
+    order_count = (
+        verify_session.query(Order).filter(Order.product_id == product_id).count()
+    )
     assert sorted(results) == ["conflict", "success"]
     assert order_count == 1
     assert final_product.reserved_quantity == 1
