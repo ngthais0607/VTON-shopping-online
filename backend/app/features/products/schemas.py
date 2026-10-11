@@ -1,0 +1,154 @@
+from datetime import datetime
+from enum import StrEnum
+from typing import Any, Self
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+
+from app.core.config import get_settings
+
+
+class ProductSort(StrEnum):
+    LATEST = "latest"
+    PRICE_ASC = "price_asc"
+    PRICE_DESC = "price_desc"
+    STOCK_ASC = "stock_asc"
+    STOCK_DESC = "stock_desc"
+    SOLD_DESC = "sold_desc"
+    NAME_ASC = "name_asc"
+
+
+class StockStatus(StrEnum):
+    IN_STOCK = "in_stock"
+    LOW_STOCK = "low_stock"
+    OUT_OF_STOCK = "out_of_stock"
+
+
+class ProductFilters(BaseModel):
+    category_id: int | None = None
+    search: str | None = None
+    min_price: float | None = Field(default=None, ge=0)
+    max_price: float | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+    stock_status: StockStatus | None = None
+    sort: ProductSort = ProductSort.LATEST
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+
+class ProductCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    price: float = Field(gt=0)
+    description: str | None = Field(default=None, max_length=1000)
+    category_id: int | None = None
+    stock_quantity: int = Field(default=0, ge=0)
+    reserved_quantity: int = Field(default=0, ge=0)
+    sold_quantity: int = Field(default=0, ge=0)
+    currency: str = Field(default="USD", min_length=1, max_length=10)
+    is_active: bool = True
+
+    @model_validator(mode="after")
+    def validate_allocated_inventory(self) -> Self:
+        if self.reserved_quantity + self.sold_quantity > self.stock_quantity:
+            raise ValueError("Reserved and sold quantities cannot exceed total stock")
+        return self
+
+
+class ProductPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    price: float | None = Field(default=None, gt=0)
+    description: str | None = Field(default=None, max_length=1000)
+    category_id: int | None = None
+    stock_quantity: int | None = Field(default=None, ge=0)
+    reserved_quantity: int | None = Field(default=None, ge=0)
+    sold_quantity: int | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, min_length=1, max_length=10)
+    is_active: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_null_required_fields(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        nullable_fields = {"description", "category_id"}
+        for field_name, field_value in value.items():
+            if field_name not in nullable_fields and field_value is None:
+                raise ValueError(f"{field_name} cannot be null")
+        return value
+
+    @model_validator(mode="after")
+    def validate_complete_inventory_patch(self) -> Self:
+        quantities = (
+            self.stock_quantity,
+            self.reserved_quantity,
+            self.sold_quantity,
+        )
+        if all(quantity is not None for quantity in quantities):
+            stock, reserved, sold = quantities
+            if reserved + sold > stock:
+                raise ValueError(
+                    "Reserved and sold quantities cannot exceed total stock"
+                )
+        return self
+
+
+class CategorySummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
+class ProductImageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    object_name: str
+
+    @computed_field
+    @property
+    def url(self) -> str:
+        settings = get_settings()
+        base_url = settings.minio_external_url.rstrip("/")
+        return f"{base_url}/{settings.minio_bucket}/{self.object_name}"
+
+
+class ProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    price: float
+    description: str | None
+    stock_quantity: int
+    reserved_quantity: int
+    sold_quantity: int
+    currency: str
+    is_active: bool
+    category: CategorySummary | None
+    images: list[ProductImageResponse]
+    created_at: datetime | None
+    updated_at: datetime | None
+
+
+class ReviewCreate(BaseModel):
+    rating: int
+    title: str | None = None
+    comment: str | None = None
+
+
+class ReviewResponse(BaseModel):
+    id: int
+    product_id: int
+    user_id: int
+    user_name: str
+    rating: int
+    title: str | None = None
+    comment: str | None = None
+    is_verified_purchase: bool
+    created_at: str | None = None
+
+
+class ProductReviewsResponse(BaseModel):
+    average_rating: float
+    total_reviews: int
+    reviews: list[ReviewResponse]
