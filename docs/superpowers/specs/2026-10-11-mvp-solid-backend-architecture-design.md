@@ -92,6 +92,10 @@ backend/app/
       domain.py
       service.py
       router.py
+    dashboard/
+      schemas.py
+      service.py
+      router.py
 
   integrations/
     queue.py
@@ -200,6 +204,7 @@ The new OpenAPI document and API tests become the contract consumed by the later
 - Products: catalog CRUD in `service.py`; review behavior in `reviews.py`; storage lifecycle in `images.py`.
 - Categories: straightforward CRUD in one service module.
 - Orders: checkout, inventory reservation, order queries, tracking, and state changes. Transition and inventory policies live in `domain.py`.
+- Dashboard: read-only cross-feature metrics and summaries. It owns no persistence model and returns its own response schemas rather than importing another feature's router mapper.
 - Jobs: scheduling and worker entry points only; business behavior remains in the owning feature.
 - Integrations: accept primitives or narrow DTOs and do not import routers.
 
@@ -212,10 +217,11 @@ Refactor in vertical slices so each committed feature is internally consistent:
 3. Refactor products, including review and image capabilities.
 4. Refactor users and authentication-related use cases.
 5. Refactor orders after the common conventions are proven.
-6. Route jobs and integrations through shared use cases.
-7. Remove obsolete helpers and old API compatibility code.
-8. Update `README.md` and the architecture/API documentation.
-9. Run the complete review and verification suite.
+6. Refactor the read-only dashboard after product and order response contracts exist.
+7. Route jobs and integrations through shared use cases.
+8. Remove obsolete helpers and old API compatibility code.
+9. Update `README.md` and the architecture/API documentation.
+10. Run the complete review and verification suite.
 
 Although backward API compatibility is not required, each slice must leave the backend test suite passing. The repository must not contain two competing internal patterns after the final slice.
 
