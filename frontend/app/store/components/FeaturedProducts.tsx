@@ -8,6 +8,7 @@ import { Product as DBProduct, User } from "@/lib/types";
 import { apiGet } from "@/lib/api";
 import { QuickViewModal } from "./QuickViewModal";
 import { useCart } from "../context/CartContext";
+import { getAvailableStock } from "@/lib/inventory";
 
 interface ProductUI {
   source: DBProduct;
@@ -372,7 +373,7 @@ export function FeaturedProducts({
   const uiProducts: ProductUI[] = products.map((p) => {
     const rating = (p.id % 5) * 0.1 + 4.5;
     const reviews = p.id * 17 + 23;
-    const stock = p.stock_quantity - p.reserved_quantity - p.sold_quantity;
+    const stock = getAvailableStock(p);
     
     let badge = undefined;
     let badgeColor = undefined;

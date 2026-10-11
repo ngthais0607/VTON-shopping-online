@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { Order, User } from "@/lib/types";
@@ -17,7 +17,7 @@ export default function CustomerOrdersPage() {
     const [refreshing, setRefreshing] = useState(false);
     const router = useRouter();
 
-    async function loadData() {
+    const loadData = useCallback(async () => {
         try {
             // 1. Lấy thông tin user hiện tại để lấy ID
             const user = await apiGet<User>("/users/me");
@@ -34,15 +34,15 @@ export default function CustomerOrdersPage() {
             setLoading(false);
             setRefreshing(false);
         }
-    }
+    }, [router]);
 
     useEffect(() => {
-        loadData();
-    }, []);
+        void loadData();
+    }, [loadData]);
 
     const handleRefresh = () => {
         setRefreshing(true);
-        loadData();
+        void loadData();
     };
 
     const getStatusBadgeClass = (status: string) => {

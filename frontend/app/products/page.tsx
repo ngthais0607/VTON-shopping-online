@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { apiDelete, apiPost, apiPut, apiUpload } from "@/lib/api";
 import { useProducts } from "@/hooks/use-products";
 import { useCategories } from "@/hooks/use-categories";
+import { getAvailableStock } from "@/lib/inventory";
 import { Header } from "@/components/header";
 import { Card } from "@/components/ui/card";
 import {
@@ -876,8 +877,7 @@ export default function ProductsPage() {
                     <div>
                       <p className="text-sm text-slate-600">Available</p>
                       <p className="text-lg font-semibold text-slate-900">
-                        {selectedProduct.stock_quantity -
-                          selectedProduct.reserved_quantity}
+                        {getAvailableStock(selectedProduct)}
                       </p>
                     </div>
                     <div>

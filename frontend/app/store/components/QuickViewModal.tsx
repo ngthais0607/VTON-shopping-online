@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Product } from "@/lib/types";
 import { useCart } from "../context/CartContext";
 import { X, Star, ShoppingCart, Plus, Minus, Check, ShieldCheck, Truck, MessageSquare, ThumbsUp, CheckCircle2, Send, AlertCircle } from "lucide-react";
@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "motion/react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/api";
+import { getAvailableStock } from "@/lib/inventory";
 
 interface QuickViewModalProps {
   product: Product;
@@ -51,14 +52,10 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewMsg, setReviewMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const availableStock = product.stock_quantity - product.reserved_quantity;
+  const availableStock = getAvailableStock(product);
   const imageUrl = product.images && product.images.length > 0 ? product.images[0].url : undefined;
 
-  useEffect(() => {
-    fetchReviews();
-  }, [product.id]);
-
-  async function fetchReviews() {
+  const fetchReviews = useCallback(async () => {
     setLoadingReviews(true);
     try {
       const data = await apiGet<ProductReviewsData>(`/products/${product.id}/reviews`);
@@ -68,7 +65,11 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
     } finally {
       setLoadingReviews(false);
     }
-  }
+  }, [product.id]);
+
+  useEffect(() => {
+    void fetchReviews();
+  }, [fetchReviews]);
 
   const handleAddToCart = () => {
     addToCart(product, quantity);

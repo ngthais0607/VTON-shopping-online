@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiGet, apiPut } from '@/lib/api';
 import { User, Package, Heart, CheckCircle2, Clock, XCircle, ArrowRight, ShieldCheck, Key, Save, AlertCircle, RefreshCw } from 'lucide-react';
@@ -48,25 +48,7 @@ export default function CustomerAccountPage() {
   // Wishlist state
   const [wishlist, setWishlist] = useState<any[]>([]);
 
-  async function fetchProfile() {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiGet<UserProfile>('/users/me');
-      setProfile(data);
-      setFirstName(data.first_name || '');
-      setLastName(data.last_name || '');
-      setUsername(data.username || '');
-      setEmail(data.email || '');
-      fetchUserOrders(data.id);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load user profile. Please log in.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchUserOrders(userId: number) {
+  const fetchUserOrders = useCallback(async (userId: number) => {
     setOrdersLoading(true);
     try {
       const data = await apiGet<OrderItem[]>(`/orders/user/${userId}`);
@@ -76,7 +58,25 @@ export default function CustomerAccountPage() {
     } finally {
       setOrdersLoading(false);
     }
-  }
+  }, []);
+
+  const fetchProfile = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiGet<UserProfile>('/users/me');
+      setProfile(data);
+      setFirstName(data.first_name || '');
+      setLastName(data.last_name || '');
+      setUsername(data.username || '');
+      setEmail(data.email || '');
+      void fetchUserOrders(data.id);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load user profile. Please log in.');
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchUserOrders]);
 
   function loadWishlist() {
     try {
@@ -90,9 +90,9 @@ export default function CustomerAccountPage() {
   }
 
   useEffect(() => {
-    fetchProfile();
+    void fetchProfile();
     loadWishlist();
-  }, []);
+  }, [fetchProfile]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();

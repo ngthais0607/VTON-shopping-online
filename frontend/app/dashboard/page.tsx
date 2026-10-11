@@ -27,6 +27,7 @@ import { DashboardSkeleton } from './components/dashboard-skeleton';
 import { Product, Order } from '@/lib/types';
 import { RevenueChart } from './components/revenue-chart';
 import { OrderStatusChart } from './components/order-status-chart';
+import { getAvailableStock } from '@/lib/inventory';
 
 type DashboardMetrics = {
   total_products: number;
@@ -173,7 +174,7 @@ export default function Dashboard() {
                       {product.category?.name || 'N/A'}
                     </TableCell>
                     <TableCell className="text-slate-900 font-medium">
-                      {product.stock_quantity - product.reserved_quantity}
+                      {getAvailableStock(product)}
                     </TableCell>
                     <TableCell className="text-slate-600">
                       {product.reserved_quantity}
