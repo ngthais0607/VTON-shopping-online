@@ -3,19 +3,25 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from threading import Barrier
+from threading import Barrier, Event
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.features.orders.constants import OrderStatus
-from app.features.orders.domain import InvalidOrderTransition, apply_order_transition
+from app.features.orders.domain import (
+    InvalidOrderTransition,
+    apply_order_transition,
+    available_stock,
+)
 from app.features.orders.model import Order
+from app.features.orders.schemas import CheckoutCommand
 from app.features.orders.service import (
     change_order_status,
+    checkout_cart,
 )
 from app.features.orders.service import (
     expire_pending_orders as expire_orders,
@@ -230,5 +236,106 @@ def test_two_orders_sharing_product_preserve_both_transitions(
     final_product = verify.get(Product, product_id)
     assert final_product.reserved_quantity == 0
     assert final_product.sold_quantity == expected_sold
+    verify.close()
+    engine.dispose()
+
+
+def test_checkout_insert_does_not_deadlock_with_expiration_scan():
+    engine, session_factory = _session_factory()
+    setup = session_factory()
+    suffix = uuid4().hex
+    user = User(
+        username=f"checkout-expire-{suffix}",
+        email=f"checkout-expire-{suffix}@example.com",
+        password_hash="unused",
+        role="customer",
+    )
+    product = Product(
+        name=f"Checkout expire {suffix}",
+        price=100,
+        stock_quantity=2,
+        reserved_quantity=1,
+        sold_quantity=0,
+    )
+    setup.add_all([user, product])
+    setup.flush()
+    expiring_order = Order(
+        user_id=user.id,
+        product=product,
+        product_name=product.name,
+        unit_price=100,
+        quantity=1,
+        total_amount=100,
+        currency="USD",
+        status="pending",
+        customer_name="Earlier Buyer",
+        customer_phone="123",
+        shipping_address="Address",
+        payment_method="vietqr",
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+    )
+    setup.add(expiring_order)
+    setup.commit()
+    user_id, product_id, expiring_id = user.id, product.id, expiring_order.id
+    setup.close()
+
+    checkout_locked = Event()
+    expiration_discovered = Event()
+    command = CheckoutCommand(
+        items=[{"product_id": product_id, "quantity": 1}],
+        customer_name="Later Buyer",
+        customer_phone="456",
+        shipping_address="Address",
+    )
+
+    def pause_checkout_with_product_lock(locked_product):
+        checkout_locked.set()
+        assert expiration_discovered.wait(timeout=10)
+        return available_stock(locked_product)
+
+    def run_checkout():
+        session = session_factory()
+        try:
+            buyer = session.get(User, user_id)
+            return asyncio.run(checkout_cart(session, buyer, command, AsyncMock()))
+        finally:
+            session.close()
+
+    def run_expiration():
+        session = session_factory()
+
+        def mark_discovery(
+            _connection, _cursor, statement, _parameters, _context, _many
+        ):
+            if "FROM orders" in statement and "orders.expires_at" in statement:
+                expiration_discovered.set()
+
+        connection = session.connection()
+        event.listen(connection, "after_cursor_execute", mark_discovery)
+        try:
+            return expire_orders(session)
+        finally:
+            event.remove(connection, "after_cursor_execute", mark_discovery)
+            session.close()
+
+    with patch(
+        "app.features.orders.service.available_stock",
+        side_effect=pause_checkout_with_product_lock,
+    ):
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            checkout_future = executor.submit(run_checkout)
+            assert checkout_locked.wait(timeout=10)
+            expire_future = executor.submit(run_expiration)
+            checkout_response = checkout_future.result(timeout=15)
+            expired_count = expire_future.result(timeout=15)
+
+    assert len(checkout_response.orders) == 1
+    assert expired_count == 1
+    verify = session_factory()
+    assert verify.get(Order, expiring_id).status == "expired"
+    assert verify.get(Order, checkout_response.orders[0].id).status == "pending"
+    final_product = verify.get(Product, product_id)
+    assert final_product.reserved_quantity == 1
+    assert final_product.sold_quantity == 0
     verify.close()
     engine.dispose()

@@ -218,6 +218,10 @@ async def change_order_status(
     new_status: OrderStatus,
     queue: TaskQueue,
 ) -> OrderResponse:
+    product_id = db.query(Order.product_id).filter(Order.id == order_id).scalar()
+    if product_id is None:
+        raise OrderNotFoundError("Order not found")
+    _lock_transition_products(db, {product_id})
     order = (
         db.query(Order)
         .filter(Order.id == order_id)
@@ -227,7 +231,8 @@ async def change_order_status(
     )
     if order is None:
         raise OrderNotFoundError("Order not found")
-    _lock_transition_products(db, [order])
+    if order.product_id != product_id:
+        raise ConflictError("Order product changed during transition")
     apply_order_transition(order, new_status)
     db.commit()
     db.refresh(order)
@@ -295,29 +300,51 @@ def track_order(db: Session, order_id: int, user: User) -> TrackingResponse:
 
 def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
     current_time = now or datetime.now(timezone.utc)
-    orders = (
-        db.query(Order)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    candidates = (
+        db.query(Order.id, Order.product_id)
         .filter(
             Order.status == OrderStatus.PENDING.value,
             Order.payment_method == OrderPaymentMethod.VIETQR.value,
             Order.expires_at <= current_time,
         )
         .order_by(Order.id)
-        .populate_existing()
-        .with_for_update()
         .all()
     )
-    _lock_transition_products(db, orders)
-    for order in orders:
+    _lock_transition_products(db, {product_id for _, product_id in candidates})
+    expired_count = 0
+    for order_id, discovered_product_id in candidates:
+        order = (
+            db.query(Order)
+            .filter(Order.id == order_id)
+            .populate_existing()
+            .with_for_update()
+            .first()
+        )
+        if (
+            order is None
+            or order.product_id != discovered_product_id
+            or order.status != OrderStatus.PENDING.value
+            or order.payment_method != OrderPaymentMethod.VIETQR.value
+            or order.expires_at is None
+        ):
+            continue
+        expires_at = order.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at > current_time:
+            continue
         apply_order_transition(order, OrderStatus.EXPIRED, current_time)
+        expired_count += 1
     db.commit()
-    return len(orders)
+    return expired_count
 
 
-def _lock_transition_products(db: Session, orders: list[Order]) -> None:
-    # Both status changes and expiration acquire product locks in the same order.
+def _lock_transition_products(db: Session, product_ids: set[int]) -> None:
+    # Checkout, status changes, and expiration acquire product locks first by ID.
     # populate_existing refreshes products already present in this session's identity map.
-    for product_id in sorted({order.product_id for order in orders}):
+    for product_id in sorted(product_ids):
         (
             db.query(Product)
             .filter(Product.id == product_id)
