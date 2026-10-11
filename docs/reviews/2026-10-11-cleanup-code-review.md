@@ -1,7 +1,7 @@
 # Cleanup and Code Review Report
 
-Date: 2026-10-11  
-Branch: `safe-mvp-remediation`  
+Date: 2026-10-11
+Branch: `safe-mvp-remediation`
 Review baseline: `16f1ccc`
 
 ## Outcome
@@ -24,7 +24,7 @@ Evidence: the regression test receives HTTP 201 and reads the committed user aft
 
 ### Medium — admin uniqueness collisions leaked database errors
 
-Admin user updates now check another active record for matching username or email before mutating the target and return the documented HTTP 400 response. Regression tests cover both fields and verify that both records remain unchanged.
+Admin user updates now check another record for matching username or email before mutating the target and return the documented HTTP 400 response. Regression tests cover both fields and verify that both records remain unchanged.
 
 ### Medium — backend tests leaked commits between cases
 
