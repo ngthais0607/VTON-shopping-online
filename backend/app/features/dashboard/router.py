@@ -1,82 +1,39 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_admin
-from app.features.orders.model import Order
-from app.features.orders.service import order_to_json
-from app.features.products.model import Product
-from app.features.products.schemas import ProductResponse
+from app.features.dashboard import service
+from app.features.dashboard.schemas import (
+    DashboardMetrics,
+    LowStockProductSummary,
+    RecentOrderSummary,
+)
 from app.features.users.model import User
 
-router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+router = APIRouter(prefix="/api/v1/dashboard", tags=["Dashboard"])
 
 
-@router.get("/metrics")
+@router.get("/metrics", response_model=DashboardMetrics)
 def get_dashboard_metrics(
-    db: Session = Depends(get_db), current_admin: User = Depends(get_current_admin)
-):
-    available_stock = (
-        Product.stock_quantity - Product.reserved_quantity - Product.sold_quantity
-    )
-
-    total_products = db.query(Product).filter(Product.is_deleted == False).count()
-
-    active_products = (
-        db.query(Product)
-        .filter(Product.is_deleted == False, Product.is_active == True)
-        .count()
-    )
-
-    low_stock = (
-        db.query(Product)
-        .filter(Product.is_deleted == False, available_stock < 20)
-        .count()
-    )
-
-    pending_orders = db.query(Order).filter(Order.status == "pending").count()
-
-    revenue = (
-        db.query(func.coalesce(func.sum(Order.total_amount), 0))
-        .filter(Order.status == "paid")
-        .scalar()
-    )
-
-    return {
-        "total_products": total_products,
-        "active_products": active_products,
-        "low_stock": low_stock,
-        "pending_orders": pending_orders,
-        "revenue": revenue,
-    }
+    db: Session = Depends(get_db), _admin: User = Depends(get_current_admin)
+) -> DashboardMetrics:
+    return service.get_metrics(db)
 
 
-@router.get("/recent-orders")
+@router.get("/recent-orders", response_model=list[RecentOrderSummary])
 def get_recent_orders(
     db: Session = Depends(get_db),
     limit: int = Query(default=5, ge=1, le=20),
-    current_admin: User = Depends(get_current_admin),
-):
-    orders = db.query(Order).order_by(Order.created_at.desc()).limit(limit).all()
-    return [order_to_json(order) for order in orders]
+    _admin: User = Depends(get_current_admin),
+) -> list[RecentOrderSummary]:
+    return service.get_recent_orders(db, limit)
 
 
-@router.get("/low-stock-products")
+@router.get("/low-stock-products", response_model=list[LowStockProductSummary])
 def get_low_stock_products(
     db: Session = Depends(get_db),
     limit: int = Query(default=5, ge=1, le=20),
-    current_admin: User = Depends(get_current_admin),
-):
-    available_stock = (
-        Product.stock_quantity - Product.reserved_quantity - Product.sold_quantity
-    )
-    products = (
-        db.query(Product)
-        .filter(Product.is_deleted == False, available_stock < 20)
-        .order_by(available_stock.asc())
-        .limit(limit)
-        .all()
-    )
-
-    return [ProductResponse.model_validate(product) for product in products]
+    _admin: User = Depends(get_current_admin),
+) -> list[LowStockProductSummary]:
+    return service.get_low_stock_products(db, limit)
