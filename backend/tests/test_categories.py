@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy import update
 
 from app.features.categories.model import Category
 
@@ -69,6 +70,23 @@ def test_get_category_returns_active_category(client, db_session):
     assert response.json()["name"] == "Electronics"
 
 
+def test_get_category_allows_legacy_null_timestamps(client, db_session):
+    category = persist_category(db_session, name="Legacy timestamps")
+    db_session.execute(
+        update(Category)
+        .where(Category.id == category.id)
+        .values(created_at=None, updated_at=None)
+    )
+    db_session.commit()
+    db_session.expire(category)
+
+    response = client.get(f"/api/v1/categories/{category.id}")
+
+    assert response.status_code == 200
+    assert response.json()["created_at"] is None
+    assert response.json()["updated_at"] is None
+
+
 def test_patch_category_is_partial_and_uses_authenticated_admin_for_audit(
     client,
     db_session,
@@ -94,6 +112,23 @@ def test_patch_category_is_partial_and_uses_authenticated_admin_for_audit(
     assert category.name == "Updated"
     assert category.description == "Keep this description"
     assert category.updated_by == mock_admin_auth.id
+
+
+def test_patch_category_rejects_null_name(
+    client,
+    db_session,
+    mock_admin_auth,
+):
+    category = persist_category(db_session, name="Original")
+
+    response = client.patch(
+        f"/api/v1/categories/{category.id}",
+        json={"name": None},
+    )
+
+    assert response.status_code == 422
+    db_session.refresh(category)
+    assert category.name == "Original"
 
 
 def test_delete_category_soft_deletes_with_authenticated_admin(
