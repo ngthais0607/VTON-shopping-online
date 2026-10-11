@@ -1,7 +1,7 @@
 """Read-only aggregates and projections for the admin dashboard."""
 
 from sqlalchemy import case, func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.features.categories.model import Category
 from app.features.dashboard.schemas import (
@@ -10,7 +10,7 @@ from app.features.dashboard.schemas import (
     RecentOrderSummary,
 )
 from app.features.orders.constants import OrderStatus
-from app.features.orders.model import Order
+from app.features.orders.model import Order, Payment
 from app.features.products.model import Product
 from app.features.products.schemas import CategorySummary
 
@@ -58,33 +58,48 @@ def get_metrics(db: Session) -> DashboardMetrics:
 
 
 def get_recent_orders(db: Session, limit: int) -> list[RecentOrderSummary]:
-    orders = db.scalars(
-        select(Order)
-        .options(selectinload(Order.payments))
+    latest_payment_status = (
+        select(Payment.status)
+        .where(Payment.order_id == Order.id)
+        .order_by(Payment.id.desc())
+        .limit(1)
+        .correlate(Order)
+        .scalar_subquery()
+    )
+    rows = db.execute(
+        select(
+            Order.id,
+            Order.product_name,
+            Order.quantity,
+            Order.total_amount,
+            Order.currency,
+            Order.status,
+            Order.created_at,
+            latest_payment_status.label("payment_status"),
+        )
         .order_by(Order.created_at.desc(), Order.id.desc())
         .limit(limit)
     ).all()
     summaries = []
-    for order in orders:
-        payment = max(order.payments, key=lambda item: item.id, default=None)
-        if payment is not None:
-            payment_status = payment.status
-        elif order.status == OrderStatus.PAID.value:
+    for row in rows:
+        if row.payment_status is not None:
+            payment_status = row.payment_status
+        elif row.status == OrderStatus.PAID.value:
             payment_status = "paid"
-        elif order.status == OrderStatus.EXPIRED.value:
+        elif row.status == OrderStatus.EXPIRED.value:
             payment_status = "failed"
         else:
             payment_status = "pending"
         summaries.append(
             RecentOrderSummary(
-                id=order.id,
-                product_name=order.product_name,
-                quantity=order.quantity,
-                total=order.total_amount,
-                currency=order.currency,
-                status=order.status,
+                id=row.id,
+                product_name=row.product_name,
+                quantity=row.quantity,
+                total=row.total_amount,
+                currency=row.currency,
+                status=row.status,
                 payment_status=payment_status,
-                created_at=order.created_at,
+                created_at=row.created_at,
             )
         )
     return summaries

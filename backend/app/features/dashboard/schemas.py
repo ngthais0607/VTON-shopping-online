@@ -22,7 +22,7 @@ class RecentOrderSummary(BaseModel):
     currency: str
     status: OrderStatus
     payment_status: str
-    created_at: datetime
+    created_at: datetime | None
 
 
 class LowStockProductSummary(BaseModel):

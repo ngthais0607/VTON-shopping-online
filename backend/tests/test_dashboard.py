@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import event
+from sqlalchemy import event, update
 
 from app.features.orders.model import Order, Payment
 from app.features.products.model import Product
@@ -35,7 +35,7 @@ def _order(product, status, amount, created_at):
     )
 
 
-def _count_selects(db_session, call):
+def _capture_selects(db_session, call):
     statements = []
 
     def record(_conn, _cursor, statement, _parameters, _context, _executemany):
@@ -48,6 +48,11 @@ def _count_selects(db_session, call):
         result = call()
     finally:
         event.remove(connection, "before_cursor_execute", record)
+    return result, statements
+
+
+def _count_selects(db_session, call):
+    result, statements = _capture_selects(db_session, call)
     return result, len(statements)
 
 
@@ -122,6 +127,8 @@ def test_recent_orders_are_bounded_newest_first_and_have_payment_status(db_sessi
         for index in range(25)
     ]
     orders[-1].status = "paid"
+    orders[-3].status = "expired"
+    orders[-4].status = "paid"
     db_session.add_all(orders)
     db_session.flush()
     db_session.add(Payment(order=orders[-1], amount=34, status="paid"))
@@ -137,7 +144,51 @@ def test_recent_orders_are_bounded_newest_first_and_have_payment_status(db_sessi
     assert result[0].total == 34
     assert result[0].payment_status == "paid"
     assert result[1].payment_status == "pending"
+    assert result[2].payment_status == "failed"
+    assert result[3].payment_status == "paid"
     assert query_count <= 2
+
+
+def test_recent_orders_endpoint_allows_legacy_null_created_at(
+    client, db_session, mock_admin_auth
+):
+    product = _product("Legacy product")
+    order = _order(product, "pending", 12, datetime.now(timezone.utc))
+    db_session.add(order)
+    db_session.flush()
+    db_session.execute(
+        update(Order).where(Order.id == order.id).values(created_at=None)
+    )
+    db_session.expire_all()
+
+    response = client.get("/api/v1/dashboard/recent-orders")
+
+    assert response.status_code == 200
+    assert response.json()[0]["created_at"] is None
+
+
+def test_recent_orders_reads_summary_columns_and_only_latest_payment(db_session):
+    from app.features.dashboard.service import get_recent_orders
+
+    product = _product("Many payments")
+    order = _order(product, "pending", 45, datetime.now(timezone.utc))
+    db_session.add(order)
+    db_session.flush()
+    db_session.add_all(
+        [Payment(order=order, amount=45, status="pending") for _ in range(40)]
+    )
+    db_session.add(Payment(order=order, amount=45, status="paid"))
+    db_session.flush()
+    db_session.expunge_all()
+
+    result, statements = _capture_selects(
+        db_session, lambda: get_recent_orders(db_session, limit=5)
+    )
+
+    assert [(item.id, item.payment_status) for item in result] == [(order.id, "paid")]
+    assert len(statements) == 1
+    assert "orders.customer_phone" not in statements[0].lower()
+    assert "payments.amount" not in statements[0].lower()
 
 
 def test_low_stock_list_excludes_deleted_negative_and_threshold(db_session):
