@@ -12,6 +12,8 @@ from app.core.rate_limiter import limiter
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    decode_access_token,
+    decode_refresh_token,
     hash_password,
 )
 from app.features.users import service
@@ -132,6 +134,101 @@ def test_two_logins_in_same_second_issue_distinct_refresh_tokens(db_session):
     assert first != second
 
 
+def test_access_token_stays_with_user_after_email_is_reused(client, db_session):
+    limiter.reset()
+    client.app.dependency_overrides[get_task_queue] = lambda: RecordingQueue()
+    original_email = "reused-access@example.com"
+    original_user = _make_user(
+        db_session,
+        "original_access",
+        email=original_email,
+        password_hash=hash_password("StrongPassword123!"),
+    )
+    login = client.post(
+        "/api/v1/users/login",
+        json={"identifier": original_email, "password": "StrongPassword123!"},
+    )
+    access_token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    changed = client.patch(
+        "/api/v1/users/me",
+        headers=headers,
+        json={"email": "moved-access@example.com"},
+    )
+    replacement = client.post(
+        "/api/v1/users/register",
+        json={
+            "username": "replacement_access",
+            "email": original_email,
+            "password": "StrongPassword123!",
+        },
+    )
+    current = client.get("/api/v1/users/me", headers=headers)
+
+    assert changed.status_code == 200
+    assert replacement.status_code == 201
+    assert current.status_code == 200
+    assert current.json()["id"] == original_user.id
+    assert current.json()["id"] != replacement.json()["id"]
+
+
+def test_refresh_token_never_rotates_replacement_user_after_email_reuse(
+    client, db_session
+):
+    limiter.reset()
+    client.app.dependency_overrides[get_task_queue] = lambda: RecordingQueue()
+    original_email = "reused-refresh@example.com"
+    original_user = _make_user(
+        db_session,
+        "original_refresh",
+        email=original_email,
+        password_hash=hash_password("StrongPassword123!"),
+    )
+    login = client.post(
+        "/api/v1/users/login",
+        json={"identifier": original_email, "password": "StrongPassword123!"},
+    )
+    old_refresh = login.json()["refresh_token"]
+    changed = client.patch(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        json={"email": "moved-refresh@example.com"},
+    )
+    replacement = client.post(
+        "/api/v1/users/register",
+        json={
+            "username": "replacement_refresh",
+            "email": original_email,
+            "password": "StrongPassword123!",
+        },
+    )
+
+    refreshed = client.post(
+        "/api/v1/users/refresh",
+        json={"refresh_token": old_refresh},
+    )
+    assert changed.status_code == 200
+    assert replacement.status_code == 201
+    assert refreshed.status_code == 200
+    current = client.get(
+        "/api/v1/users/me",
+        headers={"Authorization": f"Bearer {refreshed.json()['access_token']}"},
+    )
+    assert current.status_code == 200
+    assert current.json()["id"] == original_user.id
+    assert current.json()["id"] != replacement.json()["id"]
+
+    replay = client.post(
+        "/api/v1/users/refresh",
+        json={"refresh_token": old_refresh},
+    )
+    assert replay.status_code == 401
+    assert replay.json()["code"] == "invalid_token"
+    replacement_user = db_session.get(User, replacement.json()["id"])
+    assert replacement_user.refresh_version == 0
+
+
 @pytest.mark.parametrize(
     "token",
     [
@@ -142,8 +239,9 @@ def test_two_logins_in_same_second_issue_distinct_refresh_tokens(db_session):
             expires_delta=timedelta(seconds=-1),
         ),
         create_refresh_token({"sub": "refresh-only@example.com"}),
+        create_access_token({"sub": "legacy-email@example.com"}),
     ],
-    ids=["missing", "malformed", "expired", "refresh-as-access"],
+    ids=["missing", "malformed", "expired", "refresh-as-access", "legacy-email"],
 )
 def test_access_token_failures_use_common_error(client, token):
     headers = {"Authorization": f"Bearer {token}"} if token else {}
@@ -160,7 +258,7 @@ def test_access_token_failures_use_common_error(client, token):
 
 def test_deleted_user_access_token_is_rejected(client, db_session):
     user = _make_user(db_session, "deleted", is_deleted=True)
-    token = create_access_token({"sub": user.email})
+    token = create_access_token({"sub": str(user.id)})
 
     response = client.get(
         "/api/v1/users/me",
@@ -169,6 +267,27 @@ def test_deleted_user_access_token_is_rejected(client, db_session):
 
     assert response.status_code == 401
     assert response.json()["code"] == "invalid_token"
+
+
+def test_refresh_token_with_legacy_email_subject_is_rejected(client, db_session):
+    user = _make_user(db_session, "legacy_refresh")
+    token = create_refresh_token({"sub": user.email, "version": 0})
+
+    response = client.post(
+        "/api/v1/users/refresh",
+        json={"refresh_token": token},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "invalid_token"
+
+
+@pytest.mark.parametrize("subject", ["0", "01", "2147483648"])
+def test_invalid_numeric_user_subjects_are_rejected(subject):
+    with pytest.raises(AuthenticationError):
+        decode_access_token(create_access_token({"sub": subject}))
+    with pytest.raises(AuthenticationError):
+        decode_refresh_token(create_refresh_token({"sub": subject, "version": 0}))
 
 
 @pytest.mark.parametrize("identifier_field", ["username", "email"])

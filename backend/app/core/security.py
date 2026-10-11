@@ -80,11 +80,11 @@ def get_current_user(
     if not token:
         raise _invalid_token()
 
-    email = decode_access_token(token)
+    user_id = int(decode_access_token(token))
     user = (
         db.query(User)
         .filter(
-            User.email == email,
+            User.id == user_id,
             User.is_deleted.is_(False),
         )
         .first()
@@ -140,7 +140,15 @@ def _decode_token_payload(
         raise _invalid_token() from exc
 
     subject = payload.get("sub")
-    if payload.get("type") != expected_type or not isinstance(subject, str):
+    if (
+        payload.get("type") != expected_type
+        or not isinstance(subject, str)
+        or not subject.isascii()
+        or not subject.isdigit()
+        or not 1 <= len(subject) <= 19
+        or str(int(subject)) != subject
+        or not 1 <= int(subject) <= 2_147_483_647
+    ):
         raise _invalid_token()
     return payload
 

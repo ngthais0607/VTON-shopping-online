@@ -73,7 +73,7 @@ def login_user(db: Session, command: LoginCommand) -> TokenPair:
             "Invalid username, email, or password",
             code="invalid_credentials",
         )
-    return _token_pair(user.email, user.refresh_version)
+    return _token_pair(user.id, user.refresh_version)
 
 
 def refresh_user_session(db: Session, refresh_token: str) -> TokenPair:
@@ -82,7 +82,7 @@ def refresh_user_session(db: Session, refresh_token: str) -> TokenPair:
     updated = (
         db.query(User)
         .filter(
-            User.email == claims.subject,
+            User.id == int(claims.subject),
             User.is_deleted.is_(False),
             User.refresh_version == claims.version,
         )
@@ -95,7 +95,7 @@ def refresh_user_session(db: Session, refresh_token: str) -> TokenPair:
         db.rollback()
         raise _invalid_refresh_token()
     db.commit()
-    return _token_pair(claims.subject, next_version)
+    return _token_pair(int(claims.subject), next_version)
 
 
 def update_profile(db: Session, current_user: User, command: UserPatch) -> User:
@@ -244,12 +244,12 @@ def _get_active_user(db: Session, user_id: int) -> User:
     return user
 
 
-def _token_pair(email: str, refresh_version: int) -> TokenPair:
+def _token_pair(user_id: int, refresh_version: int) -> TokenPair:
     return TokenPair(
-        access_token=create_access_token({"sub": email}),
+        access_token=create_access_token({"sub": str(user_id)}),
         refresh_token=create_refresh_token(
             {
-                "sub": email,
+                "sub": str(user_id),
                 "version": refresh_version,
             }
         ),
