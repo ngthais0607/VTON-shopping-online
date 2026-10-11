@@ -126,6 +126,7 @@ async def checkout_cart(
                 Product.is_deleted.is_(False),
                 Product.is_active.is_(True),
             )
+            .populate_existing()
             .with_for_update()
             .first()
         )
@@ -217,9 +218,16 @@ async def change_order_status(
     new_status: OrderStatus,
     queue: TaskQueue,
 ) -> OrderResponse:
-    order = db.query(Order).filter(Order.id == order_id).with_for_update().first()
+    order = (
+        db.query(Order)
+        .filter(Order.id == order_id)
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
     if order is None:
         raise OrderNotFoundError("Order not found")
+    _lock_transition_products(db, [order])
     apply_order_transition(order, new_status)
     db.commit()
     db.refresh(order)
@@ -295,10 +303,25 @@ def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
             Order.expires_at <= current_time,
         )
         .order_by(Order.id)
+        .populate_existing()
         .with_for_update()
         .all()
     )
+    _lock_transition_products(db, orders)
     for order in orders:
         apply_order_transition(order, OrderStatus.EXPIRED, current_time)
     db.commit()
     return len(orders)
+
+
+def _lock_transition_products(db: Session, orders: list[Order]) -> None:
+    # Both status changes and expiration acquire product locks in the same order.
+    # populate_existing refreshes products already present in this session's identity map.
+    for product_id in sorted({order.product_id for order in orders}):
+        (
+            db.query(Product)
+            .filter(Product.id == product_id)
+            .populate_existing()
+            .with_for_update()
+            .one()
+        )

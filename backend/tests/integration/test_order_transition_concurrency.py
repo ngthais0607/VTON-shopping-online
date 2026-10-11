@@ -3,6 +3,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from threading import Barrier
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -13,7 +14,12 @@ from sqlalchemy.orm import sessionmaker
 from app.features.orders.constants import OrderStatus
 from app.features.orders.domain import InvalidOrderTransition, apply_order_transition
 from app.features.orders.model import Order
-from app.features.orders.service import change_order_status
+from app.features.orders.service import (
+    change_order_status,
+)
+from app.features.orders.service import (
+    expire_pending_orders as expire_orders,
+)
 from app.features.products.model import Product
 from app.features.users.model import User
 from app.jobs.order_jobs import expire_pending_orders
@@ -136,4 +142,93 @@ def test_expiration_worker_rechecks_status_after_waiting_for_lock():
     assert product.sold_quantity == 1
     verify_session.close()
     locking_session.close()
+    engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("second_status", "expected_sold", "use_expiration_service"),
+    [
+        (OrderStatus.PAID, 2, False),
+        (OrderStatus.CANCELLED, 1, False),
+        (OrderStatus.EXPIRED, 1, True),
+    ],
+)
+def test_two_orders_sharing_product_preserve_both_transitions(
+    second_status, expected_sold, use_expiration_service
+):
+    engine, session_factory = _session_factory()
+    setup = session_factory()
+    suffix = uuid4().hex
+    product = Product(
+        name=f"Shared product {suffix}",
+        price=100,
+        stock_quantity=2,
+        reserved_quantity=2,
+        sold_quantity=0,
+    )
+    setup.add(product)
+    setup.flush()
+    first = Order(
+        product=product,
+        product_name=product.name,
+        unit_price=100,
+        quantity=1,
+        total_amount=100,
+        currency="USD",
+        status="pending",
+        customer_name="First Buyer",
+        customer_phone="123",
+        shipping_address="Address",
+        payment_method="vietqr",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    second = Order(
+        product=product,
+        product_name=product.name,
+        unit_price=100,
+        quantity=1,
+        total_amount=100,
+        currency="USD",
+        status="pending",
+        customer_name="Second Buyer",
+        customer_phone="456",
+        shipping_address="Address",
+        payment_method="vietqr",
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+    )
+    setup.add_all([first, second])
+    setup.commit()
+    product_id, first_id, second_id = product.id, first.id, second.id
+    setup.close()
+
+    start = Barrier(2)
+
+    def transition(order_id, status, use_worker):
+        session = session_factory()
+        try:
+            # Both sessions hold the old counters before either transition begins.
+            assert session.get(Product, product_id).reserved_quantity == 2
+            start.wait(timeout=10)
+            if use_worker:
+                assert expire_orders(session) == 1
+            else:
+                asyncio.run(change_order_status(session, order_id, status, AsyncMock()))
+        finally:
+            session.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(transition, first_id, OrderStatus.PAID, False)
+        second_future = executor.submit(
+            transition, second_id, second_status, use_expiration_service
+        )
+        first_future.result(timeout=15)
+        second_future.result(timeout=15)
+
+    verify = session_factory()
+    assert verify.get(Order, first_id).status == "paid"
+    assert verify.get(Order, second_id).status == second_status.value
+    final_product = verify.get(Product, product_id)
+    assert final_product.reserved_quantity == 0
+    assert final_product.sold_quantity == expected_sold
+    verify.close()
     engine.dispose()
