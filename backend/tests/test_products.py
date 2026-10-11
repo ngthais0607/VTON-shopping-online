@@ -103,12 +103,12 @@ def test_create_product_success(client, mock_admin_auth):
         "is_active": True,
         "description": "Sản phẩm thử nghiệm unit test"
     }
-    
+
     response = client.post("/products/", json=payload)
-    
+
     # 201 đại diện cho Created (Tạo thành công)
     assert response.status_code == 201
-    
+
     data = response.json()
     assert data["name"] == "Tai Nghe Không Dây Test"
     assert data["price"] == 120.5
@@ -118,7 +118,10 @@ def test_create_product_success(client, mock_admin_auth):
 def test_get_products_pagination(client, mock_admin_auth):
     """Kiểm tra phân trang, tìm kiếm và lọc danh mục sản phẩm"""
     # 1. Tạo category để test lọc danh mục
-    cat_response = client.post("/categories/", json={"name": "Electronics"})
+    cat_response = client.post(
+        "/api/v1/categories",
+        json={"name": "Electronics"},
+    )
     assert cat_response.status_code == 201
     category_id = cat_response.json()["id"]
 
@@ -193,8 +196,8 @@ def test_get_products_pagination(client, mock_admin_auth):
 
 
 def test_get_products_filters_and_sorting(client, db_session):
-    from app.features.products.model import Product
     from app.features.categories.model import Category
+    from app.features.products.model import Product
 
     # Setup categories
     cat1 = Category(name="Category A")
@@ -272,4 +275,3 @@ def test_get_products_min_max_price_and_description_search(client, db_session):
     assert res_desc.status_code == 200
     assert len(res_desc.json()["items"]) == 1
     assert res_desc.json()["items"][0]["name"] == "Wireless Earbuds"
-

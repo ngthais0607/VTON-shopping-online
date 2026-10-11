@@ -1,60 +1,134 @@
+import pytest
+
 from app.features.categories.model import Category
-from app.core.database import save_to_db
 
-def test_create_category_success(client, mock_admin_auth):
-    """Kiểm tra Admin tạo danh mục mới thành công"""
-    payload = {
-        "name": "Thời Trang Nam",
-        "description": "Quần áo thời trang nam cao cấp"
-    }
-    response = client.post("/categories", json=payload)
-    
+
+def persist_category(db_session, **values) -> Category:
+    category = Category(**values)
+    db_session.add(category)
+    db_session.commit()
+    db_session.refresh(category)
+    return category
+
+
+def test_create_category_uses_authenticated_admin_for_audit(
+    client,
+    db_session,
+    mock_admin_auth,
+):
+    response = client.post(
+        "/api/v1/categories",
+        json={
+            "name": "Menswear",
+            "description": "Premium menswear",
+            "created_by": 123,
+        },
+    )
+
     assert response.status_code == 201
-    data = response.json()
-    assert data["name"] == "Thời Trang Nam"
-    assert data["description"] == "Quần áo thời trang nam cao cấp"
-    assert "id" in data
+    assert response.json()["name"] == "Menswear"
+    assert response.json()["description"] == "Premium menswear"
+    assert response.json()["created_by"] == mock_admin_auth.id
+
+    category = db_session.get(Category, response.json()["id"])
+    assert category is not None
+    assert category.created_by == mock_admin_auth.id
 
 
-def test_get_categories_list(client, db_session):
-    """Kiểm tra lấy danh sách danh mục"""
-    # Tạo 2 danh mục mẫu trong DB
-    cat1 = Category(name="Điện tử", description="Đồ điện gia dụng")
-    cat2 = Category(name="Sách", description="Sách giáo khoa & tiểu thuyết")
-    save_to_db(db_session, cat1)
-    save_to_db(db_session, cat2)
+def test_list_categories_returns_paginated_active_matches(client, db_session):
+    persist_category(db_session, name="Books", description="Reference books")
+    persist_category(db_session, name="Bookcases", description="Office furniture")
+    persist_category(db_session, name="Shoes", description="Footwear")
+    persist_category(db_session, name="Deleted books", is_deleted=True)
 
-    response = client.get("/categories")
-    
-    assert response.status_code == 200
-    data = response.json()
-    
-    # Đảm bảo nhận về ít nhất 2 danh mục đã tạo
-    assert len(data) >= 2
-    names = [c["name"] for c in data]
-    assert "Điện tử" in names
-    assert "Sách" in names
-
-
-def test_delete_category_success(client, db_session, mock_admin_auth):
-    """Kiểm tra Admin xóa danh mục (Soft Delete)"""
-    # Tạo danh mục mẫu
-    cat = Category(name="Mỹ phẩm", description="Chăm sóc da")
-    save_to_db(db_session, cat)
-
-    # Thực hiện gọi API xóa (yêu cầu body chứa thông tin ai xóa)
-    payload_delete = {
-        "deleted_by_id": 999
-    }
-    # Sử dụng phương thức post hoặc delete tùy cấu hình API.
-    # Trong router của bạn đang là: @router.delete("/{category_id}")
-    # Chú ý: Vì API delete nhận body nên chúng ta gửi body qua tham số json
-    response = client.request("DELETE", f"/categories/{cat.id}", json=payload_delete)
+    response = client.get(
+        "/api/v1/categories",
+        params={"search": "book", "limit": 1, "offset": 1},
+    )
 
     assert response.status_code == 200
-    assert response.json()["message"] == "Category deleted successfully"
+    assert response.json().keys() == {"items", "total", "limit", "offset"}
+    assert response.json()["total"] == 2
+    assert response.json()["limit"] == 1
+    assert response.json()["offset"] == 1
+    assert len(response.json()["items"]) == 1
+    assert response.json()["items"][0]["name"] == "Bookcases"
 
-    # Kiểm tra trong DB xem category đã bị ẩn chưa (is_deleted = True)
-    db_session.refresh(cat)
-    assert cat.is_deleted == True
-    assert cat.deleted_by == 999
+
+def test_get_category_returns_active_category(client, db_session):
+    category = persist_category(
+        db_session,
+        name="Electronics",
+        description="Home electronics",
+    )
+
+    response = client.get(f"/api/v1/categories/{category.id}")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == category.id
+    assert response.json()["name"] == "Electronics"
+
+
+def test_patch_category_is_partial_and_uses_authenticated_admin_for_audit(
+    client,
+    db_session,
+    mock_admin_auth,
+):
+    category = persist_category(
+        db_session,
+        name="Original",
+        description="Keep this description",
+    )
+
+    response = client.patch(
+        f"/api/v1/categories/{category.id}",
+        json={"name": "Updated", "updated_by": 123},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Updated"
+    assert response.json()["description"] == "Keep this description"
+    assert response.json()["updated_by"] == mock_admin_auth.id
+
+    db_session.refresh(category)
+    assert category.name == "Updated"
+    assert category.description == "Keep this description"
+    assert category.updated_by == mock_admin_auth.id
+
+
+def test_delete_category_soft_deletes_with_authenticated_admin(
+    client,
+    db_session,
+    mock_admin_auth,
+):
+    category = persist_category(db_session, name="Cosmetics")
+
+    response = client.request(
+        "DELETE",
+        f"/api/v1/categories/{category.id}",
+        json={"deleted_by": 123},
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+    db_session.refresh(category)
+    assert category.is_deleted is True
+    assert category.deleted_at is not None
+    assert category.deleted_by == mock_admin_auth.id
+
+
+@pytest.mark.parametrize("method", ["get", "patch", "delete"])
+def test_missing_category_uses_common_not_found_response(
+    client,
+    mock_admin_auth,
+    method,
+):
+    request = getattr(client, method)
+    kwargs = {"json": {"name": "Updated"}} if method == "patch" else {}
+
+    response_404 = request("/api/v1/categories/999999", **kwargs)
+
+    assert response_404.status_code == 404
+    assert response_404.json()["code"] == "category_not_found"
+    assert response_404.json()["details"] is None
