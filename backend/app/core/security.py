@@ -1,5 +1,7 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Literal
+from uuid import uuid4
 
 import jwt
 from fastapi import Depends
@@ -23,6 +25,12 @@ oauth2_password_bearer = OAuth2PasswordBearer(
     auto_error=False,
 )
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+@dataclass(frozen=True)
+class RefreshTokenClaims:
+    subject: str
+    version: int
 
 
 def hash_password(password: str) -> str:
@@ -53,12 +61,16 @@ def decode_access_token(token: str) -> str:
     return _decode_token(token, expected_type="access")
 
 
-def decode_refresh_token(token: str) -> str:
-    return _decode_token(token, expected_type="refresh")
+def decode_refresh_token(token: str) -> RefreshTokenClaims:
+    payload = _decode_token_payload(token, expected_type="refresh")
+    version = payload.get("version")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 0:
+        raise _invalid_token()
+    return RefreshTokenClaims(subject=payload["sub"], version=version)
 
 
 def verify_refresh_token(token: str) -> str:
-    return decode_refresh_token(token)
+    return decode_refresh_token(token).subject
 
 
 def get_current_user(
@@ -104,6 +116,8 @@ def _create_token(
             "type": token_type,
         }
     )
+    if token_type == "refresh":
+        payload["jti"] = uuid4().hex
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -112,6 +126,14 @@ def _decode_token(
     *,
     expected_type: Literal["access", "refresh"],
 ) -> str:
+    return _decode_token_payload(token, expected_type=expected_type)["sub"]
+
+
+def _decode_token_payload(
+    token: str,
+    *,
+    expected_type: Literal["access", "refresh"],
+) -> dict:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.PyJWTError as exc:
@@ -120,7 +142,7 @@ def _decode_token(
     subject = payload.get("sub")
     if payload.get("type") != expected_type or not isinstance(subject, str):
         raise _invalid_token()
-    return subject
+    return payload
 
 
 def _invalid_token() -> AuthenticationError:

@@ -73,18 +73,29 @@ def login_user(db: Session, command: LoginCommand) -> TokenPair:
             "Invalid username, email, or password",
             code="invalid_credentials",
         )
-    return _token_pair(user.email)
+    return _token_pair(user.email, user.refresh_version)
 
 
 def refresh_user_session(db: Session, refresh_token: str) -> TokenPair:
-    email = decode_refresh_token(refresh_token)
-    user = _active_users_query(db).filter(User.email == email).first()
-    if user is None:
-        raise AuthenticationError(
-            "Could not validate credentials",
-            code="invalid_token",
+    claims = decode_refresh_token(refresh_token)
+    next_version = claims.version + 1
+    updated = (
+        db.query(User)
+        .filter(
+            User.email == claims.subject,
+            User.is_deleted.is_(False),
+            User.refresh_version == claims.version,
         )
-    return _token_pair(user.email)
+        .update(
+            {User.refresh_version: next_version},
+            synchronize_session=False,
+        )
+    )
+    if updated != 1:
+        db.rollback()
+        raise _invalid_refresh_token()
+    db.commit()
+    return _token_pair(claims.subject, next_version)
 
 
 def update_profile(db: Session, current_user: User, command: UserPatch) -> User:
@@ -102,6 +113,7 @@ def change_password(
             code="incorrect_password",
         )
     current_user.password_hash = hash_password(command.new_password)
+    current_user.refresh_version = User.refresh_version + 1
     _commit_user(db, current_user)
 
 
@@ -154,7 +166,7 @@ def _create_user(db: Session, command: UserCreate) -> User:
         password_hash=hash_password(command.password),
         first_name=command.first_name,
         last_name=command.last_name,
-        role="admin" if db.query(User).count() == 0 else "customer",
+        role="customer",
     )
     db.add(user)
     return _commit_user(db, user)
@@ -232,8 +244,20 @@ def _get_active_user(db: Session, user_id: int) -> User:
     return user
 
 
-def _token_pair(email: str) -> TokenPair:
+def _token_pair(email: str, refresh_version: int) -> TokenPair:
     return TokenPair(
         access_token=create_access_token({"sub": email}),
-        refresh_token=create_refresh_token({"sub": email}),
+        refresh_token=create_refresh_token(
+            {
+                "sub": email,
+                "version": refresh_version,
+            }
+        ),
+    )
+
+
+def _invalid_refresh_token() -> AuthenticationError:
+    return AuthenticationError(
+        "Could not validate credentials",
+        code="invalid_token",
     )

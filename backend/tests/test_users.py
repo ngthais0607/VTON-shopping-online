@@ -1,13 +1,22 @@
-from datetime import timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+from threading import Barrier
 
 import pytest
+from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 
+from app.core.errors import AuthenticationError
 from app.core.rate_limiter import limiter
-from app.core.security import create_access_token, create_refresh_token
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    hash_password,
+)
 from app.features.users import service
 from app.features.users.model import User
-from app.features.users.schemas import UserPatch
+from app.features.users.schemas import LoginCommand, UserPatch
 from app.integrations.queue import get_task_queue
 from app.seed import seed_database
 
@@ -90,7 +99,15 @@ def test_refresh_rotates_cookie_and_logout_deletes_it(client, db_session):
 
     assert refreshed.status_code == 200
     assert refreshed.json()["access_token"]
+    assert refreshed.json()["refresh_token"] != old_refresh
     assert refreshed.cookies["refresh_token"] == refreshed.json()["refresh_token"]
+
+    replay = client.post(
+        "/api/v1/users/refresh",
+        json={"refresh_token": old_refresh},
+    )
+    assert replay.status_code == 401
+    assert replay.json()["code"] == "invalid_token"
 
     logged_out = client.post("/api/v1/users/logout")
     assert logged_out.status_code == 204
@@ -99,6 +116,20 @@ def test_refresh_rotates_cookie_and_logout_deletes_it(client, db_session):
     missing = client.post("/api/v1/users/refresh")
     assert missing.status_code == 401
     assert missing.json()["code"] == "invalid_token"
+
+
+def test_two_logins_in_same_second_issue_distinct_refresh_tokens(db_session):
+    user = _make_user(
+        db_session,
+        "login_nonce",
+        password_hash=hash_password("StrongPassword123!"),
+    )
+    command = LoginCommand(identifier=user.email, password="StrongPassword123!")
+
+    first = service.login_user(db_session, command).refresh_token
+    second = service.login_user(db_session, command).refresh_token
+
+    assert first != second
 
 
 @pytest.mark.parametrize(
@@ -182,6 +213,116 @@ def test_registration_commits_before_best_effort_queue_failure(
     assert "Failed to enqueue welcome email" in caplog.text
 
 
+def test_public_registrations_are_customers_even_when_database_starts_empty(
+    client, db_session
+):
+    limiter.reset()
+    queue = RecordingQueue()
+    client.app.dependency_overrides[get_task_queue] = lambda: queue
+
+    responses = [
+        client.post(
+            "/api/v1/users/register",
+            json={
+                "username": f"public_{index}",
+                "email": f"public-{index}@example.com",
+                "password": "StrongPassword123!",
+            },
+        )
+        for index in range(2)
+    ]
+
+    assert [response.status_code for response in responses] == [201, 201]
+    assert [response.json()["role"] for response in responses] == [
+        "customer",
+        "customer",
+    ]
+    assert db_session.query(User).filter(User.role == "admin").count() == 0
+
+
+def test_concurrent_refresh_consumes_version_once(tmp_path):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'refresh-race.db'}",
+        connect_args={"check_same_thread": False, "timeout": 10},
+    )
+    User.__table__.create(engine)
+    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    setup = session_factory()
+    user = User(
+        username="refresh_race",
+        email="refresh-race@example.com",
+        password_hash=hash_password("StrongPassword123!"),
+        role="customer",
+    )
+    setup.add(user)
+    setup.commit()
+    original_refresh = service.login_user(
+        setup,
+        LoginCommand(
+            identifier=user.email,
+            password="StrongPassword123!",
+        ),
+    ).refresh_token
+    setup.close()
+    barrier = Barrier(2)
+
+    def consume_refresh() -> str:
+        session = session_factory()
+        try:
+            barrier.wait()
+            service.refresh_user_session(session, original_refresh)
+            return "success"
+        except AuthenticationError as exc:
+            assert exc.code == "invalid_token"
+            return "invalid_token"
+        finally:
+            session.close()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: consume_refresh(), range(2)))
+
+    assert sorted(results) == ["invalid_token", "success"]
+    stale_session = session_factory()
+    with pytest.raises(AuthenticationError, match="Could not validate credentials"):
+        service.refresh_user_session(stale_session, original_refresh)
+    stale_session.close()
+    engine.dispose()
+
+
+def test_profile_update_does_not_restore_consumed_refresh_version(
+    db_session, monkeypatch
+):
+    original_version = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+    user = User(
+        username="refresh_profile",
+        email="refresh-profile@example.com",
+        password_hash=hash_password("StrongPassword123!"),
+        role="customer",
+        updated_at=original_version,
+    )
+    db_session.add(user)
+    db_session.commit()
+    original_refresh = service.login_user(
+        db_session,
+        LoginCommand(identifier=user.email, password="StrongPassword123!"),
+    ).refresh_token
+    service.refresh_user_session(db_session, original_refresh)
+    db_session.refresh(user)
+
+    # Simulate a database column with whole-second timestamp precision.
+    monkeypatch.setattr(
+        User.__table__.c.updated_at.onupdate,
+        "arg",
+        lambda _context: original_version,
+    )
+    service.update_profile(db_session, user, UserPatch(first_name="Changed"))
+    assert user.refresh_version == 1
+
+    with pytest.raises(AuthenticationError) as error:
+        service.refresh_user_session(db_session, original_refresh)
+    assert error.value.code == "invalid_token"
+
+
 def test_profile_patch_is_partial_and_returns_typed_response(
     client, db_session, mock_user_auth
 ):
@@ -233,6 +374,7 @@ def test_admin_crud_uses_page_patch_204_and_common_not_found(
         },
     )
     assert created.status_code == 201
+    assert created.json()["role"] == "customer"
     user_id = created.json()["id"]
 
     listed = client.get("/api/v1/users?limit=10&offset=0")
