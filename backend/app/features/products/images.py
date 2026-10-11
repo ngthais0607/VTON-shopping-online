@@ -51,7 +51,13 @@ def store_product_image(
         db.add(image)
         db.commit()
     except Exception:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception(
+                "Failed to roll back product image metadata",
+                extra={"object_name": object_name},
+            )
         try:
             storage.delete(object_name)
         except Exception:

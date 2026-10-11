@@ -15,7 +15,13 @@ from app.main import create_app
 
 
 class FakeProductStorage:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        events: list[str] | None = None,
+        delete_error: Exception | None = None,
+    ) -> None:
+        self.events = events if events is not None else []
+        self.delete_error = delete_error
         self.ensure_bucket_calls = 0
         self.put_objects: list[str] = []
         self.put_payloads: list[bytes] = []
@@ -26,12 +32,16 @@ class FakeProductStorage:
         self.ensure_bucket_calls += 1
 
     def put(self, object_name, stream, content_type) -> None:
+        self.events.append("put")
         self.put_objects.append(object_name)
         self.put_payloads.append(stream.read())
         self.content_types.append(content_type)
 
     def delete(self, object_name) -> None:
+        self.events.append("delete")
         self.deleted.append(object_name)
+        if self.delete_error is not None:
+            raise self.delete_error
 
     def public_url(self, object_name) -> str:
         return f"https://images.example.test/{object_name}"
@@ -52,9 +62,15 @@ def persist_product(db_session, **overrides) -> Product:
 
 def test_store_product_image_uploads_then_commits_metadata(db_session):
     product = persist_product(db_session)
-    storage = FakeProductStorage()
+    events = []
+    storage = FakeProductStorage(events=events)
+    real_commit = db_session.commit
 
-    with patch.object(db_session, "commit", wraps=db_session.commit) as commit:
+    def tracked_commit():
+        events.append("commit")
+        return real_commit()
+
+    with patch.object(db_session, "commit", side_effect=tracked_commit) as commit:
         image = store_product_image(
             db_session,
             storage,
@@ -65,6 +81,7 @@ def test_store_product_image_uploads_then_commits_metadata(db_session):
         )
 
     assert commit.call_count == 1
+    assert events == ["put", "commit"]
     assert storage.put_objects == [image.object_name]
     assert storage.put_payloads == [b"png-image"]
     assert storage.content_types == ["image/png"]
@@ -146,6 +163,59 @@ def test_store_product_image_compensates_when_database_commit_fails(db_session):
     assert storage.deleted == [storage.put_objects[0]]
     assert rollback.call_count == 1
     assert db_session.query(ProductImage).count() == 0
+
+
+def test_store_product_image_still_deletes_when_rollback_fails(db_session):
+    product = persist_product(db_session)
+    storage = FakeProductStorage()
+    database_error = DatabaseError("INSERT", {}, RuntimeError("database down"))
+
+    with (
+        patch.object(db_session, "commit", side_effect=database_error),
+        patch.object(
+            db_session,
+            "rollback",
+            side_effect=RuntimeError("rollback failed"),
+        ) as rollback,
+        pytest.raises(DatabaseError) as error,
+    ):
+        store_product_image(
+            db_session,
+            storage,
+            product.id,
+            BytesIO(b"png-image"),
+            "catalog.png",
+            "image/png",
+        )
+
+    assert error.value is database_error
+    assert rollback.call_count == 1
+    assert storage.deleted == [storage.put_objects[0]]
+
+
+def test_store_product_image_preserves_database_error_when_delete_fails(db_session):
+    product = persist_product(db_session)
+    delete_error = RuntimeError("delete failed")
+    storage = FakeProductStorage(delete_error=delete_error)
+    database_error = DatabaseError("INSERT", {}, RuntimeError("database down"))
+
+    with (
+        patch.object(db_session, "commit", side_effect=database_error),
+        patch.object(db_session, "rollback", wraps=db_session.rollback) as rollback,
+        pytest.raises(DatabaseError) as error,
+    ):
+        store_product_image(
+            db_session,
+            storage,
+            product.id,
+            BytesIO(b"png-image"),
+            "catalog.png",
+            "image/png",
+        )
+
+    assert error.value is database_error
+    assert rollback.call_count == 1
+    assert storage.deleted == [storage.put_objects[0]]
 
 
 def test_upload_route_returns_public_contract_without_object_name(
