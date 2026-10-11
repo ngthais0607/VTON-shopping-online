@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -15,6 +17,8 @@ from app.features.users.model import User
 from app.core.rate_limiter import limiter
 from app.core.queue import enqueue_task
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/users",
@@ -67,7 +71,10 @@ async def register_user(
     )
 
     saved_user = save_to_db(db, new_user)
-    await enqueue_task("send_welcome_email_task", saved_user.id)
+    try:
+        await enqueue_task("send_welcome_email_task", saved_user.id)
+    except Exception:
+        logger.exception("Failed to enqueue welcome email for user %s", saved_user.id)
     return user_to_json(saved_user)
 
 
@@ -334,6 +341,19 @@ def update_user(
         raise HTTPException(
             status_code=404,
             detail="User not found"
+        )
+
+    existed_user = db.query(User).filter(
+        User.id != user_id,
+        or_(
+            User.email == updated_user.email,
+            User.username == updated_user.username,
+        ),
+    ).first()
+    if existed_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Username or email already exists",
         )
 
     user.username = updated_user.username

@@ -1,7 +1,7 @@
 import os
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 # Thiết lập biến môi trường cấu hình JWT & DB để chạy kiểm thử
@@ -30,6 +30,18 @@ SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
+
+
+@event.listens_for(engine, "connect")
+def configure_sqlite_transactions(dbapi_connection, _connection_record):
+    dbapi_connection.isolation_level = None
+
+
+@event.listens_for(engine, "begin")
+def begin_sqlite_transaction(connection):
+    connection.exec_driver_sql("BEGIN")
+
+
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -51,12 +63,16 @@ def setup_db():
 def db_session():
     connection = engine.connect()
     transaction = connection.begin()
-    session = TestingSessionLocal(bind=connection)
+    session = TestingSessionLocal(
+        bind=connection,
+        join_transaction_mode="create_savepoint",
+    )
     
     yield session
     
     session.close()
-    transaction.rollback()
+    if transaction.is_active:
+        transaction.rollback()
     connection.close()
 
 

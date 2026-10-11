@@ -131,3 +131,76 @@ def test_deleted_user_access_token_is_rejected(client, db_session):
 
     assert response.status_code == 401
 
+
+def test_registration_queue_failure_keeps_committed_user(
+    client, db_session, monkeypatch
+):
+    async def fail_to_enqueue(*_args, **_kwargs):
+        raise RuntimeError("queue unavailable")
+
+    monkeypatch.setattr("app.features.users.router.enqueue_task", fail_to_enqueue)
+
+    response = client.post(
+        "/users/register",
+        json={
+            "username": "queue_survivor",
+            "email": "queue-survivor@example.com",
+            "password": "StrongPassword123!",
+        },
+    )
+
+    assert response.status_code == 201
+    assert (
+        db_session.query(User)
+        .filter(User.email == "queue-survivor@example.com")
+        .one()
+        .username
+        == "queue_survivor"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "collision_value"),
+    [
+        ("username", "existing_user"),
+        ("email", "existing@example.com"),
+    ],
+)
+def test_admin_update_collision_returns_400_without_mutating_users(
+    client, db_session, mock_admin_auth, field, collision_value
+):
+    target = User(
+        username="target_user",
+        email="target@example.com",
+        password_hash="unused",
+        role="customer",
+    )
+    existing = User(
+        username="existing_user",
+        email="existing@example.com",
+        password_hash="unused",
+        role="customer",
+    )
+    db_session.add_all([target, existing])
+    db_session.commit()
+
+    payload = {
+        "username": "target_user",
+        "email": "target@example.com",
+        "first_name": "Changed",
+        "last_name": "Name",
+    }
+    payload[field] = collision_value
+
+    response = client.put(f"/users/{target.id}", json=payload)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Username or email already exists"
+    db_session.refresh(target)
+    db_session.refresh(existing)
+    assert target.username == "target_user"
+    assert target.email == "target@example.com"
+    assert target.first_name is None
+    assert existing.username == "existing_user"
+    assert existing.email == "existing@example.com"
+
