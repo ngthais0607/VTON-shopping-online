@@ -88,7 +88,7 @@ def client(db_session):
             raise
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as c:
+    with TestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.clear()
 

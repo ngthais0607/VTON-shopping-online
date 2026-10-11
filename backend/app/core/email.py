@@ -1,13 +1,16 @@
-import os
 import logging
-from email.mime.text import MIMEText
+import os
 from email.mime.multipart import MIMEMultipart
-from jinja2 import Environment, FileSystemLoader
+from email.mime.text import MIMEText
+
 import aiosmtplib
+from jinja2 import Environment, FileSystemLoader
 
 logger = logging.getLogger(__name__)
 
-TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates", "emails")
+TEMPLATES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "templates", "emails"
+)
 jinja_env = Environment(loader=FileSystemLoader(TEMPLATES_DIR))
 
 EMAILS_ENABLED = os.getenv("EMAILS_ENABLED", "True").lower() == "true"
@@ -27,17 +30,19 @@ async def render_email_template(template_name: str, context: dict) -> str:
 
 async def send_email(subject: str, recipient: str, template_name: str, context: dict):
     if not EMAILS_ENABLED:
-        logger.info(f"Email disabled. Skipping email to {recipient} with subject: {subject}")
+        logger.info(
+            f"Email disabled. Skipping email to {recipient} with subject: {subject}"
+        )
         return
 
     html_content = await render_email_template(template_name, context)
 
     if EMAILS_CONSOLE_LOG:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print(f"[EMAIL CONSOLE LOG] To: {recipient} | Subject: {subject}")
-        print("="*60)
+        print("=" * 60)
         print(html_content)
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
         logger.info(f"[CONSOLE LOG MODE] Email printed for {recipient}")
         return
 
@@ -54,7 +59,7 @@ async def send_email(subject: str, recipient: str, template_name: str, context: 
             port=SMTP_PORT,
             username=SMTP_USER,
             password=SMTP_PASSWORD,
-            start_tls=True
+            start_tls=True,
         )
         logger.info(f"Email sent successfully to {recipient}")
     except Exception as e:
