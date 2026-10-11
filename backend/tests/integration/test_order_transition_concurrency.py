@@ -28,7 +28,7 @@ from app.features.orders.service import (
 )
 from app.features.products.model import Product
 from app.features.users.model import User
-from app.jobs.order_jobs import expire_pending_orders
+from app.worker import cron_expire_pending_orders
 
 pytestmark = pytest.mark.integration
 
@@ -134,9 +134,11 @@ def test_expiration_worker_rechecks_status_after_waiting_for_lock():
     apply_order_transition(locked_order, OrderStatus.PAID)
     locking_session.flush()
 
-    with patch("app.jobs.order_jobs.SessionLocal", session_factory):
+    with patch("app.worker.SessionLocal", session_factory):
         with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(expire_pending_orders)
+            future = executor.submit(
+                lambda: asyncio.run(cron_expire_pending_orders({}))
+            )
             time.sleep(0.3)
             locking_session.commit()
             future.result(timeout=5)

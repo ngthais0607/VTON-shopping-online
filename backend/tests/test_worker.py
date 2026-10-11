@@ -1,16 +1,38 @@
-import pytest
+import asyncio
 import unittest.mock
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
 from app.features.orders.model import Order
-from app.features.users.model import User
 from app.features.products.model import Product
+from app.features.users.model import User
 from app.worker import (
+    cron_expire_pending_orders,
     send_order_confirmation_email_task,
     send_payment_received_email_task,
     send_welcome_email_task,
-    cron_expire_pending_orders
 )
-from app.jobs.order_jobs import expire_pending_orders
+
+
+@pytest.mark.anyio
+async def test_worker_closes_and_rolls_back_session_when_job_fails(monkeypatch):
+    from unittest.mock import AsyncMock, Mock
+
+    session = Mock()
+    job = AsyncMock(side_effect=RuntimeError("delivery failed"))
+    monkeypatch.setattr("app.worker.SessionLocal", lambda: session)
+    monkeypatch.setattr("app.worker.send_welcome_email", job, raising=False)
+
+    with pytest.raises(RuntimeError, match="delivery failed"):
+        await send_welcome_email_task({}, 7)
+
+    job.assert_awaited_once()
+    session.rollback.assert_called_once()
+    session.close.assert_called_once()
+
 
 @pytest.mark.anyio
 async def test_send_order_confirmation_email_task(db_session):
@@ -25,7 +47,7 @@ async def test_send_order_confirmation_email_task(db_session):
         password_hash="hashedpassword123",
         role="customer",
         first_name="Worker",
-        last_name="User"
+        last_name="User",
     )
     db_session.add(user)
     db_session.commit()
@@ -47,10 +69,15 @@ async def test_send_order_confirmation_email_task(db_session):
     db_session.add(order)
     db_session.commit()
 
-    with unittest.mock.patch("app.worker.SessionLocal", return_value=db_session), \
-         unittest.mock.patch("app.worker.send_email", new_callable=unittest.mock.AsyncMock) as mock_send:
+    mock_send = AsyncMock()
+    with (
+        unittest.mock.patch("app.worker.SessionLocal", return_value=db_session),
+        unittest.mock.patch(
+            "app.worker.SmtpEmailSender", return_value=SimpleNamespace(send=mock_send)
+        ),
+    ):
         await send_order_confirmation_email_task({}, order.id)
-        mock_send.assert_called_once()
+        mock_send.assert_awaited_once()
         _, kwargs = mock_send.call_args
         assert "Xác nhận đơn hàng" in kwargs["subject"]
         assert kwargs["recipient"] == "worker1@example.com"
@@ -68,7 +95,7 @@ async def test_send_payment_received_email_task(db_session):
         password_hash="hashedpassword123",
         role="customer",
         first_name="Paid",
-        last_name="User"
+        last_name="User",
     )
     db_session.add(user)
     db_session.commit()
@@ -90,10 +117,15 @@ async def test_send_payment_received_email_task(db_session):
     db_session.add(order)
     db_session.commit()
 
-    with unittest.mock.patch("app.worker.SessionLocal", return_value=db_session), \
-         unittest.mock.patch("app.worker.send_email", new_callable=unittest.mock.AsyncMock) as mock_send:
+    mock_send = AsyncMock()
+    with (
+        unittest.mock.patch("app.worker.SessionLocal", return_value=db_session),
+        unittest.mock.patch(
+            "app.worker.SmtpEmailSender", return_value=SimpleNamespace(send=mock_send)
+        ),
+    ):
         await send_payment_received_email_task({}, order.id)
-        mock_send.assert_called_once()
+        mock_send.assert_awaited_once()
         _, kwargs = mock_send.call_args
         assert "Xác nhận thanh toán" in kwargs["subject"]
         assert kwargs["recipient"] == "worker2@example.com"
@@ -107,15 +139,20 @@ async def test_send_welcome_email_task(db_session):
         password_hash="hashedpassword123",
         role="customer",
         first_name="Welcome",
-        last_name="User"
+        last_name="User",
     )
     db_session.add(user)
     db_session.commit()
 
-    with unittest.mock.patch("app.worker.SessionLocal", return_value=db_session), \
-         unittest.mock.patch("app.worker.send_email", new_callable=unittest.mock.AsyncMock) as mock_send:
+    mock_send = AsyncMock()
+    with (
+        unittest.mock.patch("app.worker.SessionLocal", return_value=db_session),
+        unittest.mock.patch(
+            "app.worker.SmtpEmailSender", return_value=SimpleNamespace(send=mock_send)
+        ),
+    ):
         await send_welcome_email_task({}, user.id)
-        mock_send.assert_called_once()
+        mock_send.assert_awaited_once()
         _, kwargs = mock_send.call_args
         assert "Chào mừng" in kwargs["subject"]
         assert kwargs["recipient"] == "worker3@example.com"
@@ -123,25 +160,46 @@ async def test_send_welcome_email_task(db_session):
 
 @pytest.mark.anyio
 async def test_cron_expire_pending_orders():
-    with unittest.mock.patch("app.worker.expire_pending_orders") as mock_expire:
+    with (
+        unittest.mock.patch("app.worker.SessionLocal"),
+        unittest.mock.patch("app.worker.expire_pending_orders") as mock_expire,
+    ):
         await cron_expire_pending_orders({})
         mock_expire.assert_called_once()
 
 
 def test_expiration_only_changes_expired_vietqr_pending_orders(db_session):
-    product = Product(name="Expiration product", price=100, stock_quantity=10, reserved_quantity=2)
+    product = Product(
+        name="Expiration product", price=100, stock_quantity=10, reserved_quantity=2
+    )
     db_session.add(product)
     db_session.commit()
     expired_vietqr = Order(
-        product_id=product.id, product_name=product.name, unit_price=100, quantity=1,
-        total_amount=100, currency="USD", status="pending", payment_method="vietqr",
-        customer_name="VietQR", customer_phone="1", shipping_address="Address",
+        product_id=product.id,
+        product_name=product.name,
+        unit_price=100,
+        quantity=1,
+        total_amount=100,
+        currency="USD",
+        status="pending",
+        payment_method="vietqr",
+        customer_name="VietQR",
+        customer_phone="1",
+        shipping_address="Address",
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
     confirmed_cod = Order(
-        product_id=product.id, product_name=product.name, unit_price=100, quantity=1,
-        total_amount=100, currency="USD", status="confirmed", payment_method="cod",
-        customer_name="COD", customer_phone="2", shipping_address="Address",
+        product_id=product.id,
+        product_name=product.name,
+        unit_price=100,
+        quantity=1,
+        total_amount=100,
+        currency="USD",
+        status="confirmed",
+        payment_method="cod",
+        customer_name="COD",
+        customer_phone="2",
+        shipping_address="Address",
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
     db_session.add_all([expired_vietqr, confirmed_cod])
@@ -150,8 +208,8 @@ def test_expiration_only_changes_expired_vietqr_pending_orders(db_session):
     confirmed_cod_id = confirmed_cod.id
     product_id = product.id
 
-    with unittest.mock.patch("app.jobs.order_jobs.SessionLocal", return_value=db_session):
-        expire_pending_orders()
+    with unittest.mock.patch("app.worker.SessionLocal", return_value=db_session):
+        asyncio.run(cron_expire_pending_orders({}))
 
     assert db_session.get(Order, expired_vietqr_id).status == "expired"
     assert db_session.get(Order, confirmed_cod_id).status == "confirmed"

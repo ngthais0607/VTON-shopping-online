@@ -8,6 +8,28 @@ from app.integrations import queue as queue_module
 from app.integrations.queue import ArqTaskQueue, get_task_queue, parse_redis_settings
 
 
+def test_worker_uses_queue_parser_for_credentials_and_tls(monkeypatch):
+    from app import worker
+
+    monkeypatch.setattr(
+        worker,
+        "get_settings",
+        lambda: SimpleNamespace(
+            redis_url="rediss://worker:secret@redis.internal:6380/3"
+        ),
+    )
+
+    settings = worker.get_redis_settings()
+
+    assert (settings.username, settings.password) == ("worker", "secret")
+    assert (settings.host, settings.port, settings.database, settings.ssl) == (
+        "redis.internal",
+        6380,
+        3,
+        True,
+    )
+
+
 def test_parse_redis_settings():
     settings = parse_redis_settings("redis://redis_host:6380/2")
 
