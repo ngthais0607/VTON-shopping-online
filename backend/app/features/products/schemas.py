@@ -2,7 +2,14 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    AliasPath,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from app.core.config import get_settings
 
@@ -131,24 +138,26 @@ class ProductResponse(BaseModel):
 
 
 class ReviewCreate(BaseModel):
-    rating: int
+    rating: int = Field(ge=1, le=5)
     title: str | None = None
     comment: str | None = None
 
 
 class ReviewResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     product_id: int
     user_id: int
-    user_name: str
+    user_name: str = Field(validation_alias=AliasPath("user", "full_name"))
     rating: int
     title: str | None = None
     comment: str | None = None
     is_verified_purchase: bool
-    created_at: str | None = None
+    created_at: datetime | None = None
 
 
-class ProductReviewsResponse(BaseModel):
-    average_rating: float
+class ReviewSummary(BaseModel):
+    average_rating: float | None
     total_reviews: int
     reviews: list[ReviewResponse]

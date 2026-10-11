@@ -1,49 +1,102 @@
+from unittest.mock import patch
+
+import pytest
+
 from app.features.orders.model import Order
 from app.features.products.model import Product
 
+REVIEWS_PATH = "/api/v1/products/{product_id}/reviews"
 
-def test_get_reviews_empty(client, db_session):
-    product = Product(
-        name="Test Product for Reviews",
-        price=99.99,
-        stock_quantity=10,
-        description="Awesome product",
-    )
+
+def persist_product(db_session, **overrides):
+    values = {
+        "name": "Review product",
+        "price": 99.99,
+        "stock_quantity": 10,
+    }
+    product = Product(**(values | overrides))
     db_session.add(product)
     db_session.commit()
+    db_session.refresh(product)
+    return product
 
-    resp = client.get(f"/api/v1/products/{product.id}/reviews")
+
+def test_get_reviews_empty(client, db_session):
+    product = persist_product(db_session)
+
+    resp = client.get(REVIEWS_PATH.format(product_id=product.id))
+
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["total_reviews"] == 0
-    assert data["average_rating"] == 5.0
-    assert data["reviews"] == []
+    assert resp.json() == {
+        "average_rating": None,
+        "total_reviews": 0,
+        "reviews": [],
+    }
+
+
+@pytest.mark.parametrize("rating", [0, 6])
+def test_create_review_rejects_rating_outside_one_to_five(
+    client,
+    mock_user_auth,
+    db_session,
+    rating,
+):
+    product = persist_product(db_session)
+
+    response = client.post(
+        REVIEWS_PATH.format(product_id=product.id),
+        json={"rating": rating},
+    )
+
+    assert response.status_code == 422
+
+
+def test_soft_deleted_product_reviews_use_common_not_found_response(
+    client,
+    db_session,
+):
+    product = persist_product(db_session, is_deleted=True)
+
+    response = client.get(REVIEWS_PATH.format(product_id=product.id))
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "code": "product_not_found",
+        "message": f"Product {product.id} was not found",
+        "details": None,
+    }
 
 
 def test_create_review_unverified(client, mock_user_auth, db_session):
-    product = Product(name="Unverified Product Test", price=49.99, stock_quantity=5)
-    db_session.add(product)
-    db_session.commit()
+    product = persist_product(
+        db_session,
+        name="Unverified Product Test",
+        price=49.99,
+        stock_quantity=5,
+    )
 
     review_resp = client.post(
-        f"/api/v1/products/{product.id}/reviews",
+        REVIEWS_PATH.format(product_id=product.id),
         json={"rating": 4, "title": "Decent Product", "comment": "Works well overall"},
     )
     assert review_resp.status_code == 201
     data = review_resp.json()
     assert data["rating"] == 4
     assert data["title"] == "Decent Product"
-    assert data["is_verified_purchase"] == False
+    assert data["is_verified_purchase"] is False
 
-    reviews_list = client.get(f"/api/v1/products/{product.id}/reviews").json()
+    reviews_list = client.get(REVIEWS_PATH.format(product_id=product.id)).json()
     assert reviews_list["total_reviews"] == 1
     assert reviews_list["average_rating"] == 4.0
 
 
 def test_create_review_verified_buyer(client, mock_user_auth, db_session):
-    product = Product(name="Verified Product Test", price=199.99, stock_quantity=20)
-    db_session.add(product)
-    db_session.commit()
+    product = persist_product(
+        db_session,
+        name="Verified Product Test",
+        price=199.99,
+        stock_quantity=20,
+    )
 
     order_resp = client.post(
         "/orders/checkout-cart",
@@ -63,7 +116,7 @@ def test_create_review_verified_buyer(client, mock_user_auth, db_session):
     db_session.commit()
 
     review_resp = client.post(
-        f"/api/v1/products/{product.id}/reviews",
+        REVIEWS_PATH.format(product_id=product.id),
         json={
             "rating": 5,
             "title": "Must Have!",
@@ -73,7 +126,30 @@ def test_create_review_verified_buyer(client, mock_user_auth, db_session):
     assert review_resp.status_code == 201
     data = review_resp.json()
     assert data["rating"] == 5
-    assert data["is_verified_purchase"] == True
+    assert data["is_verified_purchase"] is True
+
+
+def test_create_review_service_commits_once(
+    db_session,
+    mock_user_auth,
+):
+    from app.features.products.reviews import create_product_review
+    from app.features.products.schemas import ReviewCreate
+
+    product = persist_product(db_session)
+
+    with patch.object(db_session, "commit", wraps=db_session.commit) as commit:
+        review = create_product_review(
+            db_session,
+            product.id,
+            mock_user_auth,
+            ReviewCreate(rating=3, title="Fine"),
+        )
+
+    assert commit.call_count == 1
+    assert review.product_id == product.id
+    assert review.user_id == mock_user_auth.id
+    assert review.is_verified_purchase is False
 
 
 def test_update_profile_me(client, mock_user_auth):

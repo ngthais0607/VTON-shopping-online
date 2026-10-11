@@ -7,14 +7,16 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db, save_to_db
 from app.core.schemas import Page
 from app.core.security import get_current_admin, get_current_user
-from app.features.orders.model import Order
-from app.features.products import schemas, service
-from app.features.products.model import Product, ProductImage, ProductReview
+from app.features.products import reviews, service
+from app.features.products.model import Product, ProductImage
 from app.features.products.schemas import (
     ProductCreate,
     ProductFilters,
     ProductPatch,
     ProductResponse,
+    ReviewCreate,
+    ReviewResponse,
+    ReviewSummary,
 )
 from app.features.users.model import User
 from app.integrations.minio_client import (
@@ -146,119 +148,23 @@ def upload_product_image(
 
 @router.get(
     "/{product_id}/reviews",
+    response_model=ReviewSummary,
     summary="Get product reviews and average rating",
 )
 def get_product_reviews(product_id: int, db: Session = Depends(get_db)):
-    product = (
-        db.query(Product)
-        .filter(
-            Product.id == product_id,
-            Product.is_deleted == False,
-        )
-        .first()
-    )
-
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    reviews = (
-        db.query(ProductReview)
-        .filter(ProductReview.product_id == product_id)
-        .order_by(ProductReview.created_at.desc())
-        .all()
-    )
-
-    total_reviews = len(reviews)
-    avg_rating = (
-        sum(review.rating for review in reviews) / total_reviews
-        if total_reviews > 0
-        else 5.0
-    )
-
-    review_list = [
-        {
-            "id": review.id,
-            "product_id": review.product_id,
-            "user_id": review.user_id,
-            "user_name": review.user.full_name if review.user else "Anonymous User",
-            "rating": review.rating,
-            "title": review.title,
-            "comment": review.comment,
-            "is_verified_purchase": review.is_verified_purchase,
-            "created_at": (
-                review.created_at.isoformat() if review.created_at else None
-            ),
-        }
-        for review in reviews
-    ]
-
-    return {
-        "average_rating": round(avg_rating, 1),
-        "total_reviews": total_reviews,
-        "reviews": review_list,
-    }
+    return reviews.list_product_reviews(db, product_id)
 
 
 @router.post(
     "/{product_id}/reviews",
+    response_model=ReviewResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Submit product review",
 )
 def create_product_review(
     product_id: int,
-    review_data: schemas.ReviewCreate,
+    command: ReviewCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if review_data.rating < 1 or review_data.rating > 5:
-        raise HTTPException(
-            status_code=400,
-            detail="Rating must be between 1 and 5",
-        )
-
-    product = (
-        db.query(Product)
-        .filter(
-            Product.id == product_id,
-            Product.is_deleted == False,
-        )
-        .first()
-    )
-
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    paid_order = (
-        db.query(Order)
-        .filter(
-            Order.user_id == current_user.id,
-            Order.product_id == product_id,
-            Order.status == "paid",
-        )
-        .first()
-    )
-    is_verified = paid_order is not None
-
-    new_review = ProductReview(
-        product_id=product_id,
-        user_id=current_user.id,
-        rating=review_data.rating,
-        title=review_data.title,
-        comment=review_data.comment,
-        is_verified_purchase=is_verified,
-    )
-    saved_review = save_to_db(db, new_review)
-
-    return {
-        "id": saved_review.id,
-        "product_id": saved_review.product_id,
-        "user_id": saved_review.user_id,
-        "user_name": current_user.full_name,
-        "rating": saved_review.rating,
-        "title": saved_review.title,
-        "comment": saved_review.comment,
-        "is_verified_purchase": saved_review.is_verified_purchase,
-        "created_at": (
-            saved_review.created_at.isoformat() if saved_review.created_at else None
-        ),
-    }
+    return reviews.create_product_review(db, product_id, current_user, command)
