@@ -1,3 +1,84 @@
+import pytest
+
+
+def valid_product_payload(**overrides):
+    payload = {
+        "name": "Inventory Validation Product",
+        "price": 25.0,
+        "currency": "USD",
+        "stock_quantity": 10,
+        "reserved_quantity": 2,
+        "sold_quantity": 3,
+        "is_active": True,
+        "description": "Valid inventory baseline",
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"price": 0},
+        {"price": -1},
+        {"stock_quantity": -1},
+        {"reserved_quantity": -1},
+        {"sold_quantity": -1},
+        {"stock_quantity": 4, "reserved_quantity": 2, "sold_quantity": 3},
+    ],
+)
+def test_create_product_inventory_validation_rejects_invalid_values(
+    client, mock_admin_auth, overrides
+):
+    response = client.post("/products/", json=valid_product_payload(**overrides))
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"price": 0},
+        {"price": -1},
+        {"stock_quantity": -1},
+        {"reserved_quantity": -1},
+        {"sold_quantity": -1},
+        {"stock_quantity": 4, "reserved_quantity": 2, "sold_quantity": 3},
+    ],
+)
+def test_update_product_inventory_validation_rejects_invalid_values(
+    client, db_session, mock_admin_auth, overrides
+):
+    from app.features.products.model import Product
+
+    product = Product(**valid_product_payload())
+    db_session.add(product)
+    db_session.commit()
+
+    response = client.put(
+        f"/products/{product.id}",
+        json=valid_product_payload(**overrides),
+    )
+
+    assert response.status_code == 422
+
+
+def test_product_inventory_validation_accepts_fully_allocated_stock(
+    client, mock_admin_auth
+):
+    payload = valid_product_payload(
+        stock_quantity=5,
+        reserved_quantity=2,
+        sold_quantity=3,
+    )
+
+    created = client.post("/products/", json=payload)
+    assert created.status_code == 201
+
+    updated = client.put(f"/products/{created.json()['id']}", json=payload)
+    assert updated.status_code == 200
+
+
 def test_get_products_empty(client):
     """Kiểm tra xem khi database trống thì danh sách sản phẩm trả về có cấu trúc phân trang rỗng"""
     response = client.get("/products/")

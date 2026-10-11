@@ -107,13 +107,14 @@ def seed_database(db=None):
             prod = db.query(Product).filter(Product.name == name).first()
             if not prod:
                 category_id = created_categories[cat_idx].id if cat_idx < len(created_categories) else None
+                sold_quantity = random.randint(5, 40)
                 prod = Product(
                     name=name,
                     price=price,
                     description=desc,
-                    stock_quantity=stock,
+                    stock_quantity=stock + sold_quantity,
                     reserved_quantity=0,
-                    sold_quantity=random.randint(5, 40),
+                    sold_quantity=sold_quantity,
                     category_id=category_id,
                     currency="USD",
                     is_active=True
