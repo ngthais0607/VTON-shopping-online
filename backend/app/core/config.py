@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 def _parse_cors_origins(value: Any) -> Any:
     if isinstance(value, str):
-        return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return tuple(origin.strip() for origin in value.split(",") if origin.strip())
     return value
 
 
@@ -30,10 +30,10 @@ class Settings(BaseSettings):
 
     redis_url: str = "memory://"
     cors_origins: Annotated[
-        list[str],
+        tuple[str, ...],
         NoDecode,
         BeforeValidator(_parse_cors_origins),
-    ] = ["http://localhost:3000"]
+    ] = ("http://localhost:3000",)
 
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "admin"

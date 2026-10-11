@@ -17,6 +17,13 @@ def test_settings_are_cached_and_immutable():
         settings.secret_key = "replacement-secret"
 
 
+def test_cached_cors_origins_rejects_in_place_mutation():
+    settings = get_settings()
+
+    with pytest.raises(AttributeError):
+        settings.cors_origins.append("https://mutated.example.com")
+
+
 def test_settings_derives_minio_external_url_from_endpoint():
     settings = Settings(
         _env_file=None,
