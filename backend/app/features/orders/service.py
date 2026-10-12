@@ -17,6 +17,7 @@ from app.core.errors import (
 )
 from app.core.schemas import Page
 from app.features.categories.model import Category
+from app.features.dashboard.service import invalidate_dashboard_cache
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 from app.features.orders.domain import (
     aggregate_cart_items,
@@ -250,6 +251,7 @@ async def checkout_cart(
 
     db.commit()
     db.refresh(order)
+    invalidate_dashboard_cache()
 
     await _enqueue_best_effort(
         queue, "send_order_confirmation_email_task", order.id
@@ -338,6 +340,7 @@ async def change_order_status(
     apply_order_transition(order, new_status)
     db.commit()
     db.refresh(order)
+    invalidate_dashboard_cache()
     if new_status == OrderStatus.PAID:
         await _enqueue_best_effort(queue, "send_payment_received_email_task", order.id)
     return order_to_response(order)
@@ -435,7 +438,11 @@ def _build_tracking_response(order: Order) -> TrackingResponse:
     return response
 
 
-def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
+def expire_pending_orders(
+    db: Session,
+    now: datetime | None = None,
+    batch_size: int = 50,
+) -> int:
     current_time = now or datetime.now(timezone.utc)
     if current_time.tzinfo is None:
         current_time = current_time.replace(tzinfo=timezone.utc)
@@ -447,6 +454,7 @@ def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
             Order.expires_at <= current_time,
         )
         .order_by(Order.id)
+        .limit(batch_size)
         .all()
     )
     if not candidates:
@@ -465,14 +473,17 @@ def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
     # 1. Lock products FIRST
     locked_products = _lock_transition_products(db, all_product_ids)
 
-    # 2. Lock exact order rows in loop
+    # 2. Lock exact order rows in loop (with skip_locked if supported by dialect)
+    supports_skip_locked = bool(
+        db.bind and db.bind.dialect.name in ("mysql", "mariadb", "postgresql")
+    )
     expired_count = 0
-    for order_id, discovered_product_id in candidates:
+    for order_id, _discovered_product_id in candidates:
         order = (
             db.query(Order)
             .filter(Order.id == order_id)
             .populate_existing()
-            .with_for_update()
+            .with_for_update(skip_locked=supports_skip_locked)
             .first()
         )
         if (
@@ -496,6 +507,8 @@ def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
         apply_order_transition(order, OrderStatus.EXPIRED, current_time)
         expired_count += 1
     db.commit()
+    if expired_count > 0:
+        invalidate_dashboard_cache()
     return expired_count
 
 

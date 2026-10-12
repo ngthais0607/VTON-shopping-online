@@ -1,21 +1,33 @@
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import Settings, get_settings
 from app.core.errors import COMMON_ERROR_RESPONSES, register_error_handlers
 from app.core.rate_limiter import limiter
 from app.features.categories.router import router as categories_router
 from app.features.dashboard.router import router as dashboard_router
+from app.features.health.router import router as health_router
 from app.features.orders.router import router as order_router
 from app.features.products.router import router as product_router
 from app.features.users.router import router as user_router
 from app.integrations.queue import ArqTaskQueue, create_task_queue
 from app.integrations.storage import MinioProductStorage
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
 
 @asynccontextmanager
@@ -47,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     register_error_handlers(application)
 
+    application.add_middleware(RequestIDMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=application_settings.cors_origins,
@@ -55,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    application.include_router(health_router)
     application.include_router(product_router)
     application.include_router(user_router)
     application.include_router(categories_router)

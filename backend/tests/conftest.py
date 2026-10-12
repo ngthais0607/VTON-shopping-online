@@ -62,6 +62,9 @@ def setup_db():
 
 @pytest.fixture
 def db_session():
+    from app.features.dashboard.service import invalidate_dashboard_cache
+    invalidate_dashboard_cache()
+
     connection = engine.connect()
     transaction = connection.begin()
     session = TestingSessionLocal(
@@ -75,6 +78,7 @@ def db_session():
     if transaction.is_active:
         transaction.rollback()
     connection.close()
+    invalidate_dashboard_cache()
 
 
 @pytest.fixture

@@ -3,6 +3,7 @@
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.core.cache import get_cache
 from app.features.categories.model import Category
 from app.features.dashboard.schemas import (
     DashboardMetrics,
@@ -19,7 +20,20 @@ def _available_stock():
     return Product.stock_quantity - Product.reserved_quantity - Product.sold_quantity
 
 
-def get_metrics(db: Session) -> DashboardMetrics:
+def invalidate_dashboard_cache() -> None:
+    get_cache().delete("dashboard:metrics")
+
+
+def get_metrics(db: Session, use_cache: bool = True) -> DashboardMetrics:
+    cache = get_cache() if use_cache else None
+    if cache is not None:
+        cached = cache.get_json("dashboard:metrics")
+        if cached is not None:
+            try:
+                return DashboardMetrics(**cached)
+            except Exception:
+                pass
+
     available = _available_stock()
     total_products, active_products, low_stock = db.execute(
         select(
@@ -48,13 +62,16 @@ def get_metrics(db: Session) -> DashboardMetrics:
             ),
         )
     ).one()
-    return DashboardMetrics(
+    metrics = DashboardMetrics(
         total_products=total_products,
         active_products=active_products,
         low_stock=low_stock,
         pending_orders=pending_orders,
         revenue=revenue,
     )
+    if cache is not None:
+        cache.set_json("dashboard:metrics", metrics.model_dump(mode="json"), ex=60)
+    return metrics
 
 
 def get_recent_orders(db: Session, limit: int) -> list[RecentOrderSummary]:
