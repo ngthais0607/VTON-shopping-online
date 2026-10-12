@@ -1,17 +1,17 @@
-# MVP backend refactor: pre-integration review (2026-10-12)
+# MVP backend refactor: merged review record (2026-10-12)
 
-Scope reviewed: `c440e05` through `27c4315`, plus the two uncommitted Task 10 architecture/OpenAPI test corrections and this Task 11 documentation. This is the Task 11 pre-integration review, **not final approval or a merge decision**. A later final-fix wave addressed several findings below; the controller still owns scoped re-review and merge. The Task 10 test edits belong to that task and were not staged or committed during Task 11.
+Scope: implementation from `c440e05` through `27c4315`, followed by the final-fix commit `e537297`. The Task 10 guard corrections and Task 11 documentation were included in `e537297`; a scoped independent re-review approved the final fix wave with no remaining Critical or Important findings. The user-authorized fast-forward to `main` completed at `e537297`. This record preserves the earlier Task 11 evidence while distinguishing resolved review findings from unverified external delivery. **A backend merge is not a storefront release or live-integration certification.**
 
-## Result and severity-ranked concerns
+## Review outcome and remaining limitations
 
-| Severity | Finding / required action | Evidence |
+| Status | Finding / decision | Evidence |
 | --- | --- | --- |
-| High (deployment) | The checked-in `arq_worker` Compose service supplies `DATABASE_URL` and `REDIS_URL` but not required `SECRET_KEY`. A clean image has no configured `.env`; `WorkerSettings` imports settings during module loading. Supply the secret to this service (and verify the deployment configuration) before advertising `docker compose up -d arq_worker` as working. | `docker-compose.yml` (`arq_worker.environment`), `backend/Dockerfile`, `backend/app/core/config.py`, `backend/app/worker.py` |
-| High (integration readiness) | The current frontend has not been migrated to `/api/v1`, `PATCH /users/me`, and changed response shapes. It cannot be treated as a verified client for this backend. Keep frontend release separate until migrated and tested. | `frontend/lib/api.ts`, `frontend/app/store/checkout/page.tsx`, `frontend/app/store/account/page.tsx`, backend routers |
-| Medium (external confidence) | MariaDB checkout/transition/uniqueness/fulfillment integration cases, plus live Redis, MinIO, and SMTP behavior, have not been run against services in this Task 11 environment. Run them on isolated disposable infrastructure before production deployment. | No `TEST_DATABASE_URL`; 9 pytest skips; mocked adapter tests only |
-| Low (lifecycle) | The cached `ArqTaskQueue` opens a Redis pool on first enqueue but has no explicit shutdown hook. Triage pool closure in the final review; no behavior change was made in docs scope. | `backend/app/integrations/queue.py`, `backend/app/main.py` |
+| Resolved in `e537297` | Original High Compose worker gap: the service now passes caller-provided `SECRET_KEY` without baking it into the image. `docker compose config` verified the resolved environment; a live worker startup was not tested. | `docker-compose.yml`, final-fix report |
+| Resolved in `e537297` | Original Low queue lifecycle gap: pool creation is synchronized/lazy, queue is app-owned, and lifespan closes an opened pool. | `backend/app/integrations/queue.py`, `backend/app/main.py` |
+| Unverified integration | The checked-in frontend still calls old paths/methods/shapes and has not been migrated to `/api/v1`. Do not treat it as a working client or release the storefront on this backend without migration and end-to-end tests. | `frontend/lib/api.ts`, `frontend/app/store/account/page.tsx`, backend routers |
+| Unverified external delivery | Ten MariaDB-gated cases, including PATCH/checkout contention, skipped without `TEST_DATABASE_URL`. Live Redis, MinIO, SMTP, and worker startup remain unverified. Use isolated infrastructure before production claims. | Post-merge pytest result; `backend/tests/integration/`; final-fix report |
 
-No Critical issue was established by this documentation pass. The High entries above are release gates, not claims that the backend unit suite failed. They were not changed because Task 11 scope is README/review documentation; the controller owns final remediation/acceptance.
+The final whole-branch review found 2 High inventory findings, 7 Important issues, and 3 Minor issues. One final fix wave addressed all of them; its scoped independent re-review found no remaining Critical or Important issue. The two resolved rows above are not open backend code findings. The frontend and external-service limitations remain separate follow-up work.
 
 ## Architecture and scope review
 
@@ -34,7 +34,17 @@ Breaking changes requiring consumer migration:
 
 **Deployment order:** back up and migrate the database to `8f4c2d1a7b90` before deploying application/worker code that reads `users.refresh_version`. Do not run `seed.py` against an existing production database. Migrate the frontend separately against `/api/v1` and the new schemas before any end-to-end claim.
 
-## Verification performed for Task 11
+## Recorded rulings and their costs
+
+The execution ledger made these explicit scope decisions; they remain part of the merge rationale:
+
+1. **Minimal refresh-version migration:** the existing timestamp could not guarantee durable refresh replay rejection, so Task 6 added a correctness-proven `users.refresh_version` migration under the schema-change exception. Cost: migrate before code deployment and require legacy sessions/tokens to log in again.
+2. **Continue during Git metadata denial:** Task 10 review and Task 11 documentation proceeded from the intact working diff while worktree index writes were unavailable. Cost: those task changes remained uncommitted until permissions allowed their inclusion in `e537297`; scratch reports were preserved.
+3. **No invented currency conversion:** reject mixed-currency carts, require VND for VietQR, and use the same rounded amount for instructions and API response. Cost: non-VND bank-transfer carts are rejected until an explicit payment/conversion policy exists; homogeneous non-VND COD remains supported.
+4. **Preserve existing collection/session scope:** review and user-order collections retain their existing shapes, and refresh rotation remains per user rather than per device. Cost: pagination for those collections and independent per-device sessions remain follow-up work.
+5. **Limit the backend verdict:** frontend migration and live external integrations were excluded from this backend milestone because the approved scope did not include the client and test services were unavailable. Cost: the merge is neither storefront release approval nor certification of live MariaDB/Redis/MinIO/SMTP behavior.
+
+## Historical Task 11 verification (before final fix wave)
 
 All commands below ran from `backend/` with a task-local `SECRET_KEY`; no real DB was seeded and no production service was contacted.
 
@@ -47,18 +57,24 @@ All commands below ran from `backend/` with a task-local `SECRET_KEY`; no real D
 | Backend suite | `python -m pytest -q -W error::sqlalchemy.exc.SAWarning -p no:cacheprovider --basetemp .pytest-tmp/task11-full` → **189 passed, 9 skipped, 1 warning** in 41.45 seconds. The warning is a third-party Starlette/httpx deprecation; no SQLAlchemy SAWarning was emitted. |
 | Empty DB migration | With `DATABASE_URL=sqlite:///./task11-empty-check-20261012.db`: `alembic upgrade head`, `alembic current` → `8f4c2d1a7b90 (head)`; a read-only SQLite check confirmed `refresh_version` exists. This proves the fresh SQLite path only, not MariaDB migration. |
 | Seed safety | Inspected `app/seed.py`: no CLI parser, help, or dry-run; `python -m app.seed` immediately writes data. Deliberately **not run**. |
-| Diff whitespace | `git diff --check` → exit 0 at documentation draft stage. Run again at final handoff. |
+| Diff whitespace | `git diff --check` → exit 0 at documentation draft stage. |
 
 `TEST_DATABASE_URL` was absent. The external command, **not run against MariaDB**, is: `python -m pytest tests/integration/test_checkout_concurrency.py tests/integration/test_order_transition_concurrency.py tests/integration/test_user_uniqueness_concurrency.py tests/integration/test_order_fulfillment_migration.py -q -W error::sqlalchemy.exc.SAWarning -p no:cacheprovider`, after provisioning a dedicated empty test MariaDB database and setting `TEST_DATABASE_URL`. These nine skipped tests are not passes. No live Redis, MinIO, SMTP, server startup, or frontend run was claimed.
 
-Cleanup limitation: the exact disposable `backend/task11-empty-check-20261012.db` (86,016 bytes) and `backend/.pytest-tmp/task11-full` were created for these gates. A sandbox policy denied `Remove-Item` even for those exact paths; they remain ignored/untracked and must be removed by the controller or an authorized environment after confirming the paths. No other database or cache was touched.
+Cleanup limitation: the exact disposable `backend/task11-empty-check-20261012.db` (86,016 bytes) and `backend/.pytest-tmp/task11-full` were created for these gates. Exact-target removal was denied by the command runner, including a later verified retry. These ignored artifacts were left untouched; no broad cleanup was attempted.
 
-## Final-fix wave addendum (pending controller re-review)
+## Final-fix wave and scoped re-review
 
 - Compose now passes `SECRET_KEY` from the caller's runtime environment to `arq_worker`; no secret is baked into the image. Worker startup against live Compose dependencies remains unverified.
 - Product PATCH locks and refreshes its row before inventory merge. Order transitions and expiration retain the refreshed locked product instance instead of permitting an implicit non-locking reload. Checkout hides products in soft-deleted categories. A gated MariaDB test coordinates PATCH against checkout; it has not run without `TEST_DATABASE_URL`.
 - Checkout and review request lengths now match their storage columns. Checkout rejects mixed currencies before mutation and requires VND for VietQR, using one rounded adapter result for QR URL and API amount; COD remains available for a homogeneous non-VND cart. Legacy success fixtures were updated to use VND where they exercise VietQR.
 - New passwords are limited to 72 UTF-8 bytes; malformed login passwords return an authentication error. Refresh cookies default to `Secure` and can be explicitly disabled for local plain HTTP; logout uses matching flags. JSON login advertises HTTP bearer authentication rather than an unsupported OAuth form flow.
 - ARQ pool construction is synchronized and lazy, app-owned, and closed on lifespan shutdown. Dependency construction does not connect to Redis before a database commit. README gives evidence-based `domain.py`/`repository.py` promotion rules and instructs migration of a disposable MariaDB test database before the suite, including the migration test's `CREATE`/`DROP` privileges.
-- The local full backend run with SQLAlchemy `SAWarning` fatal was **227 passed, 10 skipped, 1 third-party Starlette/httpx warning**. The ten skipped cases require disposable MariaDB `TEST_DATABASE_URL`; live Redis, MinIO, and SMTP remain unverified. This addendum does not convert skips into passes or approve frontend compatibility.
+- The final-fix worktree run with SQLAlchemy `SAWarning` fatal was **227 passed, 10 skipped, 1 third-party Starlette/httpx warning**. The ten skipped cases require disposable MariaDB `TEST_DATABASE_URL`; live Redis, MinIO, and SMTP remain unverified. The independent scoped re-review approved these fixes with no remaining Critical or Important finding. This does not convert skips into passes or approve frontend compatibility.
 - An exact-target retry to remove the Task 11 SQLite database and known pytest temporary paths was rejected by the command runner's policy. They remain ignored and untouched; no broad cleanup was attempted.
+
+## Post-merge verification on `main`
+
+The controller fast-forwarded `main` to `e537297` with user authorization, then ran checks from the main checkout using its own `backend/.venv`. Its first full pytest attempt recorded **225 passed and 2 setup errors** because the chosen pytest basetemp parent directory did not exist; no code fix was made. After creating that parent directory, the complete rerun with SQLAlchemy `SAWarning` fatal reported **227 passed, 10 skipped, 1 third-party Starlette/httpx warning in 37.05 seconds**. This is the post-merge result; the earlier 189/9 and worktree 227/10 results above remain historical evidence, not additional post-merge runs.
+
+Post-merge Ruff format check reported **73 files already formatted**; Ruff lint, Python compile, and `git diff --check` passed. The checkout was clean before this documentation-only bookkeeping update. No live MariaDB, Redis, MinIO, SMTP, or frontend compatibility check was added during the merge. The ten gated MariaDB cases, including the new PATCH/checkout race, still require `TEST_DATABASE_URL` and an isolated migrated database; the fulfillment migration test also requires privileges to create/drop its own randomly named test database.
