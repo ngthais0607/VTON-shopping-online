@@ -3,7 +3,7 @@
 Date: 2026-10-12
 Branch: `be-fe-flow-repair`
 Baseline: `d83b983`
-Review status: implementation checks recorded; independent whole-branch review pending.
+Review status: independent whole-branch review completed; the Important findings were repaired and verified in one fix pass. No second review was requested.
 
 ## Delivered scope
 
@@ -11,11 +11,11 @@ The frontend now uses `/api/v1`, current login/profile/password contracts, paged
 
 ## Verification evidence
 
-- Frontend Vitest: 13 files, 40 tests passed, including transport, session, login validation/form submission, collections, image retry, cart/checkout, orders, dates and dashboard failure states.
+- Frontend Vitest: 16 files, 52 tests passed, including transport, session-boundary races, logout after protected-layout unmount, login validation/form submission, collection failures, image removal/replacement/retry, malformed nested cart data, cart/checkout, committed order totals, dates and dashboard failure states.
 - Frontend TypeScript and ESLint with zero allowed warnings: passed.
-- Frontend production build: passed for 26 routes before the final error-state fixes; final rebuild is being recorded before completion.
+- Frontend production build: final post-review build passed for 26 routes.
 - Backend pytest with SQLAlchemy warnings as errors: 238 passed, including all ten MariaDB-gated integration cases and a new cross-route customer/admin flow. No skipped test in this configured run.
-- Backend Ruff lint and compilation: passed. Format check required normalizing new lines in `tests/conftest.py`; final check follows formatting.
+- Backend Ruff format check (74 files), lint and compilation: passed after formatting `tests/conftest.py`.
 - `git diff --check`: passed.
 - Live HTTP against the actual FastAPI process, isolated migrated MariaDB demo database, separate MinIO bucket and dedicated Redis container: registration/login; paged product sort; product PATCH; image upload and public read; multi-item COD; owner isolation and admin-only status change; paid tracking; VietQR instructions; Redis jobs executed by an ARQ burst worker; expiration entry point; profile PATCH; refresh and cookie logout; reviews; password PATCH/204 and refresh invalidation; category DELETE/204. All assertions passed.
 
@@ -39,3 +39,15 @@ Same-action duplicate clicks are prevented in the client. A server-committed che
 - Use `127.0.0.1` for the IPv4-only Redis test binding after reproducing `localhost` IPv6 timeouts. This is local test configuration, not a queue abstraction rewrite.
 
 These decisions preserve the approved scope. Choosing a different paging/session/image approach later requires updating the associated hooks, consumers and regression fixtures together.
+
+## Final review disposition
+
+The [independent findings](final-review-findings.md) describe the pre-fix revision and preserve the reviewer's original verdict. Five Important findings were accepted: login generations/refresh isolation; visible catalog/options/delete failures; pending image intent; logout errors surviving protected-page redirects; and malformed nested cart data. Each affected behavior has a reproducing regression that failed before its repair and passed afterwards. The storefront error regression additionally confirms the final screen behavior.
+
+Two findings originally labeled Minor were promoted to Important by user-visible effect: an invalid empty product page violates the requested final-page recovery, and a missing committed COD total leaves the customer without the authoritative charged amount. Both were reproduced and repaired. The success page reloads every authorized returned order and sums persisted amounts by currency, rather than trusting query-string prices. The zero-total page test waits for the search debounce before pagination so a timer cannot mask the defect.
+
+One Minor remains deferred: the customers overview labels the current page's length as “Total Customers”; the paginated collection itself uses the correct backend total. It does not block account or order operations, but the overview label/count should be corrected in a follow-up.
+
+Review exclusions stand: currency/payment/VTON changes remain deferred; durable checkout idempotency and per-device token policy require separate designs; hosting, SMTP and browser behavior need release checks. No image-delete endpoint was added: the uploader disables removal of persisted images and explains that replacement is available. The cost is that saved images cannot yet be deleted from this screen.
+
+Local demo MariaDB/MinIO resources and the separate Redis container remain available for subsequent manual verification. Their generated names are recorded locally in `backend/.be-fe-verification-infrastructure.json`; the ignored demo environment targets these isolated resources. No API or frontend development server is left running by this verification session. Start them with the documented commands and matching ports/origins. The throwaway test database remains isolated from the demo database.

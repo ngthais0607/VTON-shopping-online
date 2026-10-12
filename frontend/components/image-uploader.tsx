@@ -10,7 +10,7 @@ interface ImageUploaderProps {
   productId?: number;
   currentImageUrl?: string;
   onUploadSuccess: (url: string) => void;
-  onFileSelected?: (file: File) => void;
+  onFileSelected?: (file: File | null) => void;
 }
 
 export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onFileSelected }: ImageUploaderProps) {
@@ -41,6 +41,7 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
 
     setError(null);
     setUploading(true);
+    onFileSelected?.(file);
 
     try {
       const formData = new FormData();
@@ -50,11 +51,11 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
       if (productId) {
         const response = await apiUpload<ProductImage>(`/products/${productId}/upload-image`, formData);
         uploadedUrl = response.url;
+        onFileSelected?.(null);
       } else {
         if (localPreview.current) URL.revokeObjectURL(localPreview.current);
         uploadedUrl = URL.createObjectURL(file);
         localPreview.current = uploadedUrl;
-        onFileSelected?.(file);
       }
 
       setPreviewUrl(uploadedUrl);
@@ -87,6 +88,7 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
   const handleRemove = () => {
     if (localPreview.current) { URL.revokeObjectURL(localPreview.current); localPreview.current = null; }
     setPreviewUrl(null);
+    onFileSelected?.(null);
     onUploadSuccess("");
     if (inputRef.current) inputRef.current.value = "";
   };
@@ -123,6 +125,8 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
             <button
               type="button"
               onClick={handleRemove}
+              aria-label="Remove selected image"
+              disabled={!!productId || uploading}
               className="p-1.5 bg-rose-500 text-white rounded-lg shadow-sm hover:bg-rose-600 transition-colors"
             >
               <X className="w-4 h-4" />
@@ -164,6 +168,7 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
       )}
 
       {error && <p className="text-xs text-rose-500 font-medium">{error}</p>}
+      {productId && previewUrl && <p className="text-xs text-slate-500">Saved images can be replaced. Removing a saved image is currently unavailable.</p>}
     </div>
   );
 }

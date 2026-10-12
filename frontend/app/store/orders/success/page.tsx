@@ -7,11 +7,20 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Header } from "../../components/Header";
 import { Footer } from "../../components/Footer";
+import useSWR from 'swr';
+import { apiGet } from '@/lib/api';
+import { Order } from '@/lib/types';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const orderIdsStr = searchParams.get("order_ids") || "";
   const orderIds = orderIdsStr ? Array.from(new Set(orderIdsStr.split(",").filter(id => /^[1-9]\d*$/.test(id)))) : [];
+  const {data: orders, error, isLoading, mutate} = useSWR<Order[]>(orderIds.length ? ['checkout-orders', orderIds.join(',')] : null,
+    () => Promise.all(orderIds.map(id => apiGet<Order>(`/orders/${id}`))), {shouldRetryOnError:false});
+  const totals = orders?.reduce<Record<string, number>>((result, order) => {
+    result[order.currency] = (result[order.currency] ?? 0) + order.total_amount;
+    return result;
+  }, {});
 
   return (
     <div className="max-w-lg mx-auto bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl text-center space-y-6">
@@ -38,6 +47,9 @@ function OrderSuccessContent() {
           </div>
         </div>
       )}
+      {isLoading && <p>Loading committed order total...</p>}
+      {error && <p role="alert">Unable to load order total. <button onClick={()=>mutate()}>Retry</button></p>}
+      {totals && <div><span>Committed order total</span>{Object.entries(totals).map(([currency,total]) => <p key={currency}>{total.toFixed(2)} {currency}</p>)}</div>}
 
       <div className="grid grid-cols-2 gap-3 text-left text-xs">
         <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex items-center gap-2.5">

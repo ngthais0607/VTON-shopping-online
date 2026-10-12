@@ -1,6 +1,8 @@
-# AI-VTON backend MVP
+# AI-VTON commerce MVP
 
 FastAPI commerce API for catalog, customer accounts, cart checkout, order tracking, and an admin dashboard. The checked-in Next.js client uses the versioned API, paged collections, current account contracts, product images, checkout and order tracking. Frontend component/transport tests and live HTTP flows against isolated MariaDB, Redis and MinIO have been exercised. Interactive browser verification and real SMTP delivery remain separate checks; this milestone is not a production-release certification.
+
+The current milestone repairs the existing backend/frontend flows. Currency policy, new payment integrations and VTON integration are deferred until these flows are ready. The existing COD and manual VietQR flow remain available. See the [BE–FE verification record](docs/reviews/2026-10-12-be-fe-flow-repair-review.md) for completed checks, implementation decisions and remaining limits.
 
 ## Architecture and scope
 
@@ -76,6 +78,8 @@ Do not reverse the migration/deploy order. `alembic current` should report `8f4c
 .\.venv\Scripts\arq.exe app.worker.WorkerSettings
 ```
 
+For Windows development, prefer the Compose worker service with its required environment configured. The live verification exercised an ARQ burst worker and expiration entry point; standard ARQ shutdown depends on Unix signals and was not certified on native Windows.
+
 The seed script has **no `--help` or dry-run mode**; `python -m app.seed` immediately creates tables if needed and writes demo accounts, catalog, and historical orders to the configured database. Run it only after verifying `DATABASE_URL` points to an isolated local/demo database. It creates `admin@example.com` / `Admin@123456` and `user@example.com` / `User@123456`; rotate/remove these accounts outside disposable development. Public `/register` creates customers, not admins.
 
 ## Frontend and session behavior
@@ -108,7 +112,7 @@ From `backend/` with a local `SECRET_KEY` (or configured `.env`):
 .\.venv\Scripts\python.exe -m pytest -q -W error::sqlalchemy.exc.SAWarning -p no:cacheprovider --basetemp=../.superpowers/pytest-temp
 ```
 
-Ten MariaDB integration tests skip unless `TEST_DATABASE_URL` is set. Use a dedicated empty, disposable MariaDB database; never point them at production or shared data. Before running the suite, set `DATABASE_URL` to that test database and run `alembic upgrade head`; then set `TEST_DATABASE_URL` to the same migrated database. The fulfillment-migration test creates and drops a separate `migration_<random>` database on that server, so the test account also needs `CREATE` and `DROP` database privileges. Confirm the server and account are isolated before granting them. The checkout, PATCH/checkout, transition, uniqueness, and fulfillment cases are in `tests/integration/`. SQLite unit tests and mocked adapters alone do not establish live MariaDB locking, Redis, MinIO, or SMTP behavior. Each live run must record its isolated infrastructure and results separately. From `frontend/`, run `pnpm test`, `pnpm exec eslint . --max-warnings=0`, `pnpm exec tsc --noEmit` and `pnpm build`. The BE?FE repair review records the available frontend and live-service evidence. SMTP and an interactive browser flow are not claimed as verified.
+Ten MariaDB integration tests skip unless `TEST_DATABASE_URL` is set. Use a dedicated empty, disposable MariaDB database; never point them at production or shared data. Before running the suite, set `DATABASE_URL` to that test database and run `alembic upgrade head`; then set `TEST_DATABASE_URL` to the same migrated database. The fulfillment-migration test creates and drops a separate `migration_<random>` database on that server, so the test account also needs `CREATE` and `DROP` database privileges. Confirm the server and account are isolated before granting them. The checkout, PATCH/checkout, transition, uniqueness, and fulfillment cases are in `tests/integration/`. SQLite unit tests and mocked adapters alone do not establish live MariaDB locking, Redis, MinIO, or SMTP behavior. Each live run must record its isolated infrastructure and results separately. From `frontend/`, run `pnpm test`, `pnpm exec eslint . --max-warnings=0`, `pnpm exec tsc --noEmit` and `pnpm build`. The [BE–FE repair review](docs/reviews/2026-10-12-be-fe-flow-repair-review.md) records the available frontend and live-service evidence. SMTP and an interactive browser flow are not claimed as verified.
 
 ## License
 

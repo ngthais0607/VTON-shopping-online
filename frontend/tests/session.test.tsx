@@ -70,3 +70,30 @@ it('keeps credentials on a temporary refresh outage',async()=>{
   await expect(api.apiGet('/users/me')).rejects.toMatchObject({status:503});
   expect(localStorage.getItem('token')).toBe('old');
 });
+it.each([false, true])('isolates a new login from pending refresh (logout=%s)', async logout => {
+  let release!: () => void;
+  let refreshes = 0;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  axios.defaults.adapter = async config => {
+    if (config.url?.endsWith('/users/refresh')) {
+      refreshes++;
+      if (refreshes === 1) { await pending; return result(config, {access_token:'old-renewed'}); }
+      return result(config, {access_token:'new-renewed'});
+    }
+    if (config.url === '/users/logout') return result(config, undefined, 204);
+    return result(config, {ok:true}, config.headers.Authorization === 'Bearer new-renewed' ? 200 : 401);
+  };
+  const api = await import('../lib/api');
+  const session = await import('../lib/session');
+  const oldRequest = api.apiGet('/users/me').catch(error => error);
+  await vi.waitFor(() => expect(refreshes).toBe(1));
+  if (logout) await api.logoutSession();
+  session.setAccessToken('new-login');
+  const newRequest = api.apiGet('/users/me').catch(error => error);
+  await new Promise(resolve => setTimeout(resolve, 10));
+  release();
+  await oldRequest;
+  expect(await newRequest).toEqual({ok:true});
+  expect(localStorage.getItem('token')).toBe('new-renewed');
+  expect(refreshes).toBe(2);
+});

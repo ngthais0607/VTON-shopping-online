@@ -1,9 +1,20 @@
 let generation = 0;
 const listeners = new Set<() => void>();
+let sessionNotice: string | null = null;
+export function getSessionNotice(): string | null { return sessionNotice; }
+export function setSessionNotice(message: string | null): void {
+  sessionNotice = message;
+  listeners.forEach(listener => listener());
+}
 export function getAccessToken(): string | null {
   return typeof window === 'undefined' ? null : localStorage.getItem('token');
 }
 export function setAccessToken(token: string): void {
+  generation++;
+  sessionNotice = null;
+  renewAccessToken(token);
+}
+export function renewAccessToken(token: string): void {
   if (typeof window !== 'undefined') localStorage.setItem('token', token);
   listeners.forEach(listener => listener());
 }

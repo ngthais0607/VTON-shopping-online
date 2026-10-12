@@ -1,10 +1,15 @@
 "use client";
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { useSession } from '@/hooks/use-session';
 import { ApiError } from '@/lib/api';
+import { getSessionNotice, subscribeSession } from '@/lib/session';
 export function LayoutClientWrapper({ children }: { children: React.ReactNode }) {
+  const notice = useSyncExternalStore(subscribeSession, getSessionNotice, () => null);
+  return <>{notice && <p role="alert" className="p-4 bg-amber-50">{notice}</p>}<GuardedLayout>{children}</GuardedLayout></>;
+}
+function GuardedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const {user, isLoading, error} = useSession();

@@ -1,5 +1,5 @@
 import axios, { InternalAxiosRequestConfig } from 'axios';
-import { clearAccessToken, getAccessToken, getSessionGeneration, setAccessToken } from './session';
+import { clearAccessToken, getAccessToken, getSessionGeneration, renewAccessToken, setSessionNotice } from './session';
 
 export function normalizeApiBase(base: string): string {
     const clean = base.replace(/\/+$/, '');
@@ -31,7 +31,7 @@ const apiClient = axios.create({
 });
 
 interface SessionRequest extends InternalAxiosRequestConfig { _retry?: boolean; _generation?: number }
-let refreshPromise: Promise<string> | null = null;
+let refreshWork: {generation: number; promise: Promise<string>} | null = null;
 const isAuthRequest = (url = '') => /\/users\/(login|register|refresh|logout)$/.test(url);
 apiClient.interceptors.request.use((config: SessionRequest) => {
     const token = getAccessToken();
@@ -54,16 +54,18 @@ apiClient.interceptors.response.use(
         request._retry = true;
         const version = getSessionGeneration();
         try {
-            if (!refreshPromise) {
-                refreshPromise = axios.post(`${API_BASE_URL}/users/refresh`, {}, { withCredentials: true }).then(response => {
+            if (!refreshWork || refreshWork.generation !== version) {
+                const work = { generation: version, promise: Promise.resolve('') };
+                work.promise = axios.post(`${API_BASE_URL}/users/refresh`, {}, { withCredentials: true }).then(response => {
                     if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
                     const token = response.data.access_token;
                     if (typeof token !== 'string' || !token) throw new ApiError('Invalid session response', 401);
-                    setAccessToken(token);
+                    renewAccessToken(token);
                     return token;
-                }).finally(() => { refreshPromise = null; });
+                }).finally(() => { if (refreshWork === work) refreshWork = null; });
+                refreshWork = work;
             }
-            const token = await refreshPromise;
+            const token = await refreshWork.promise;
             if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
             request.headers.set('Authorization', `Bearer ${token}`);
             return await apiClient(request);
@@ -76,7 +78,11 @@ apiClient.interceptors.response.use(
 export async function logoutSession(): Promise<void> {
     clearAccessToken();
     delete apiClient.defaults.headers.common.Authorization;
-    await apiPost<void>('/users/logout', {});
+    try { await apiPost<void>('/users/logout', {}); }
+    catch (error) {
+        setSessionNotice(`Local session cleared. ${toApiError(error).message}. Server logout could not be verified; retry when the server is available.`);
+        throw error;
+    }
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

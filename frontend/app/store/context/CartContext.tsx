@@ -33,7 +33,10 @@ function restoreCart(value: unknown): CartItem[] {
     const p = item?.product;
     if (!p || !Number.isInteger(p.id) || p.id <= 0 || typeof p.name !== 'string' ||
         !Number.isFinite(p.price) || p.price <= 0 || typeof p.currency !== 'string' ||
-        !Array.isArray(p.images) || !p.is_active ||
+        !Array.isArray(p.images) || !p.images.every((image: unknown) => !!image && typeof image === 'object' && typeof (image as {url?:unknown}).url === 'string') ||
+        (p.image_url != null && typeof p.image_url !== 'string') ||
+        (p.category != null && (typeof p.category !== 'object' || typeof p.category.name !== 'string')) ||
+        p.is_active !== true ||
         ![p.stock_quantity,p.reserved_quantity,p.sold_quantity].every(n=>Number.isInteger(n) && n >= 0) ||
         !Number.isInteger(item.quantity) || item.quantity <= 0) continue;
     const quantity = Math.min(item.quantity, getAvailableStock(p));

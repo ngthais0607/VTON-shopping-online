@@ -32,7 +32,7 @@ export default function StorefrontPage() {
         productsRef.current?.scrollIntoView({ behavior: "smooth" });
     }
 
-    const { categories } = useCategoryOptions();
+    const { categories, error: categoriesError, isLoading: categoriesLoading, mutate: retryCategories } = useCategoryOptions();
     const { products, total: totalProducts, isLoading: loading, error: productsError, mutate: mutateProducts } = useProducts({
         page: currentPage,
         pageSize,
@@ -67,7 +67,9 @@ export default function StorefrontPage() {
                 
                 <div ref={productsRef}>
                     {productsError && <p role="alert">{productsError.message}<button onClick={()=>mutateProducts()}>Retry</button></p>}
-                    <FeaturedProducts 
+                    {categoriesError && <p role="alert">{categoriesError.message}<button onClick={()=>retryCategories()}>Retry categories</button></p>}
+                    {categoriesLoading && <p>Loading categories...</p>}
+                    {!productsError && <FeaturedProducts
                         products={products} 
                         loading={loading} 
                         currentUser={currentUser} 
@@ -89,7 +91,7 @@ export default function StorefrontPage() {
                         sortBy={sortBy}
                         setSortBy={(value) => {setSortBy(value); setCurrentPage(1);}}
                         categories={categories}
-                    />
+                    />}
                 </div>
                 
                 <div id="features">

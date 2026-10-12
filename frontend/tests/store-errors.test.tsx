@@ -1,0 +1,21 @@
+import React from 'react';
+import {render,screen} from '@testing-library/react';
+import {expect,it,vi} from 'vitest';
+import StorefrontPage from '../app/store/page';
+vi.mock('@/hooks/use-session',()=>({useSession:()=>({user:null})}));
+vi.mock('@/hooks/use-categories',()=>({useCategoryOptions:()=>({categories:[],error:new Error('Category page unavailable'),mutate:vi.fn()})}));
+vi.mock('@/hooks/use-products',()=>({useProducts:()=>({products:[],total:0,error:new Error('Product page unavailable'),mutate:vi.fn()})}));
+vi.mock('../app/store/components/Header',()=>({Header:()=>null}));
+vi.mock('../app/store/components/Footer',()=>({Footer:()=>null}));
+vi.mock('../app/store/components/HeroSection',()=>({HeroSection:()=>null}));
+vi.mock('../app/store/components/FeaturesSection',()=>({FeaturesSection:()=>null}));
+vi.mock('../app/store/components/TrustSection',()=>({TrustSection:()=>null}));
+vi.mock('../app/store/components/CTASection',()=>({CTASection:()=>null}));
+vi.mock('../app/store/components/FeaturedProducts',()=>({FeaturedProducts:()=> <p>No products found</p>}));
+it('shows failed catalog/options requests and retry without successful empty content',()=>{
+  render(<StorefrontPage/>);
+  expect(screen.getByText(/Category page unavailable/)).toBeInTheDocument();
+  expect(screen.getByText(/Product page unavailable/)).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Retry categories'})).toBeInTheDocument();
+  expect(screen.queryByText('No products found')).not.toBeInTheDocument();
+});

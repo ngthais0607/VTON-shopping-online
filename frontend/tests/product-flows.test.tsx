@@ -1,17 +1,64 @@
 /* Test image double avoids the Next.js image optimizer in jsdom. */
 /* eslint-disable @next/next/no-img-element */
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ImageUploader } from '../components/image-uploader';
 import ProductsPage from '../app/products/page';
-const {upload,post,patch} = vi.hoisted(()=>({upload:vi.fn(),post:vi.fn(),patch:vi.fn()}));
-vi.mock('@/lib/api',()=>({apiUpload:upload,apiPost:post,apiPatch:patch,apiPut:patch}));
-vi.mock('@/hooks/use-products',()=>({useProducts:()=>({products:[],total:0,isLoading:false,mutate:async()=>{}})}));
-vi.mock('@/hooks/use-categories',()=>({useCategoryOptions:()=>({categories:[]})}));
+const {upload,post,patch,remove,productState,categoryState} = vi.hoisted(()=>({upload:vi.fn(),post:vi.fn(),patch:vi.fn(),remove:vi.fn(),productState:{error:null as Error|null,products:[] as any[],total:0},categoryState:{error:null as Error|null}}));
+vi.mock('@/lib/api',()=>({apiUpload:upload,apiPost:post,apiPatch:patch,apiPut:patch,apiDelete:remove}));
+vi.mock('@/components/ui/dropdown-menu',()=>({DropdownMenu:({children}:any)=><div>{children}</div>,DropdownMenuTrigger:({children}:any)=><>{children}</>,DropdownMenuContent:({children}:any)=><div>{children}</div>,DropdownMenuItem:({children,onClick}:any)=><button onClick={onClick}>{children}</button>}));
+vi.mock('@/hooks/use-products',()=>({useProducts:()=>({isLoading:false,mutate:async()=>{},...productState})}));
+vi.mock('@/hooks/use-categories',()=>({useCategoryOptions:()=>({categories:[],mutate:async()=>{},...categoryState})}));
 vi.mock('@/components/header',()=>({Header:()=>null}));
 vi.mock('next/image',()=>({default:({src,alt}:{src:string;alt:string})=><img src={src} alt={alt}/>}));
-beforeEach(()=>{upload.mockReset();post.mockReset();patch.mockReset();URL.createObjectURL=vi.fn(()=> 'blob:preview');URL.revokeObjectURL=vi.fn();});
+beforeEach(()=>{productState.error=null;productState.products=[];productState.total=0;categoryState.error=null;remove.mockReset();upload.mockReset();post.mockReset();patch.mockReset();URL.createObjectURL=vi.fn(()=> 'blob:preview');URL.revokeObjectURL=vi.fn();});
+const existingProduct={id:7,name:'Existing',price:10,currency:'USD',stock_quantity:10,reserved_quantity:0,sold_quantity:0,is_active:true,category:null,images:[],created_at:null,updated_at:null};
+it('reports a delete failure on the product page',async()=>{
+  productState.products=[existingProduct];productState.total=1;remove.mockRejectedValue(new Error('Delete unavailable'));
+  render(<ProductsPage/>);
+  fireEvent.click(screen.getByRole('button',{name:'Delete'}));
+  fireEvent.click(screen.getAllByRole('button',{name:'Delete'}).at(-1)!);
+  expect(await screen.findByText('Delete unavailable')).toBeInTheDocument();
+});
+it('returns an empty final page to page one even when the total reaches zero',async()=>{
+  productState.products=[existingProduct];productState.total=21;
+  const {rerender}=render(<ProductsPage/>);
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,350));});
+  fireEvent.click(screen.getByRole('button',{name:'Next'}));
+  expect(screen.getByRole('button',{name:'Previous'})).not.toBeDisabled();
+  productState.products=[];productState.total=0;rerender(<ProductsPage/>);
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Previous'})).toBeDisabled());
+});
+it('shows catalog and category failures without an empty success state',()=>{
+  productState.error=new Error('Catalog unavailable');categoryState.error=new Error('Categories unavailable');
+  render(<ProductsPage/>);
+  expect(screen.getByText('Catalog unavailable')).toBeInTheDocument();
+  expect(screen.getByText('Categories unavailable')).toBeInTheDocument();
+  expect(screen.queryByText('No products found')).not.toBeInTheDocument();
+});
+it('clears the pending file when its preview is removed',async()=>{
+  const selected=vi.fn();
+  const {container}=render(<ImageUploader onUploadSuccess={()=>{}} onFileSelected={selected}/>);
+  fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[new File(['a'],'a.png',{type:'image/png'})]}});
+  await waitFor(()=>expect(screen.getByAltText('Product Preview')).toBeInTheDocument());
+  fireEvent.click(container.querySelector('button.bg-rose-500')!);
+  expect(selected).toHaveBeenLastCalledWith(null);
+});
+it('clears the pending file after a persisted replacement succeeds',async()=>{
+  const selected=vi.fn();upload.mockResolvedValue({id:'b',url:'https://images.example.test/b.png'});
+  const {container}=render(<ImageUploader productId={7} onUploadSuccess={()=>{}} onFileSelected={selected}/>);
+  fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[new File(['b'],'b.png',{type:'image/png'})]}});
+  await waitFor(()=>expect(selected).toHaveBeenLastCalledWith(null));
+});
+it('retains the replacement file for retry if its immediate upload fails',async()=>{
+  const selected=vi.fn();upload.mockRejectedValue(new Error('Replacement unavailable'));
+  const file=new File(['b'],'b.png',{type:'image/png'});
+  const {container}=render(<ImageUploader productId={7} onUploadSuccess={()=>{}} onFileSelected={selected}/>);
+  fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[file]}});
+  await screen.findByText('Replacement unavailable');
+  expect(selected).toHaveBeenLastCalledWith(file);
+});
 it('displays the persisted image returned by the server', async()=>{
   upload.mockResolvedValue({id:'image-1',url:'https://images.example.test/p.png'});
   const saved=vi.fn();

@@ -68,7 +68,7 @@ import Image from "next/image";
 import { ImageUploader } from "@/components/image-uploader";
 
 export default function ProductsPage() {
-  const { categories } = useCategoryOptions();
+  const { categories, error: categoriesError, isLoading: categoriesLoading, mutate: retryCategories } = useCategoryOptions();
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -99,6 +99,7 @@ export default function ProductsPage() {
     products,
     total: totalProducts,
     isLoading: loading,
+    error: productsError,
     mutate: mutateProducts,
   } = useProducts({
     page: currentPage,
@@ -176,6 +177,7 @@ export default function ProductsPage() {
   };
 
   const openEditProduct = (product: Product) => {
+    setSelectedImage(null);
     setEditingProduct(product);
     setFormData({
       name: product.name,
@@ -211,9 +213,12 @@ export default function ProductsPage() {
   };
 
   const handleDeleteProduct = async (product: Product) => {
-    await apiDelete<{ message: string }>(`/products/${product.id}`);
-    await mutateProducts();
-    setDeleteProduct(null);
+    setSaveError(null);
+    try {
+      await apiDelete<void>(`/products/${product.id}`);
+      await mutateProducts();
+      setDeleteProduct(null);
+    } catch (error) { setSaveError(error instanceof Error ? error.message : 'Delete failed'); }
   };
 
   const runSave = async (action: () => Promise<void>) => {
@@ -222,13 +227,17 @@ export default function ProductsPage() {
     try { await action(); } catch (error) { setSaveError(error instanceof Error ? error.message : 'Save failed'); }
     finally { setSaving(false); }
   };
-  useEffect(() => { if (!loading && currentPage > 1 && products.length === 0 && totalProducts > 0) setCurrentPage(Math.max(1, Math.ceil(totalProducts / pageSize))); }, [loading, currentPage, products.length, totalProducts, pageSize]);
+  useEffect(() => { if (!loading && !productsError && currentPage > 1 && products.length === 0) setCurrentPage(Math.max(1, Math.ceil(totalProducts / pageSize))); }, [loading, productsError, currentPage, products.length, totalProducts, pageSize]);
 
   return (
     <div className="flex flex-col min-h-screen">
       <Header title="Products" subtitle="Manage your product catalog" />
 
       <main className="flex-1 p-8">
+        {productsError && <p role="alert"><span>{productsError.message}</span> <button onClick={()=>mutateProducts()}>Retry products</button></p>}
+        {categoriesError && <p role="alert"><span>{categoriesError.message}</span> <button onClick={()=>retryCategories()}>Retry categories</button></p>}
+        {categoriesLoading && <p>Loading categories...</p>}
+        {saveError && !createDialogOpen && <p role="alert">{saveError}</p>}
         {/* Filters and Controls */}
         <div className="space-y-4 mb-6">
           <div className="flex items-center justify-between">
@@ -439,7 +448,7 @@ export default function ProductsPage() {
                 <div className="flex gap-2 justify-end">
                   <Button
                     variant="outline"
-                    onClick={() => setCreateDialogOpen(false)}
+                    onClick={() => { setCreateDialogOpen(false); setSelectedImage(null); }}
                   >
                     Cancel
                   </Button>
@@ -803,7 +812,7 @@ export default function ProductsPage() {
           </>
         )}
 
-        {!loading && filteredProducts.length === 0 && (
+        {!loading && !productsError && filteredProducts.length === 0 && (
           <Card className="p-12 text-center">
             <ImageIcon className="w-12 h-12 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-900">
