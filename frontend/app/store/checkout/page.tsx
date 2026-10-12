@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useCart } from "../context/CartContext";
 import { apiPost, apiGet } from "@/lib/api";
 import { checkoutSchema } from "@/lib/validations/checkout";
@@ -26,10 +26,11 @@ import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User } from "@/lib/types";
+import { User, CheckoutResponse, CheckoutCommand } from "@/lib/types";
 
 export default function CheckoutPage() {
-  const { cartItems, totalAmount, clearCart } = useCart();
+  const { cartItems, totalAmount, clearCart, isLoaded } = useCart();
+  const submissionPending = useRef(false);
   const router = useRouter();
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -65,11 +66,12 @@ export default function CheckoutPage() {
     loadUser();
   }, []);
 
-  const shippingFee = totalAmount > 0 ? (totalAmount > 100 ? 0 : 15) : 0;
-  const grandTotal = totalAmount + shippingFee;
+  const shippingFee = 0;
+  const grandTotal = totalAmount;
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLoaded || submissionPending.current) return;
     if (cartItems.length === 0) {
       setError("Your cart is empty. Please add items to checkout.");
       return;
@@ -88,10 +90,11 @@ export default function CheckoutPage() {
     }
 
     setError(null);
+    submissionPending.current = true;
     setSubmitting(true);
 
     try {
-      const payload = {
+      const payload: CheckoutCommand = {
         items: cartItems.map((item) => ({
           product_id: item.product.id,
           quantity: item.quantity,
@@ -103,10 +106,7 @@ export default function CheckoutPage() {
         payment_method: paymentMethod,
       };
 
-      const response = await apiPost<{
-        orders: { id: number }[];
-        vietqr?: VietQRData;
-      }>("/orders/checkout-cart", payload);
+      const response = await apiPost<CheckoutResponse>("/orders/checkout-cart", payload);
 
       const orderIds = response.orders.map((o) => o.id);
       setCreatedOrderIds(orderIds);
@@ -114,7 +114,7 @@ export default function CheckoutPage() {
       // Clear cart from context
       clearCart();
 
-      if (paymentMethod === "vietqr" && response.vietqr) {
+      if (response.payment_method === "vietqr" && response.vietqr) {
         setVietqrData(response.vietqr);
         setVietqrModalOpen(true);
       } else {
@@ -122,9 +122,10 @@ export default function CheckoutPage() {
         router.push(`/store/orders/success?order_ids=${orderIds.join(",")}`);
       }
     } catch (err: any) {
-      console.error("Checkout error", err);
+
       setError(err.message || "Failed to complete checkout. Please try again.");
     } finally {
+      submissionPending.current = false;
       setSubmitting(false);
     }
   };
@@ -149,7 +150,7 @@ export default function CheckoutPage() {
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Complete Your Order</h1>
         </div>
 
-        {cartItems.length === 0 ? (
+        {!isLoaded ? <p>Loading cart...</p> : cartItems.length === 0 ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 max-w-md mx-auto my-12 shadow-xs">
             <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4 text-slate-400">
               <ShoppingBag className="w-8 h-8" />

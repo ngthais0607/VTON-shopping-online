@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from "motion/react";
 export function CartDrawer() {
   const { cartItems, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart, totalAmount, totalCount } = useCart();
 
-  const shippingFee = totalAmount > 0 ? (totalAmount > 100 ? 0 : 15) : 0;
+  const shippingFee = 0;
   const finalTotal = totalAmount + shippingFee;
 
   return (

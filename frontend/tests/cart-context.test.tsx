@@ -80,4 +80,23 @@ describe("CartContext", () => {
     });
     expect(result.current.cartItems.length).toBe(0);
   });
+  it('ignores malformed persisted objects without crashing', () => {
+    localStorage.setItem('fastapi_store_cart', JSON.stringify({items:'invalid'}));
+    expect(()=>renderHook(()=>useCart(),{wrapper})).not.toThrow();
+  });
+  it('rejects fractional persisted quantities and inactive products', () => {
+    localStorage.setItem('fastapi_store_cart', JSON.stringify([{product:mockProduct,quantity:1.5}]));
+    const {result}=renderHook(()=>useCart(),{wrapper});
+    expect(result.current.cartItems).toEqual([]);
+    act(()=>result.current.addToCart({...mockProduct,is_active:false},1));
+    expect(result.current.cartItems).toEqual([]);
+  });
+  it('bounds updates to available stock and ignores fractional additions',()=>{
+    const {result}=renderHook(()=>useCart(),{wrapper});
+    act(()=>result.current.addToCart(mockProduct,1.5));
+    expect(result.current.cartItems).toEqual([]);
+    act(()=>result.current.addToCart(mockProduct,1));
+    act(()=>result.current.updateQuantity(mockProduct.id,99));
+    expect(result.current.totalCount).toBe(20);
+  });
 });
