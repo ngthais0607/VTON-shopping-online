@@ -5,27 +5,7 @@ import Link from 'next/link';
 import { apiGet, apiPatch } from '@/lib/api';
 import { User, Package, Heart, CheckCircle2, Clock, XCircle, ArrowRight, ShieldCheck, Key, Save, AlertCircle, RefreshCw } from 'lucide-react';
 
-interface UserProfile {
-  id: number;
-  username: string;
-  email: string;
-  first_name?: string;
-  last_name?: string;
-  role: string;
-  created_at?: string;
-}
-
-interface OrderItem {
-  id: number;
-  product_id: number;
-  product_name: string;
-  unit_price: number;
-  quantity: number;
-  total_amount: number;
-  status: string;
-  payment_status: string;
-  created_at: string;
-}
+import type { User as UserProfile, Order as OrderItem } from '@/lib/types';
 
 export default function CustomerAccountPage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'orders' | 'wishlist'>('profile');
@@ -54,7 +34,7 @@ export default function CustomerAccountPage() {
       const data = await apiGet<OrderItem[]>(`/orders/user/${userId}`);
       setOrders(data);
     } catch (err) {
-      console.error('Failed to load user orders', err);
+      setError(err instanceof Error ? err.message : 'Unable to load your orders');
     } finally {
       setOrdersLoading(false);
     }

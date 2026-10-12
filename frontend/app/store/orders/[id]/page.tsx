@@ -3,8 +3,8 @@
 import { useEffect, useState, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { apiGet } from "@/lib/api";
-import { User } from "@/lib/types";
+import { apiGet, ApiError } from "@/lib/api";
+import { User, TrackingResponse } from "@/lib/types";
 import { Header } from "../../components/Header";
 import { Footer } from "../../components/Footer";
 import { 
@@ -24,60 +24,28 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-interface TimelineStep {
-  step: number;
-  title: string;
-  description: string;
-  completed: boolean;
-  timestamp?: string | null;
-}
-
-interface VietQRData {
-  qr_url: string;
-  bank_id: string;
-  bank_name: string;
-  account_no: string;
-  account_name: string;
-  memo: string;
-  amount: number;
-}
-
-interface OrderTrackData {
-  id: number;
-  user_id: number | null;
-  product_id: number;
-  product_name: string;
-  unit_price: number;
-  quantity: number;
-  total_amount: number;
-  currency: string;
-  status: string;
-  payment_status: string;
-  expires_at: string | null;
-  paid_at: string | null;
-  created_at: string;
-  vietqr?: VietQRData;
-  timeline: TimelineStep[];
-}
-
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const orderId = resolvedParams.id;
   const router = useRouter();
 
-  const [order, setOrder] = useState<OrderTrackData | null>(null);
+  const [order, setOrder] = useState<TrackingResponse | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [copiedMemo, setCopiedMemo] = useState(false);
   const [copiedAccount, setCopiedAccount] = useState(false);
 
   const fetchTrackingData = useCallback(async () => {
+    setError(null);
     try {
-      const data = await apiGet<OrderTrackData>(`/orders/track/${orderId}`);
+      const data = await apiGet<TrackingResponse>(`/orders/track/${orderId}`);
       setOrder(data);
     } catch (err) {
-      console.error("Failed to load tracking data", err);
+      if (err instanceof ApiError && err.status === 403) {setOrder(null);setError('You cannot access this order.');}
+      else if (err instanceof ApiError && err.status === 404) {setOrder(null);setError('Order not found.');}
+      else setError(err instanceof Error ? err.message : 'Unable to load order.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -172,6 +140,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           Back to My Orders
         </button>
 
+        {error && <p role="alert">{error}<button onClick={()=>fetchTrackingData()}>Retry</button></p>}
         {loading ? (
           <div className="bg-white border border-sky-100 rounded-3xl p-16 text-center shadow-xs">
             <div className="w-10 h-10 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin mx-auto mb-4" />

@@ -11,7 +11,7 @@ import { Footer } from "../../components/Footer";
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const orderIdsStr = searchParams.get("order_ids") || "";
-  const orderIds = orderIdsStr ? orderIdsStr.split(",") : [];
+  const orderIds = orderIdsStr ? Array.from(new Set(orderIdsStr.split(",").filter(id => /^[1-9]\d*$/.test(id)))) : [];
 
   return (
     <div className="max-w-lg mx-auto bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl text-center space-y-6">
@@ -22,7 +22,7 @@ function OrderSuccessContent() {
       <div className="space-y-2">
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Order Placed Successfully!</h1>
         <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-          Thank you for shopping with LuxeStore. Your order has been confirmed and is being processed.
+          Thank you for shopping with LuxeStore. Your order was created. View each order for its current payment status.
         </p>
       </div>
 
@@ -31,9 +31,9 @@ function OrderSuccessContent() {
           <span className="font-semibold text-slate-500">Order Reference IDs:</span>
           <div className="flex flex-wrap gap-1.5 justify-center pt-1 font-mono font-bold text-slate-900">
             {orderIds.map((id) => (
-              <span key={id} className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
+              <Link href={`/store/orders/${id}`} key={id} className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
                 #{id}
-              </span>
+              </Link>
             ))}
           </div>
         </div>
@@ -52,7 +52,7 @@ function OrderSuccessContent() {
           <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           <div>
             <span className="font-bold text-slate-900 block">Status</span>
-            <span className="text-[11px] text-emerald-700 font-semibold">Confirmed</span>
+            <span className="text-[11px] text-emerald-700 font-semibold">View order details</span>
           </div>
         </div>
       </div>

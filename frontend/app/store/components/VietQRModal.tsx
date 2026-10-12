@@ -6,28 +6,21 @@ import { motion, AnimatePresence } from "motion/react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 
-export interface VietQRData {
-  qr_url: string;
-  bank_id: string;
-  bank_name: string;
-  account_no: string;
-  account_name: string;
-  memo: string;
-  amount: number;
-}
+import { VietQRData } from '@/lib/types';
+export type { VietQRData } from '@/lib/types';
 
 interface VietQRModalProps {
   vietqrData: VietQRData;
   isOpen: boolean;
   onClose: () => void;
-  onPaymentSuccess: () => void;
+  onContinue: () => void;
 }
 
 export function VietQRModal({
   vietqrData,
   isOpen,
   onClose,
-  onPaymentSuccess,
+  onContinue,
 }: VietQRModalProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -150,7 +143,7 @@ export function VietQRModal({
             {/* Confirmation CTA */}
             <div className="space-y-3 pt-2">
               <Button
-                onClick={onPaymentSuccess}
+                onClick={onContinue}
                 className="w-full h-12 bg-primary hover:bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
               >
                 <ShieldCheck className="w-4 h-4 text-emerald-300" />

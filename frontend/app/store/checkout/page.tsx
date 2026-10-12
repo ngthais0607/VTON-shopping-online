@@ -130,7 +130,7 @@ export default function CheckoutPage() {
     }
   };
 
-  const handlePaymentSuccess = () => {
+  const handleContinue = () => {
     setVietqrModalOpen(false);
     router.push(`/store/orders/success?order_ids=${createdOrderIds.join(",")}`);
   };
@@ -360,7 +360,7 @@ export default function CheckoutPage() {
           vietqrData={vietqrData}
           isOpen={vietqrModalOpen}
           onClose={() => setVietqrModalOpen(false)}
-          onPaymentSuccess={handlePaymentSuccess}
+          onContinue={handleContinue}
         />
       )}
     </div>

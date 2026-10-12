@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Order } from "@/lib/types";
+import { useSWRConfig } from 'swr';
 import { apiPut } from "@/lib/api";
 import {
   Dialog,
@@ -29,6 +30,8 @@ const statusOptions: { label: string; value: Order["status"]; icon: any; color: 
 ];
 
 export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: QuickStatusModalProps) {
+  const {mutate} = useSWRConfig();
+  const [error, setError] = useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
 
   if (!order) return null;
@@ -40,12 +43,14 @@ export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: Qu
     }
 
     setLoadingStatus(newStatus);
+    setError(null);
     try {
       await apiPut(`/orders/${order.id}/status`, { status: newStatus });
+      await mutate(key => typeof key === "string" && key.startsWith("/dashboard"));
       onStatusUpdated();
       onClose();
     } catch (err: any) {
-      alert(err.message || "Failed to update order status.");
+      setError(err.message || "Failed to update order status.");
     } finally {
       setLoadingStatus(null);
     }
@@ -63,6 +68,7 @@ export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: Qu
           </DialogDescription>
         </DialogHeader>
 
+        {error && <p role="alert">{error}</p>}
         <div className="space-y-2.5 py-4">
           {statusOptions.map((opt) => {
             const Icon = opt.icon;

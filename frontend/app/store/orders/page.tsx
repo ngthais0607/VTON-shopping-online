@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet } from "@/lib/api";
+import { apiGet, ApiError } from "@/lib/api";
 import { Order, User } from "@/lib/types";
 import { getOrderStatusPresentation } from "@/lib/order-status";
 import { Header } from "../components/Header";
@@ -14,10 +14,12 @@ export default function CustomerOrdersPage() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const router = useRouter();
 
     const loadData = useCallback(async () => {
+        setError(null);
         try {
             // 1. Lấy thông tin user hiện tại để lấy ID
             const user = await apiGet<User>("/users/me");
@@ -29,7 +31,8 @@ export default function CustomerOrdersPage() {
         } catch (err) {
             console.error("Failed to load customer orders", err);
             // Nếu token hết hạn hoặc chưa đăng nhập, tự động đẩy về trang Login
-            router.push("/login");
+            if (err instanceof ApiError && err.status === 401) router.push("/login?next=/store/orders");
+            else setError(err instanceof Error ? err.message : "Unable to load orders");
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -109,7 +112,7 @@ export default function CustomerOrdersPage() {
                 </div>
 
                 {/* Nội dung danh sách đơn hàng */}
-                {loading ? (
+                {error ? <p role="alert">{error}<button onClick={handleRefresh}>Retry</button></p> : loading ? (
                     <div className="bg-white border border-sky-100 rounded-3xl p-12 text-center shadow-xs">
                         <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600 mx-auto mb-3" />
                         <p className="text-sm font-semibold text-slate-500">Loading your orders...</p>
