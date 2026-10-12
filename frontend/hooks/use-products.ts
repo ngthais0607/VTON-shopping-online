@@ -2,14 +2,7 @@
 
 import useSWR from "swr";
 import { swrFetcher } from "@/lib/swr-config";
-import { Product } from "@/lib/types";
-
-type PaginatedProducts = {
-  items: Product[];
-  total: number;
-  page: number;
-  limit: number;
-};
+import { Product, Page } from "@/lib/types";
 
 export interface UseProductsParams {
   page?: number;
@@ -46,18 +39,18 @@ export function useProducts(params?: UseProductsParams) {
     query.append("stock_status", params.stock_status);
   }
   if (params?.sort_by && params.sort_by !== "latest") {
-    query.append("sort_by", params.sort_by);
+    query.append("sort", params.sort_by);
   }
 
   const queryString = query.toString();
-  const url = queryString ? `/products/?${queryString}` : "/products/";
+  const url = queryString ? `/products?${queryString}` : "/products";
 
-  const { data, error, isLoading, mutate } = useSWR<PaginatedProducts>(url, swrFetcher);
+  const { data, error, isLoading, mutate } = useSWR<Page<Product>>(url, swrFetcher);
 
   return {
     products: data?.items ?? [],
     total: data?.total ?? 0,
-    page: data?.page ?? 1,
+    page: params?.page ?? 1,
     limit: data?.limit ?? 10,
     isLoading,
     isError: !!error,

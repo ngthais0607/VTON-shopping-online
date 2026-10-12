@@ -47,7 +47,7 @@ export function ExportCSVButton({ orders }: ExportCSVButtonProps) {
       className="flex items-center gap-2 bg-white text-slate-700 hover:bg-slate-50 border-slate-200 shadow-xs text-xs font-semibold"
     >
       <Download className="w-3.5 h-3.5 text-indigo-600" />
-      Export CSV
+      Export current page
     </Button>
   );
 }

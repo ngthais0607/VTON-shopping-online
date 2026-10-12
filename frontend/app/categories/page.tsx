@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api";
+import { useCategories } from '@/hooks/use-categories';
+import { PaginationControls } from '@/components/pagination-controls';
 import { Category } from "@/lib/types";
 
 import { Header } from "@/components/header";
@@ -42,8 +44,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 export default function CategoriesPage() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const {categories, total, isLoading: loading, error, mutate} = useCategories({page});
+  const [actionError, setActionError] = useState<string | null>(null);
+
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [deleteCategory, setDeleteCategory] = useState<Category | null>(null);
@@ -51,17 +55,8 @@ export default function CategoriesPage() {
     name: "",
     description: "",
   });
-  useEffect(() => {
-    async function loadCategories() {
-      try {
-        const data = await apiGet<Category[]>("/categories");
-        setCategories(data);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadCategories();
-  }, []);
+  useEffect(() => { if (!loading && !error && page > 1 && categories.length === 0) setPage(page - 1); }, [loading, error, page, categories.length]);
+  const runAction = async (action: () => Promise<void>) => { setActionError(null); try { await action(); } catch (error) { setActionError(error instanceof Error ? error.message : 'Action failed'); } };
 
   const resetFormData = () => {
     setFormData({
@@ -84,22 +79,18 @@ export default function CategoriesPage() {
       "/categories",
       formData,
     );
-    setCategories((current) => [createdCategory, ...current]);
+    await mutate();
     resetFormData();
     setCreateDialogOpen(false);
   };
 
   const handleUpdateCategory = async () => {
     if (!editingCategory) return;
-    const updatedCategory = await apiPut<Category, typeof formData>(
+    const updatedCategory = await apiPatch<Category, typeof formData>(
       `/categories/${editingCategory.id}`,
       formData,
     );
-    setCategories((current) =>
-      current.map((category) =>
-        category.id === updatedCategory.id ? updatedCategory : category,
-      ),
-    );
+    await mutate();
     resetFormData();
     setEditingCategory(null);
     setCreateDialogOpen(false);
@@ -109,9 +100,7 @@ export default function CategoriesPage() {
     await apiDelete<{ message: string }>(
       `/categories/${category.id}`
     );
-    setCategories((current) =>
-      current.filter((item) => item.id !== category.id),
-    );
+    await mutate();
     setDeleteCategory(null);
   };
 
@@ -197,8 +186,8 @@ export default function CategoriesPage() {
                   disabled={!formData.name}
                   onClick={
                     editingCategory
-                      ? handleUpdateCategory
-                      : handleCreateCategory
+                      ? () => runAction(handleUpdateCategory)
+                      : () => runAction(handleCreateCategory)
                   }
                 >
                   {editingCategory ? "Update Category" : "Create Category"}
@@ -207,6 +196,8 @@ export default function CategoriesPage() {
             </DialogContent>
           </Dialog>
         </div>
+        {(error || actionError) && <p role="alert">{actionError || error?.message}<button onClick={()=>mutate()}>Retry</button></p>}
+        <PaginationControls page={page} pageSize={20} total={total} onPageChange={setPage} disabled={loading}/>
         {loading ? (
           <Card className="p-8 text-center text-slate-600">
             Loading categories...
@@ -221,7 +212,7 @@ export default function CategoriesPage() {
                     <TableHead className="text-slate-600">
                       Description
                     </TableHead>
-                    <TableHead className="text-slate-600">Products</TableHead>
+                    
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -234,9 +225,7 @@ export default function CategoriesPage() {
                       <TableCell className="text-slate-600">
                         {category.description}
                       </TableCell>
-                      <TableCell className="text-slate-900">
-                        {category.product_count}
-                      </TableCell>
+
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -282,7 +271,7 @@ export default function CategoriesPage() {
             <div className="flex gap-2 justify-end">
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={() => handleDeleteCategory(deleteCategory)}
+                onClick={() => runAction(() => handleDeleteCategory(deleteCategory))}
                 className="bg-red-600 hover:bg-red-700"
               >
                 Delete

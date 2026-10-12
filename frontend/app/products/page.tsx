@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { apiDelete, apiPost, apiPut, apiUpload } from "@/lib/api";
 import { useProducts } from "@/hooks/use-products";
-import { useCategories } from "@/hooks/use-categories";
+import { useCategoryOptions } from "@/hooks/use-categories";
 import { getAvailableStock } from "@/lib/inventory";
 import { Header } from "@/components/header";
 import { Card } from "@/components/ui/card";
@@ -66,7 +66,7 @@ import Image from "next/image";
 import { ImageUploader } from "@/components/image-uploader";
 
 export default function ProductsPage() {
-  const { categories } = useCategories();
+  const { categories } = useCategoryOptions();
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);

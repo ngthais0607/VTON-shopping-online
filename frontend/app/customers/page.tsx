@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { apiGet, apiDelete } from "@/lib/api";
+import { useUsers } from '@/hooks/use-users';
+import { PaginationControls } from '@/components/pagination-controls';
 import { User, Order } from "@/lib/types";
 
 import { Header } from "@/components/header";
@@ -26,9 +28,10 @@ import { MoreVertical, Mail, Calendar, ShoppingBag, UserCheck, ShieldAlert, Arro
 import { format } from "date-fns";
 
 export default function CustomersPage() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(true);
+  const {users, total, isLoading: loading, error, mutate: loadUsers} = useUsers({page, search:searchQuery});
+  const [ordersError, setOrdersError] = useState<string | null>(null);
 
   // States cho các Dialogs
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -39,23 +42,8 @@ export default function CustomersPage() {
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   // Tải danh sách khách hàng
-  async function loadUsers() {
-    try {
-      setLoading(true);
-      const data = await apiGet<User[]>("/users/");
-      setUsers(data);
-    } catch (err) {
-      console.error("Failed to load users", err);
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => { if (!loading && !error && page > 1 && users.length === 0) setPage(page - 1); }, [loading, error, page, users.length]);
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  // API Vô hiệu hóa tài khoản (Soft delete)
   const handleDeactivate = async (userId: number) => {
     if (confirm("Are you sure you want to deactivate this customer account?")) {
       try {
@@ -73,17 +61,19 @@ export default function CustomersPage() {
     setSelectedUser(user);
     setOrdersOpen(true);
     setLoadingOrders(true);
+    setOrdersError(null);
+    setUserOrders([]);
     try {
       const data = await apiGet<Order[]>(`/orders/user/${user.id}`);
       setUserOrders(data);
     } catch (err) {
-      console.error("Failed to load customer orders", err);
+      setOrdersError(err instanceof Error ? err.message : "Failed to load customer orders");
     } finally {
       setLoadingOrders(false);
     }
   };
 
-  const getInitials = (firstName?: string, lastName?: string) => {
+  const getInitials = (firstName?: string | null, lastName?: string | null) => {
     const first = firstName?.charAt(0) || "";
     const last = lastName?.charAt(0) || "";
     return (first + last).toUpperCase() || "U";
@@ -103,19 +93,16 @@ export default function CustomersPage() {
   };
 
   // Lọc danh sách theo thanh tìm kiếm
-  const filteredUsers = users.filter((u) => {
-    const fullName = `${u.first_name || ""} ${u.last_name || ""}`.toLowerCase();
-    const email = (u.email || "").toLowerCase();
-    const username = (u.username || "").toLowerCase();
-    const query = searchQuery.toLowerCase();
-    return fullName.includes(query) || email.includes(query) || username.includes(query);
-  });
+  const filteredUsers = users;
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50/50">
       <Header title="Customers" subtitle="Manage and monitor your registered customer base" />
 
       <main className="flex-1 p-8 space-y-6 max-w-7xl mx-auto w-full">
+        {error && <p role="alert">{error.message}<button onClick={()=>loadUsers()}>Retry</button></p>}
+        <PaginationControls page={page} pageSize={20} total={total} onPageChange={setPage} disabled={loading}/>
+
         {/* Thanh tìm kiếm & Stats nhanh */}
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
           <div className="relative w-full md:w-96">
@@ -124,7 +111,7 @@ export default function CustomersPage() {
               type="text"
               placeholder="Search customer by name, email..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {setSearchQuery(e.target.value); setPage(1);}}
               className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 transition-all"
             />
           </div>
@@ -308,7 +295,7 @@ export default function CustomersPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {loadingOrders ? (
+          {ordersError ? <p role="alert">{ordersError}</p> : loadingOrders ? (
             <div className="py-12 text-center text-slate-500">
               <span className="flex flex-col items-center justify-center gap-2">
                 <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />

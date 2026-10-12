@@ -1,10 +1,11 @@
 // Path: frontend/app/orders/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { MoreVertical, Eye, Edit2 } from "lucide-react";
 
+import { PaginationControls } from '@/components/pagination-controls';
 import { useOrders } from "@/hooks/use-orders";
 import { Order } from "@/lib/types";
 import { Header } from "@/components/header";
@@ -70,7 +71,9 @@ function getPaymentStatusColor(status: string) {
 }
 
 export default function OrdersPage() {
-  const { orders, isLoading: loading, mutate } = useOrders();
+  const [page, setPage] = useState(1);
+  const { orders, total, error, isLoading: loading, mutate } = useOrders({page});
+  useEffect(() => { if (!loading && !error && page > 1 && orders.length === 0) setPage(page - 1); }, [loading, error, page, orders.length]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -83,10 +86,12 @@ export default function OrdersPage() {
 
       <main className="flex-1 p-8">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold text-slate-800">All Orders ({orders.length})</h2>
+          <h2 className="text-lg font-bold text-slate-800">All Orders ({total})</h2>
           <ExportCSVButton orders={orders} />
         </div>
 
+        {error && <p role="alert">{error.message}<button onClick={()=>mutate()}>Retry</button></p>}
+        <PaginationControls page={page} pageSize={10} total={total} onPageChange={setPage} disabled={loading}/>
         {loading ? (
           <Card className="p-8 text-center text-slate-600">
             <span className="flex items-center justify-center gap-2">
