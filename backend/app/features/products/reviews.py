@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, joinedload
 
-from app.features.orders.model import Order
+from app.features.orders.model import Order, OrderItem
 from app.features.products import service as product_service
 from app.features.products.model import ProductReview
 from app.features.products.schemas import ReviewCreate, ReviewSummary
@@ -38,9 +38,10 @@ def create_product_review(
     product_service.get_product(db, product_id)
     paid_order = (
         db.query(Order)
+        .outerjoin(Order.items)
         .filter(
             Order.user_id == user.id,
-            Order.product_id == product_id,
+            (Order.product_id == product_id) | (OrderItem.product_id == product_id),
             Order.status == "paid",
         )
         .first()

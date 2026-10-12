@@ -46,8 +46,18 @@ _ALLOWED_TRANSITIONS = {
         OrderStatus.CANCELLED,
         OrderStatus.EXPIRED,
     },
+    (OrderPaymentMethod.VIETQR, OrderStatus.PAID): {
+        OrderStatus.CANCELLED,
+    },
+    (OrderPaymentMethod.COD, OrderStatus.PENDING): {
+        OrderStatus.CONFIRMED,
+        OrderStatus.CANCELLED,
+    },
     (OrderPaymentMethod.COD, OrderStatus.CONFIRMED): {
         OrderStatus.PAID,
+        OrderStatus.CANCELLED,
+    },
+    (OrderPaymentMethod.COD, OrderStatus.PAID): {
         OrderStatus.CANCELLED,
     },
 }
@@ -66,17 +76,43 @@ def apply_order_transition(
             f"{current_status.value} to {new_status.value}"
         )
 
-    if order.product is not None:
-        order.product.reserved_quantity = max(
-            0, order.product.reserved_quantity - order.quantity
-        )
-        if new_status == OrderStatus.PAID:
-            order.product.sold_quantity += order.quantity
+    # If the order has OrderItem lines, adjust each item's product stock
+    items = getattr(order, "items", None)
+    if items:
+        for item in items:
+            prod = getattr(item, "product", None)
+            if prod is not None:
+                qty = item.quantity or 0
+                if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
+                    prod.reserved_quantity = max(0, prod.reserved_quantity - qty)
+                    if new_status == OrderStatus.PAID:
+                        prod.sold_quantity += qty
+                elif (
+                    current_status == OrderStatus.PAID
+                    and new_status == OrderStatus.CANCELLED
+                ):
+                    prod.sold_quantity = max(0, prod.sold_quantity - qty)
+    elif getattr(order, "product", None) is not None:
+        prod = order.product
+        qty = order.quantity or 0
+        if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
+            prod.reserved_quantity = max(0, prod.reserved_quantity - qty)
+            if new_status == OrderStatus.PAID:
+                prod.sold_quantity += qty
+        elif (
+            current_status == OrderStatus.PAID
+            and new_status == OrderStatus.CANCELLED
+        ):
+            prod.sold_quantity = max(0, prod.sold_quantity - qty)
 
     order.status = new_status.value
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+
     if new_status == OrderStatus.PAID:
-        order.paid_at = now or datetime.now(timezone.utc)
+        order.paid_at = current_time
     elif new_status == OrderStatus.EXPIRED:
-        for payment in order.payments:
+        for payment in getattr(order, "payments", []):
             if payment.status == "pending":
                 payment.status = "expired"

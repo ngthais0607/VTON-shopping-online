@@ -1,6 +1,15 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+)
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -8,10 +17,21 @@ from app.core.database import Base
 
 class Product(Base):
     __tablename__ = "products"
+    __table_args__ = (
+        CheckConstraint(
+            "stock_quantity >= 0", name="ck_products_stock_quantity_nonneg"
+        ),
+        CheckConstraint(
+            "reserved_quantity >= 0", name="ck_products_reserved_quantity_nonneg"
+        ),
+        CheckConstraint(
+            "sold_quantity >= 0", name="ck_products_sold_quantity_nonneg"
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
-    price = Column(Float, nullable=False, index=True)
+    price = Column(Numeric(12, 2), nullable=False, index=True)
     description = Column(String(1000), nullable=True)
 
     stock_quantity = Column(Integer, nullable=False, default=0)
@@ -23,13 +43,14 @@ class Product(Base):
     )
     category = relationship("Category", back_populates="products")
 
-    currency = Column(String(10), nullable=False, default="USD")
+    currency = Column(String(10), nullable=False, default="VND")
     paddle_product_id = Column(String(100), nullable=True)
     paddle_price_id = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True, index=True)
 
     images = relationship("ProductImage", back_populates="product")
     orders = relationship("Order", back_populates="product")
+    order_items = relationship("OrderItem", back_populates="product")
     reviews = relationship(
         "ProductReview", back_populates="product", cascade="all, delete-orphan"
     )

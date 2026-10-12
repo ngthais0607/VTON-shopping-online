@@ -11,7 +11,7 @@ from sqlalchemy import or_
 from app.core.database import Base, SessionLocal, engine
 from app.core.security import hash_password
 from app.features.categories.model import Category
-from app.features.orders.model import Order, Payment
+from app.features.orders.model import Order, OrderItem, Payment
 from app.features.products.model import Product, ProductImage
 from app.features.users.model import User
 
@@ -20,7 +20,6 @@ def seed_database(db=None):
     print("[SEED] Starting rich database seeding...")
     should_close = False
     if db is None:
-        Base.metadata.create_all(bind=engine)
         db = SessionLocal()
         should_close = True
 
@@ -262,7 +261,7 @@ def seed_database(db=None):
                     unit_price=selected_prod.price,
                     quantity=qty,
                     total_amount=total,
-                    currency="USD",
+                    currency="VND",
                     status=status,
                     customer_name=customer.full_name if customer else "Seed Customer",
                     customer_phone="0000000000",
@@ -281,13 +280,24 @@ def seed_database(db=None):
                 db.commit()
                 db.refresh(order)
 
+                order_item = OrderItem(
+                    order_id=order.id,
+                    product_id=selected_prod.id,
+                    product_name=selected_prod.name,
+                    unit_price=selected_prod.price,
+                    quantity=qty,
+                    subtotal=total,
+                )
+                db.add(order_item)
+                db.commit()
+
                 # Add payment record for paid orders
                 if status == "paid":
                     payment = Payment(
                         order_id=order.id,
                         provider="vietqr",
                         amount=total,
-                        currency="USD",
+                        currency="VND",
                         status="completed",
                         paid_at=order.paid_at,
                         created_at=created_date,

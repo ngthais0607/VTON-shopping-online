@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Self
 
@@ -51,7 +52,7 @@ class ProductCreate(BaseModel):
     description: str | None = Field(default=None, max_length=1000)
     category_id: int | None = None
     stock_quantity: int = Field(default=0, ge=0)
-    currency: str = Field(default="USD", min_length=1, max_length=10)
+    currency: str = Field(default="VND", min_length=1, max_length=10)
     is_active: bool = True
 
 

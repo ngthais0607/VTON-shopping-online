@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,16 +49,28 @@ class VietQRWebhookResponse(BaseModel):
     order_ids: list[int]
 
 
+class OrderItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_id: int
+    product_id: int
+    product_name: str
+    unit_price: float
+    quantity: int
+    subtotal: float
+
+
 class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     public_code: str
     user_id: int | None
-    product_id: int
-    product_name: str
-    unit_price: float
-    quantity: int
+    product_id: int | None = None
+    product_name: str | None = None
+    unit_price: float | None = None
+    quantity: int | None = None
     total_amount: float
     total: float
     currency: str
@@ -71,6 +84,7 @@ class OrderResponse(BaseModel):
     expires_at: datetime | None
     paid_at: datetime | None
     created_at: datetime | None
+    items: list[OrderItemResponse] = []
 
 
 class CheckoutResponse(BaseModel):

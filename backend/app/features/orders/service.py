@@ -2,6 +2,7 @@ import hmac
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
@@ -22,10 +23,11 @@ from app.features.orders.domain import (
     apply_order_transition,
     available_stock,
 )
-from app.features.orders.model import Order, Payment
+from app.features.orders.model import Order, OrderItem, Payment
 from app.features.orders.schemas import (
     CheckoutCommand,
     CheckoutResponse,
+    OrderItemResponse,
     OrderResponse,
     TrackingResponse,
     TrackingStep,
@@ -54,7 +56,8 @@ class InsufficientStockError(ConflictError):
 
 
 def order_to_response(order: Order) -> OrderResponse:
-    payment = order.payments[-1] if order.payments else None
+    payments = getattr(order, "payments", []) or []
+    payment = payments[-1] if payments else None
     if payment:
         payment_status = payment.status
     elif order.status == OrderStatus.PAID.value:
@@ -63,33 +66,69 @@ def order_to_response(order: Order) -> OrderResponse:
         payment_status = "failed"
     else:
         payment_status = "pending"
+
+    order_items = getattr(order, "items", []) or []
+    items_res = [
+        OrderItemResponse(
+            id=item.id,
+            order_id=item.order_id,
+            product_id=item.product_id,
+            product_name=item.product_name,
+            unit_price=item.unit_price,
+            quantity=item.quantity,
+            subtotal=item.subtotal,
+        )
+        for item in order_items
+    ]
+
+    first_item = order_items[0] if order_items else None
+    product_id = (
+        order.product_id
+        if order.product_id is not None
+        else (first_item.product_id if first_item else 0)
+    )
+    product_name = (
+        order.product_name or (first_item.product_name if first_item else "")
+    )
+    unit_price = (
+        order.unit_price
+        if order.unit_price is not None
+        else (first_item.unit_price if first_item else Decimal(0))
+    )
+    quantity = (
+        order.quantity
+        if order.quantity is not None
+        else (sum(i.quantity for i in order_items) if order_items else 0)
+    )
+
     return OrderResponse(
         id=order.id,
         public_code=getattr(order, "public_code", None) or uuid4().hex,
         user_id=order.user_id,
-        product_id=order.product_id,
-        product_name=order.product_name,
-        unit_price=order.unit_price,
-        quantity=order.quantity,
+        product_id=product_id,
+        product_name=product_name,
+        unit_price=unit_price,
+        quantity=quantity,
         total_amount=order.total_amount,
         total=order.total_amount,
         currency=order.currency,
-        status=order.status,
+        status=OrderStatus(order.status),
         customer_name=order.customer_name,
         customer_phone=order.customer_phone,
         shipping_address=order.shipping_address,
         notes=order.notes,
-        payment_method=order.payment_method,
+        payment_method=OrderPaymentMethod(order.payment_method),
         payment_status=payment_status,
         expires_at=order.expires_at,
         paid_at=order.paid_at,
         created_at=order.created_at,
+        items=items_res,
     )
 
 
 def _vietqr_response(orders: list[Order]) -> VietQRResponse:
     total = sum(order.total_amount for order in orders)
-    memo = f"LUXESTORE_{'_'.join(str(order.id) for order in orders)}"
+    memo = f"TRUELOOK_{'_'.join(str(order.id) for order in orders)}"
     instructions = build_vietqr_instructions(total, memo)
     return VietQRResponse(**vars(instructions))
 
@@ -143,56 +182,93 @@ async def checkout_cart(
         raise BusinessRuleError(
             "Cart must use one currency", code="mixed_cart_currency"
         )
-    if command.payment_method == OrderPaymentMethod.VIETQR and currencies != {"VND"}:
+    currency = currencies.pop()
+    if command.payment_method == OrderPaymentMethod.VIETQR and currency != "VND":
         raise BusinessRuleError(
             "VietQR requires VND", code="unsupported_payment_currency"
         )
 
+    settings = get_settings()
     checkout_time = now or datetime.now(timezone.utc)
+    if checkout_time.tzinfo is None:
+        checkout_time = checkout_time.replace(tzinfo=timezone.utc)
     is_vietqr = command.payment_method == OrderPaymentMethod.VIETQR
-    orders: list[Order] = []
+
+    # Atomic inventory reservation
     for product_id in product_ids:
-        product = by_id[product_id]
         quantity = quantities[product_id]
-        order = Order(
-            user_id=user.id,
-            product_id=product.id,
-            product_name=product.name,
-            unit_price=product.price,
-            quantity=quantity,
-            total_amount=product.price * quantity,
-            currency=product.currency.upper(),
-            status=OrderStatus.PENDING.value
-            if is_vietqr
-            else OrderStatus.CONFIRMED.value,
-            customer_name=command.customer_name,
-            customer_phone=command.customer_phone,
-            shipping_address=command.shipping_address,
-            notes=command.notes,
-            payment_method=command.payment_method.value,
-            expires_at=checkout_time + timedelta(minutes=30) if is_vietqr else None,
+        by_id[product_id].reserved_quantity += quantity
+
+    total_amount = sum(
+        Decimal(str(by_id[pid].price)) * qty for pid, qty in quantities.items()
+    )
+
+    first_prod = by_id[product_ids[0]]
+    summary_name = (
+        first_prod.name
+        if len(product_ids) == 1
+        else f"{first_prod.name} and {len(product_ids) - 1} other item(s)"
+    )
+
+    order = Order(
+        user_id=user.id,
+        product_id=first_prod.id,
+        product_name=summary_name,
+        unit_price=first_prod.price,
+        quantity=sum(quantities.values()),
+        total_amount=total_amount,
+        currency=currency,
+        status=OrderStatus.PENDING.value
+        if is_vietqr
+        else OrderStatus.CONFIRMED.value,
+        customer_name=command.customer_name,
+        customer_phone=command.customer_phone,
+        shipping_address=command.shipping_address,
+        notes=command.notes,
+        payment_method=command.payment_method.value,
+        expires_at=checkout_time + timedelta(minutes=settings.order_expire_minutes)
+        if is_vietqr
+        else None,
+    )
+    db.add(order)
+    db.flush()
+
+    for product_id in product_ids:
+        prod = by_id[product_id]
+        qty = quantities[product_id]
+        item_subtotal = Decimal(str(prod.price)) * qty
+        item = OrderItem(
+            order_id=order.id,
+            product_id=prod.id,
+            product_name=prod.name,
+            unit_price=prod.price,
+            quantity=qty,
+            subtotal=item_subtotal,
         )
-        product.reserved_quantity += quantity
-        db.add(order)
-        orders.append(order)
+        db.add(item)
+        order.items.append(item)
+
     db.commit()
-    for order in orders:
-        db.refresh(order)
+    db.refresh(order)
 
-    for order in orders:
-        await _enqueue_best_effort(
-            queue, "send_order_confirmation_email_task", order.id
-        )
+    await _enqueue_best_effort(
+        queue, "send_order_confirmation_email_task", order.id
+    )
 
+    order_resp = order_to_response(order)
     response = CheckoutResponse(
         message="Checkout created successfully",
-        orders=[order_to_response(order) for order in orders],
-        total_amount=sum(order.total_amount for order in orders),
+        orders=[order_resp],
+        total_amount=order.total_amount,
         payment_method=command.payment_method,
     )
     if is_vietqr:
-        response.vietqr = _vietqr_response(orders)
+        response.vietqr = _vietqr_response([order])
     return response
+
+
+# Alias for centralized interface
+create_checkout = checkout_cart
 
 
 def list_orders(db: Session, limit: int, offset: int) -> Page[OrderResponse]:
@@ -225,10 +301,23 @@ async def change_order_status(
     new_status: OrderStatus,
     queue: TaskQueue,
 ) -> OrderResponse:
-    product_id = db.query(Order.product_id).filter(Order.id == order_id).scalar()
-    if product_id is None:
+    order_exists = db.query(Order.id).filter(Order.id == order_id).scalar()
+    if order_exists is None:
         raise OrderNotFoundError("Order not found")
-    locked_products = _lock_transition_products(db, {product_id})
+    legacy_pid = db.query(Order.product_id).filter(Order.id == order_id).scalar()
+    item_pids = {
+        pid
+        for (pid,) in db.query(OrderItem.product_id)
+        .filter(OrderItem.order_id == order_id)
+        .all()
+    }
+    if legacy_pid:
+        item_pids.add(legacy_pid)
+
+    # 1. Lock products FIRST
+    locked_products = _lock_transition_products(db, item_pids)
+
+    # 2. Lock order row NEXT
     order = (
         db.query(Order)
         .filter(Order.id == order_id)
@@ -238,15 +327,44 @@ async def change_order_status(
     )
     if order is None:
         raise OrderNotFoundError("Order not found")
-    if order.product_id != product_id:
+    if legacy_pid and order.product_id != legacy_pid:
         raise ConflictError("Order product changed during transition")
-    order.product = locked_products[product_id]
+
+    for item in order.items:
+        item.product = locked_products.get(item.product_id)
+    if order.product_id:
+        order.product = locked_products.get(order.product_id)
+
     apply_order_transition(order, new_status)
     db.commit()
     db.refresh(order)
     if new_status == OrderStatus.PAID:
         await _enqueue_best_effort(queue, "send_payment_received_email_task", order.id)
     return order_to_response(order)
+
+
+async def mark_paid(
+    db: Session, order_id: int, queue: TaskQueue
+) -> OrderResponse:
+    return await change_order_status(db, order_id, OrderStatus.PAID, queue)
+
+
+async def cancel_order(
+    db: Session, order_id: int, queue: TaskQueue
+) -> OrderResponse:
+    return await change_order_status(db, order_id, OrderStatus.CANCELLED, queue)
+
+
+async def expire_order(
+    db: Session, order_id: int, queue: TaskQueue
+) -> OrderResponse:
+    return await change_order_status(db, order_id, OrderStatus.EXPIRED, queue)
+
+
+async def confirm_cod(
+    db: Session, order_id: int, queue: TaskQueue
+) -> OrderResponse:
+    return await change_order_status(db, order_id, OrderStatus.CONFIRMED, queue)
 
 
 def list_user_orders(
@@ -331,9 +449,23 @@ def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
         .order_by(Order.id)
         .all()
     )
-    locked_products = _lock_transition_products(
-        db, {product_id for _, product_id in candidates}
-    )
+    if not candidates:
+        return 0
+
+    order_ids = [cid for cid, _ in candidates]
+    all_product_ids = {cpid for _, cpid in candidates if cpid is not None}
+    item_pids = {
+        pid
+        for (pid,) in db.query(OrderItem.product_id)
+        .filter(OrderItem.order_id.in_(order_ids))
+        .all()
+    }
+    all_product_ids.update(item_pids)
+
+    # 1. Lock products FIRST
+    locked_products = _lock_transition_products(db, all_product_ids)
+
+    # 2. Lock exact order rows in loop
     expired_count = 0
     for order_id, discovered_product_id in candidates:
         order = (
@@ -345,7 +477,6 @@ def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
         )
         if (
             order is None
-            or order.product_id != discovered_product_id
             or order.status != OrderStatus.PENDING.value
             or order.payment_method != OrderPaymentMethod.VIETQR.value
             or order.expires_at is None
@@ -356,7 +487,12 @@ def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         if expires_at > current_time:
             continue
-        order.product = locked_products[discovered_product_id]
+
+        for item in order.items:
+            item.product = locked_products.get(item.product_id)
+        if order.product_id:
+            order.product = locked_products.get(order.product_id)
+
         apply_order_transition(order, OrderStatus.EXPIRED, current_time)
         expired_count += 1
     db.commit()
@@ -430,7 +566,7 @@ def process_vietqr_webhook(
         )
 
     total_expected = sum(order.total_amount for order in orders)
-    if round(total_expected) != round(payload.amount):
+    if round(float(total_expected)) != round(payload.amount):
         logger.warning(
             "VietQR webhook amount mismatch: received %s, expected %s for orders %s",
             payload.amount,
@@ -442,9 +578,20 @@ def process_vietqr_webhook(
             code="amount_mismatch",
         )
 
+    all_product_ids = set()
+    for order in orders:
+        all_product_ids.update(item.product_id for item in order.items)
+        if order.product_id:
+            all_product_ids.add(order.product_id)
+
+    locked_products = _lock_transition_products(db, all_product_ids)
     current_time = datetime.now(timezone.utc)
     for order in orders:
         if order.status == OrderStatus.PENDING.value:
+            for item in order.items:
+                item.product = locked_products.get(item.product_id)
+            if order.product_id:
+                order.product = locked_products.get(order.product_id)
             apply_order_transition(order, OrderStatus.PAID, current_time)
             payment = Payment(
                 order_id=order.id,

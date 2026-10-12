@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import (
     Column,
     DateTime,
-    Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
 )
@@ -32,13 +33,15 @@ class Order(Base):
         if "public_code" not in kwargs or not kwargs["public_code"]:
             kwargs["public_code"] = uuid4().hex
         super().__init__(**kwargs)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
-    product_name = Column(String(255), nullable=False)
-    unit_price = Column(Float, nullable=False)
-    quantity = Column(Integer, nullable=False)
-    total_amount = Column(Float, nullable=False)
 
-    currency = Column(String(10), nullable=False, default="USD")
+    # Legacy fields kept for backward compatibility and quick summary
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
+    product_name = Column(String(255), nullable=True)
+    unit_price = Column(Numeric(12, 2), nullable=True)
+    quantity = Column(Integer, nullable=True)
+    total_amount = Column(Numeric(12, 2), nullable=False)
+
+    currency = Column(String(10), nullable=False, default="VND")
     status = Column(String(50), nullable=False, default="pending", index=True)
     customer_name = Column(String(255), nullable=False)
     customer_phone = Column(String(50), nullable=False)
@@ -59,7 +62,27 @@ class Order(Base):
     )
 
     product = relationship("Product", back_populates="orders")
-    payments = relationship("Payment", back_populates="order")
+    items = relationship(
+        "OrderItem", back_populates="order", cascade="all, delete-orphan"
+    )
+    payments = relationship(
+        "Payment", back_populates="order", cascade="all, delete-orphan"
+    )
+
+
+class OrderItem(Base):
+    __tablename__ = "order_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    product_name = Column(String(255), nullable=False)
+    unit_price = Column(Numeric(12, 2), nullable=False)
+    quantity = Column(Integer, nullable=False)
+    subtotal = Column(Numeric(12, 2), nullable=False)
+
+    order = relationship("Order", back_populates="items")
+    product = relationship("Product", back_populates="order_items")
 
 
 class Payment(Base):
@@ -78,8 +101,8 @@ class Payment(Base):
     provider = Column(String(50), nullable=False, default="paddle")
     provider_transaction_id = Column(String(100), nullable=True)
 
-    amount = Column(Float, nullable=False)
-    currency = Column(String(10), nullable=False, default="USD")
+    amount = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(10), nullable=False, default="VND")
     status = Column(String(50), nullable=False, default="pending", index=True)
 
     checkout_url = Column(String(500), nullable=True)

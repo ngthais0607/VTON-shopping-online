@@ -65,7 +65,8 @@ def test_customer_checkout_tracking_and_admin_payment_contract(
     assert checkout.status_code == 201
     body = checkout.json()
     assert body["total_amount"] == 50
-    assert len(body["orders"]) == 2
+    assert len(body["orders"]) == 1
+    assert len(body["orders"][0]["items"]) == 2
     order_id = body["orders"][0]["id"]
     assert (
         client.get(f"/api/v1/orders/track/{order_id}", headers=headers).json()["status"]
