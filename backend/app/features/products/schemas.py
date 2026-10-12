@@ -44,31 +44,25 @@ class ProductFilters(BaseModel):
 
 
 class ProductCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=255)
-    price: float = Field(gt=0)
+    price: float = Field(ge=0)
     description: str | None = Field(default=None, max_length=1000)
     category_id: int | None = None
     stock_quantity: int = Field(default=0, ge=0)
-    reserved_quantity: int = Field(default=0, ge=0)
-    sold_quantity: int = Field(default=0, ge=0)
     currency: str = Field(default="USD", min_length=1, max_length=10)
     is_active: bool = True
 
-    @model_validator(mode="after")
-    def validate_allocated_inventory(self) -> Self:
-        if self.reserved_quantity + self.sold_quantity > self.stock_quantity:
-            raise ValueError("Reserved and sold quantities cannot exceed total stock")
-        return self
-
 
 class ProductPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    price: float | None = Field(default=None, gt=0)
+    price: float | None = Field(default=None, ge=0)
     description: str | None = Field(default=None, max_length=1000)
     category_id: int | None = None
     stock_quantity: int | None = Field(default=None, ge=0)
-    reserved_quantity: int | None = Field(default=None, ge=0)
-    sold_quantity: int | None = Field(default=None, ge=0)
     currency: str | None = Field(default=None, min_length=1, max_length=10)
     is_active: bool | None = None
 
@@ -83,20 +77,10 @@ class ProductPatch(BaseModel):
                 raise ValueError(f"{field_name} cannot be null")
         return value
 
-    @model_validator(mode="after")
-    def validate_complete_inventory_patch(self) -> Self:
-        quantities = (
-            self.stock_quantity,
-            self.reserved_quantity,
-            self.sold_quantity,
-        )
-        if all(quantity is not None for quantity in quantities):
-            stock, reserved, sold = quantities
-            if reserved + sold > stock:
-                raise ValueError(
-                    "Reserved and sold quantities cannot exceed total stock"
-                )
-        return self
+
+class ProductStockAdjustment(BaseModel):
+    stock_quantity: int = Field(ge=0)
+    reason: str = Field(min_length=1, max_length=500)
 
 
 class CategorySummary(BaseModel):

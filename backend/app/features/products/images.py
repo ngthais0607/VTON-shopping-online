@@ -10,7 +10,11 @@ from app.features.products import service
 from app.features.products.model import ProductImage
 from app.integrations.storage import ProductStorage
 
+from io import BytesIO
+
 logger = logging.getLogger(__name__)
+
+MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 
 SUPPORTED_IMAGE_TYPES = {
     ".jpeg": "image/jpeg",
@@ -36,10 +40,17 @@ def store_product_image(
             code="invalid_product_image",
         )
 
+    payload = stream.read()
+    if len(payload) > MAX_IMAGE_SIZE_BYTES:
+        raise BusinessRuleError(
+            "Product image must not exceed 5MB",
+            code="image_too_large",
+        )
+
     image_id = str(uuid4())
     object_name = f"products/{image_id}{extension}"
     public_url = storage.public_url(object_name)
-    storage.put(object_name, stream, content_type)
+    storage.put(object_name, BytesIO(payload), content_type)
 
     image = ProductImage(
         id=image_id,

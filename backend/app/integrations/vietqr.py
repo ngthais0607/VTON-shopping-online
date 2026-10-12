@@ -24,6 +24,8 @@ def build_vietqr_instructions(
     settings: Settings | None = None,
 ) -> VietQRInstructions:
     config = settings or get_settings()
+    if not getattr(config, "vietqr_bank_id", None) or not getattr(config, "vietqr_account_no", None):
+        raise ValueError("VietQR bank_id and account_no must be configured")
     rounded_amount = int(
         Decimal(str(amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     )

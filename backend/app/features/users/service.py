@@ -160,13 +160,18 @@ def delete_user(db: Session, user_id: int) -> None:
 
 def _create_user(db: Session, command: UserCreate) -> User:
     _ensure_unique_user(db, username=command.username, email=command.email)
+    from app.core.config import get_settings
+    settings = get_settings()
+    role = "customer"
+    if settings.bootstrap_admin_email and command.email.lower() == settings.bootstrap_admin_email.lower():
+        role = "admin"
     user = User(
         username=command.username,
         email=command.email,
         password_hash=hash_password(command.password),
         first_name=command.first_name,
         last_name=command.last_name,
-        role="customer",
+        role=role,
     )
     db.add(user)
     return _commit_user(db, user)

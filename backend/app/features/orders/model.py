@@ -1,6 +1,15 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import (
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -10,7 +19,19 @@ class Order(Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
+    public_code = Column(
+        String(36),
+        unique=True,
+        index=True,
+        nullable=False,
+        default=lambda: uuid4().hex,
+    )
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    def __init__(self, **kwargs):
+        if "public_code" not in kwargs or not kwargs["public_code"]:
+            kwargs["public_code"] = uuid4().hex
+        super().__init__(**kwargs)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     product_name = Column(String(255), nullable=False)
     unit_price = Column(Float, nullable=False)
@@ -43,6 +64,13 @@ class Order(Base):
 
 class Payment(Base):
     __tablename__ = "payments"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "provider_transaction_id",
+            name="uq_payments_provider_trans_id",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)

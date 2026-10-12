@@ -13,6 +13,7 @@ from app.features.users.schemas import (
     PasswordChange,
     RefreshTokenRequest,
     TokenPair,
+    TokenResponse,
     UserCreate,
     UserPatch,
     UserResponse,
@@ -38,7 +39,7 @@ async def register_user(
     return await service.register_user(db, command, queue)
 
 
-@router.post("/login", response_model=TokenPair, summary="Login user")
+@router.post("/login", response_model=TokenResponse, summary="Login user")
 @limiter.limit("5/minute")
 def login_user(
     request: Request,
@@ -48,10 +49,10 @@ def login_user(
 ):
     tokens = service.login_user(db, command)
     _set_refresh_cookie(request, response, tokens.refresh_token)
-    return tokens
+    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
 
 
-@router.post("/refresh", response_model=TokenPair, summary="Refresh session")
+@router.post("/refresh", response_model=TokenResponse, summary="Refresh session")
 def refresh_user_session(
     request: Request,
     response: Response,
@@ -70,7 +71,7 @@ def refresh_user_session(
         )
     tokens = service.refresh_user_session(db, refresh_token)
     _set_refresh_cookie(request, response, tokens.refresh_token)
-    return tokens
+    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
 
 
 @router.post(
@@ -179,7 +180,7 @@ def _set_refresh_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        samesite="lax",
+        samesite=getattr(settings, "refresh_cookie_samesite", "lax"),
         secure=settings.refresh_cookie_secure,
         max_age=settings.refresh_token_expire_days * 24 * 3600,
     )

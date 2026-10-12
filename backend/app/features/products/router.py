@@ -13,6 +13,7 @@ from app.features.products.schemas import (
     ProductImageResponse,
     ProductPatch,
     ProductResponse,
+    ProductStockAdjustment,
     ReviewCreate,
     ReviewResponse,
     ReviewSummary,
@@ -70,6 +71,20 @@ def update_product(
     _current_admin: User = Depends(get_current_admin),
 ):
     return service.update_product(db, product_id, command)
+
+
+@router.post(
+    "/{product_id}/adjust-stock",
+    response_model=ProductResponse,
+    summary="Adjust product stock quantity with mandatory reason",
+)
+def adjust_product_stock(
+    product_id: int,
+    command: ProductStockAdjustment,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(get_current_admin),
+):
+    return service.adjust_product_stock(db, product_id, command)
 
 
 @router.delete(

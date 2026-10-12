@@ -319,7 +319,7 @@ def test_track_order_hides_order_from_other_customer(
     assert response.status_code == 404
 
 
-def test_vietqr_webhook_route_is_removed(client, db_session, mock_user_auth):
+def test_vietqr_webhook_rejects_unauthenticated_request(client, db_session, mock_user_auth):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
     app.dependency_overrides.pop(get_current_user, None)
 
@@ -332,7 +332,7 @@ def test_vietqr_webhook_route_is_removed(client, db_session, mock_user_auth):
         },
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 401
     order = db_session.query(Order).filter(Order.id == order_id).one()
     assert order.status == "pending"
 

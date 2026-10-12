@@ -33,10 +33,26 @@ class VietQRResponse(BaseModel):
     amount: int
 
 
+class VietQRWebhookPayload(BaseModel):
+    transaction_id: str = Field(min_length=1, max_length=100)
+    amount: float = Field(gt=0)
+    content: str = Field(min_length=1, max_length=500)
+    account_number: str | None = None
+    bank_code: str | None = None
+    transacted_at: datetime | None = None
+
+
+class VietQRWebhookResponse(BaseModel):
+    status: str
+    message: str
+    order_ids: list[int]
+
+
 class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    public_code: str
     user_id: int | None
     product_id: int
     product_name: str

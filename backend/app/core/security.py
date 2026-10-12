@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import uuid4
 
 import jwt
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -101,6 +101,30 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
             code="admin_required",
         )
     return current_user
+
+
+def get_current_user_optional(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    db: Session = Depends(get_db),
+) -> User | None:
+    if get_current_user in request.app.dependency_overrides:
+        override = request.app.dependency_overrides[get_current_user]
+        return override()
+    if credentials is None or not credentials.credentials:
+        return None
+    try:
+        user_id = int(decode_access_token(credentials.credentials))
+        return (
+            db.query(User)
+            .filter(
+                User.id == user_id,
+                User.is_deleted.is_(False),
+            )
+            .first()
+        )
+    except Exception:
+        return None
 
 
 def _create_token(

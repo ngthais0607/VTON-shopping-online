@@ -140,6 +140,26 @@ def test_store_product_image_rejects_unsafe_or_mismatched_file_types(
     assert db_session.query(ProductImage).count() == 0
 
 
+def test_store_product_image_rejects_files_over_5mb(db_session):
+    product = persist_product(db_session)
+    storage = FakeProductStorage()
+    large_payload = b"x" * (5 * 1024 * 1024 + 1)
+
+    with pytest.raises(BusinessRuleError) as error:
+        store_product_image(
+            db_session,
+            storage,
+            product.id,
+            BytesIO(large_payload),
+            "catalog.png",
+            "image/png",
+        )
+
+    assert error.value.code == "image_too_large"
+    assert storage.put_objects == []
+    assert db_session.query(ProductImage).count() == 0
+
+
 def test_store_product_image_compensates_when_database_commit_fails(db_session):
     product = persist_product(db_session)
     storage = FakeProductStorage()
@@ -241,7 +261,9 @@ def test_upload_route_returns_public_contract_without_object_name(
 def test_minio_storage_adapter_uses_settings_and_sdk_primitives():
     settings = Settings(
         _env_file=None,
-        secret_key="test-secret",
+        secret_key="test-secret-at-least-32-chars-long!",
+        vietqr_bank_id="MB",
+        vietqr_account_no="0382912048",
         minio_endpoint="minio.internal:9000",
         minio_access_key="access",
         minio_secret_key="secret",
@@ -286,7 +308,12 @@ def test_minio_storage_adapter_uses_settings_and_sdk_primitives():
 
 def test_application_lifespan_ensures_product_storage_bucket():
     application = create_app(
-        Settings(_env_file=None, secret_key="test-secret-for-lifespan")
+        Settings(
+            _env_file=None,
+            secret_key="test-secret-for-lifespan-32-bytes!",
+            vietqr_bank_id="MB",
+            vietqr_account_no="0382912048",
+        )
     )
     storage = FakeProductStorage()
     application.state.product_storage = storage

@@ -13,6 +13,11 @@ os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 os.environ["MINIO_BUCKET"] = "product-images"
 os.environ["MINIO_ENDPOINT"] = "localhost:9000"
 os.environ["MINIO_EXTERNAL_URL"] = ""
+os.environ["VIETQR_BANK_ID"] = "MB"
+os.environ["VIETQR_BANK_NAME"] = "MB Bank (Ngan hang Quan doi)"
+os.environ["VIETQR_ACCOUNT_NO"] = "0382912048"
+os.environ["VIETQR_ACCOUNT_NAME"] = "TRUELOOK"
+os.environ["VIETQR_WEBHOOK_SECRET"] = "test-webhook-secret-32-chars-long-abc"
 
 # Import các thành phần của ứng dụng sau khi đã thiết lập biến môi trường
 from app.core.database import Base, get_db

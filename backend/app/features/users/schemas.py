@@ -1,7 +1,14 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 def _validate_new_password(password: str) -> str:
@@ -12,7 +19,7 @@ def _validate_new_password(password: str) -> str:
 
 class UserCreate(BaseModel):
     username: str = Field(min_length=1, max_length=100)
-    email: str = Field(min_length=1, max_length=255)
+    email: EmailStr
     password: str = Field(min_length=8, max_length=255)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
@@ -25,7 +32,7 @@ class UserCreate(BaseModel):
 
 class UserPatch(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=100)
-    email: str | None = Field(default=None, min_length=1, max_length=255)
+    email: EmailStr | None = Field(default=None)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
 
@@ -60,6 +67,11 @@ class LoginCommand(BaseModel):
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str
+    token_type: str = "bearer"
+
+
+class TokenResponse(BaseModel):
+    access_token: str
     token_type: str = "bearer"
 
 

@@ -119,12 +119,7 @@ def update_product(
         )
 
     stock_quantity = changes.get("stock_quantity", product.stock_quantity)
-    reserved_quantity = changes.get(
-        "reserved_quantity",
-        product.reserved_quantity,
-    )
-    sold_quantity = changes.get("sold_quantity", product.sold_quantity)
-    if reserved_quantity + sold_quantity > stock_quantity:
+    if product.reserved_quantity + product.sold_quantity > stock_quantity:
         raise BusinessRuleError(
             "Reserved and sold quantities cannot exceed total stock",
             code="invalid_product_inventory",
@@ -135,6 +130,20 @@ def update_product(
     if "category_id" in changes:
         product.category = category
 
+    db.commit()
+    return _get_active_product(db, product_id)
+
+
+def adjust_product_stock(
+    db: Session, product_id: int, command: ProductStockAdjustment
+) -> Product:
+    product = _get_active_product(db, product_id)
+    if product.reserved_quantity + product.sold_quantity > command.stock_quantity:
+        raise BusinessRuleError(
+            "Reserved and sold quantities cannot exceed total stock",
+            code="invalid_product_inventory",
+        )
+    product.stock_quantity = command.stock_quantity
     db.commit()
     return _get_active_product(db, product_id)
 

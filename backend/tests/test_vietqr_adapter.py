@@ -26,3 +26,16 @@ def test_vietqr_builder_rounds_half_up_and_encodes_details():
         "accountName": ["Nguyễn Văn A"],
     }
     assert "%26" in instructions.qr_url
+
+
+def test_vietqr_builder_fails_fast_when_credentials_missing():
+    settings = SimpleNamespace(
+        vietqr_bank_id="",
+        vietqr_bank_name="Military Bank",
+        vietqr_account_no="",
+        vietqr_account_name="TrueLook",
+    )
+    import pytest
+    with pytest.raises(ValueError, match="VietQR bank_id and account_no must be configured"):
+        build_vietqr_instructions(Decimal("100"), "TRUELOOK_1", settings)
+

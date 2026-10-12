@@ -15,8 +15,6 @@ def valid_product_payload(**overrides):
         "price": 25.0,
         "currency": "USD",
         "stock_quantity": 10,
-        "reserved_quantity": 2,
-        "sold_quantity": 3,
         "is_active": True,
         "description": "Valid inventory baseline",
     }
@@ -52,12 +50,12 @@ def persist_product(db_session, **values) -> Product:
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"price": 0},
         {"price": -1},
         {"stock_quantity": -1},
         {"reserved_quantity": -1},
         {"sold_quantity": -1},
-        {"stock_quantity": 4, "reserved_quantity": 2, "sold_quantity": 3},
+        {"reserved_quantity": 2},
+        {"sold_quantity": 3},
     ],
 )
 def test_create_product_inventory_validation_rejects_invalid_values(
@@ -66,6 +64,12 @@ def test_create_product_inventory_validation_rejects_invalid_values(
     response = client.post(PRODUCTS_PATH, json=valid_product_payload(**overrides))
 
     assert response.status_code == 422
+
+
+def test_create_product_allows_zero_price(client, mock_admin_auth):
+    response = client.post(PRODUCTS_PATH, json=valid_product_payload(name="Freebie", price=0))
+    assert response.status_code == 201
+    assert response.json()["price"] == 0.0
 
 
 def test_create_product_returns_typed_response(client, mock_admin_auth):
@@ -344,9 +348,10 @@ def test_patch_product_is_partial(client, db_session, mock_admin_auth):
 @pytest.mark.parametrize(
     "payload",
     [
-        {"price": 0},
+        {"price": -1},
         {"stock_quantity": -1},
-        {"stock_quantity": 4, "reserved_quantity": 2, "sold_quantity": 3},
+        {"reserved_quantity": 2},
+        {"sold_quantity": 3},
     ],
 )
 def test_patch_product_preserves_inventory_validation(
@@ -360,6 +365,26 @@ def test_patch_product_preserves_inventory_validation(
     response = client.patch(f"{PRODUCTS_PATH}/{product.id}", json=payload)
 
     assert response.status_code == 422
+
+
+def test_adjust_product_stock_endpoint(client, db_session, mock_admin_auth):
+    product = persist_product(db_session, stock_quantity=10, reserved_quantity=2, sold_quantity=1)
+
+    # Valid adjustment
+    res = client.post(
+        f"{PRODUCTS_PATH}/{product.id}/adjust-stock",
+        json={"stock_quantity": 15, "reason": "Restocked from warehouse"},
+    )
+    assert res.status_code == 200
+    assert res.json()["stock_quantity"] == 15
+
+    # Invalid adjustment: less than reserved + sold (3)
+    res_invalid = client.post(
+        f"{PRODUCTS_PATH}/{product.id}/adjust-stock",
+        json={"stock_quantity": 2, "reason": "Downsizing"},
+    )
+    assert res_invalid.status_code == 400
+    assert res_invalid.json()["code"] == "invalid_product_inventory"
 
 
 def test_patch_product_rejects_inventory_invalid_after_merge(

@@ -301,7 +301,7 @@ def test_refresh_cookie_flags_consistent_for_login_refresh_logout(
         )
         refresh = client.post(
             "/api/v1/users/refresh",
-            json={"refresh_token": login.json()["refresh_token"]},
+            json={"refresh_token": login.cookies["refresh_token"]},
         )
         logout = client.post("/api/v1/users/logout")
         for response in [login, refresh, logout]:

@@ -65,7 +65,8 @@ def test_seed_database_and_versioned_login(client, db_session):
     assert response.status_code == 200
     assert response.json()["token_type"] == "bearer"
     assert response.json()["access_token"]
-    assert response.cookies["refresh_token"] == response.json()["refresh_token"]
+    assert "refresh_token" not in response.json()
+    assert response.cookies["refresh_token"]
 
 
 def test_seed_database_is_idempotent(db_session):
@@ -92,7 +93,7 @@ def test_refresh_rotates_cookie_and_logout_deletes_it(client, db_session):
         "/api/v1/users/login",
         json={"identifier": "admin", "password": "Admin@123456"},
     )
-    old_refresh = login.json()["refresh_token"]
+    old_refresh = login.cookies["refresh_token"]
 
     refreshed = client.post(
         "/api/v1/users/refresh",
@@ -101,8 +102,8 @@ def test_refresh_rotates_cookie_and_logout_deletes_it(client, db_session):
 
     assert refreshed.status_code == 200
     assert refreshed.json()["access_token"]
-    assert refreshed.json()["refresh_token"] != old_refresh
-    assert refreshed.cookies["refresh_token"] == refreshed.json()["refresh_token"]
+    assert "refresh_token" not in refreshed.json()
+    assert refreshed.cookies["refresh_token"] != old_refresh
 
     replay = client.post(
         "/api/v1/users/refresh",
@@ -189,7 +190,7 @@ def test_refresh_token_never_rotates_replacement_user_after_email_reuse(
         "/api/v1/users/login",
         json={"identifier": original_email, "password": "StrongPassword123!"},
     )
-    old_refresh = login.json()["refresh_token"]
+    old_refresh = login.cookies["refresh_token"]
     changed = client.patch(
         "/api/v1/users/me",
         headers={"Authorization": f"Bearer {login.json()['access_token']}"},

@@ -23,11 +23,15 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./app.db"
 
-    secret_key: str = Field(min_length=1)
+    secret_key: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=30, gt=0)
     refresh_token_expire_days: int = Field(default=7, gt=0)
     refresh_cookie_secure: bool = True
+    refresh_cookie_samesite: str = "lax"
+
+    bootstrap_admin_email: str | None = None
+    order_expire_minutes: int = Field(default=15, gt=0)
 
     redis_url: str = "memory://"
     cors_origins: Annotated[
@@ -42,10 +46,11 @@ class Settings(BaseSettings):
     minio_bucket: str = "product-images"
     minio_external_url: str = ""
 
-    vietqr_bank_id: str = "MB"
+    vietqr_bank_id: str = Field(min_length=1)
     vietqr_bank_name: str = "MB Bank (Ngan hang Quan doi)"
-    vietqr_account_no: str = "0382912048"
-    vietqr_account_name: str = "LUXESTORE"
+    vietqr_account_no: str = Field(min_length=1)
+    vietqr_account_name: str = "TRUELOOK"
+    vietqr_webhook_secret: str = ""
 
     emails_enabled: bool = True
     emails_console_log: bool = True
@@ -53,8 +58,8 @@ class Settings(BaseSettings):
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_user: str = ""
     smtp_password: str = ""
-    emails_from_email: str = "noreply@luxestore.com"
-    emails_from_name: str = "LuxeStore E-Commerce"
+    emails_from_email: str = "noreply@truelook.com"
+    emails_from_name: str = "TrueLook E-Commerce"
 
     @field_validator("minio_external_url", mode="before")
     @classmethod

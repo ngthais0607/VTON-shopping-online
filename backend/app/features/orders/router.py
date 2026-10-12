@@ -1,9 +1,15 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.errors import AuthenticationError
+from app.core.rate_limiter import limiter
 from app.core.schemas import Page
-from app.core.security import get_current_admin, get_current_user
+from app.core.security import (
+    get_current_admin,
+    get_current_user,
+    get_current_user_optional,
+)
 from app.features.orders import service
 from app.features.orders.schemas import (
     CheckoutCommand,
@@ -11,11 +17,28 @@ from app.features.orders.schemas import (
     OrderPatchStatus,
     OrderResponse,
     TrackingResponse,
+    VietQRWebhookPayload,
+    VietQRWebhookResponse,
 )
 from app.features.users.model import User
 from app.integrations.queue import TaskQueue, get_task_queue
 
 router = APIRouter(prefix="/api/v1/orders", tags=["Orders"])
+
+
+@router.post(
+    "/vietqr-webhook",
+    response_model=VietQRWebhookResponse,
+    summary="VietQR payment confirmation webhook",
+)
+@limiter.limit("60/minute")
+def vietqr_webhook(
+    request: Request,
+    payload: VietQRWebhookPayload,
+    x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
+    db: Session = Depends(get_db),
+):
+    return service.process_vietqr_webhook(db, payload, x_webhook_secret)
 
 
 @router.post(
@@ -82,14 +105,18 @@ def get_orders_by_user(
 
 
 @router.get(
-    "/track/{order_id}",
+    "/track/{public_code}",
     response_model=TrackingResponse,
     response_model_exclude_unset=True,
-    summary="Track order status by order ID",
+    summary="Track order status by public code",
 )
 def track_order_public(
-    order_id: int,
+    public_code: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
-    return service.track_order(db, order_id, current_user)
+    if public_code.isdigit():
+        if current_user is None:
+            raise AuthenticationError("Could not validate credentials", code="invalid_token")
+        return service.track_order(db, int(public_code), current_user)
+    return service.track_order_by_public_code(db, public_code)

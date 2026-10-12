@@ -1,11 +1,14 @@
-"""Transactional order use cases and response assembly."""
-
+import hmac
 import logging
+import re
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.errors import (
+    AuthenticationError,
     BusinessRuleError,
     ConflictError,
     ForbiddenError,
@@ -19,7 +22,7 @@ from app.features.orders.domain import (
     apply_order_transition,
     available_stock,
 )
-from app.features.orders.model import Order
+from app.features.orders.model import Order, Payment
 from app.features.orders.schemas import (
     CheckoutCommand,
     CheckoutResponse,
@@ -27,6 +30,8 @@ from app.features.orders.schemas import (
     TrackingResponse,
     TrackingStep,
     VietQRResponse,
+    VietQRWebhookPayload,
+    VietQRWebhookResponse,
 )
 from app.features.products.model import Product
 from app.features.users.model import User
@@ -60,6 +65,7 @@ def order_to_response(order: Order) -> OrderResponse:
         payment_status = "pending"
     return OrderResponse(
         id=order.id,
+        public_code=getattr(order, "public_code", None) or uuid4().hex,
         user_id=order.user_id,
         product_id=order.product_id,
         product_name=order.product_name,
@@ -257,10 +263,21 @@ def list_user_orders(
     return [order_to_response(order) for order in orders]
 
 
-def track_order(db: Session, order_id: int, user: User) -> TrackingResponse:
-    order = db.get(Order, order_id)
-    if order is None or (user.role != "admin" and order.user_id != user.id):
+def track_order_by_public_code(db: Session, public_code: str) -> TrackingResponse:
+    order = db.query(Order).filter(Order.public_code == public_code).first()
+    if order is None:
         raise OrderNotFoundError("Order not found")
+    return _build_tracking_response(order)
+
+
+def track_order(db: Session, order_id: int, user: User | None = None) -> TrackingResponse:
+    order = db.get(Order, order_id)
+    if order is None or (user and user.role != "admin" and order.user_id != user.id):
+        raise OrderNotFoundError("Order not found")
+    return _build_tracking_response(order)
+
+
+def _build_tracking_response(order: Order) -> TrackingResponse:
     paid = order.status == OrderStatus.PAID.value
     timeline = [
         TrackingStep(
@@ -359,3 +376,90 @@ def _lock_transition_products(db: Session, product_ids: set[int]) -> dict[int, P
             .one()
         )
     return locked
+
+
+def process_vietqr_webhook(
+    db: Session,
+    payload: VietQRWebhookPayload,
+    secret_header: str | None,
+) -> VietQRWebhookResponse:
+    settings = get_settings()
+    configured_secret = settings.vietqr_webhook_secret
+    if (
+        not configured_secret
+        or not secret_header
+        or not hmac.compare_digest(secret_header, configured_secret)
+    ):
+        raise AuthenticationError(
+            "Invalid or missing webhook secret", code="unauthorized_webhook"
+        )
+
+    existing_payment = (
+        db.query(Payment)
+        .filter(
+            Payment.provider == "vietqr",
+            Payment.provider_transaction_id == payload.transaction_id,
+        )
+        .first()
+    )
+    if existing_payment:
+        logger.info(
+            "VietQR webhook transaction %s already processed for order %s",
+            payload.transaction_id,
+            existing_payment.order_id,
+        )
+        return VietQRWebhookResponse(
+            status="already_processed",
+            message="Transaction already processed",
+            order_ids=[existing_payment.order_id],
+        )
+
+    pattern = re.compile(r"(?:TRUELOOK|LUXESTORE)_(\d+(?:_\d+)*)", re.IGNORECASE)
+    match = pattern.search(payload.content)
+    if not match:
+        logger.warning(
+            "VietQR webhook memo does not match pattern: %s", payload.content
+        )
+        raise BusinessRuleError("Invalid memo content", code="invalid_webhook_memo")
+
+    order_ids = [int(i) for i in match.group(1).split("_")]
+    orders = db.query(Order).filter(Order.id.in_(order_ids)).all()
+    if len(orders) != len(order_ids):
+        raise ResourceNotFoundError(
+            "One or more orders in memo not found", code="orders_not_found"
+        )
+
+    total_expected = sum(order.total_amount for order in orders)
+    if round(total_expected) != round(payload.amount):
+        logger.warning(
+            "VietQR webhook amount mismatch: received %s, expected %s for orders %s",
+            payload.amount,
+            total_expected,
+            order_ids,
+        )
+        raise BusinessRuleError(
+            f"Amount mismatch: received {payload.amount}, expected {total_expected}",
+            code="amount_mismatch",
+        )
+
+    current_time = datetime.now(timezone.utc)
+    for order in orders:
+        if order.status == OrderStatus.PENDING.value:
+            apply_order_transition(order, OrderStatus.PAID, current_time)
+            payment = Payment(
+                order_id=order.id,
+                provider="vietqr",
+                provider_transaction_id=payload.transaction_id,
+                amount=order.total_amount,
+                currency=order.currency,
+                status="paid",
+                paid_at=current_time,
+            )
+            db.add(payment)
+
+    db.commit()
+    return VietQRWebhookResponse(
+        status="success",
+        message="Payment processed successfully",
+        order_ids=order_ids,
+    )
