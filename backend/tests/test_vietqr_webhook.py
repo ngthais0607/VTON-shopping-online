@@ -1,5 +1,3 @@
-import pytest
-from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 from app.features.orders.model import Order, Payment
 from app.features.products.model import Product
 

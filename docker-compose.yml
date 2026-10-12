@@ -1,19 +1,17 @@
-version: '3.8'
-
 services:
   mariadb:
     image: mariadb:11.2
     container_name: fastapi_mariadb
     restart: always
     environment:
-      MARIADB_ROOT_PASSWORD: password123
-      MARIADB_DATABASE: fastapi_founder
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-password123}
+      MARIADB_DATABASE: ${MARIADB_DATABASE:-fastapi_founder}
     ports:
       - "3307:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "healthcheck-sh", "--connect", "--innodb_initialized"]
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -uroot -p$${MARIADB_ROOT_PASSWORD:-password123} || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,8 +36,8 @@ services:
     restart: always
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: password123
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -59,7 +57,7 @@ services:
     container_name: fastapi_arq_worker
     restart: always
     environment:
-      - DATABASE_URL=mysql+pymysql://root:password123@mariadb:3306/fastapi_founder
+      - DATABASE_URL=mysql+pymysql://root:${MARIADB_ROOT_PASSWORD:-password123}@mariadb:3306/${MARIADB_DATABASE:-fastapi_founder}
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY}
     depends_on:

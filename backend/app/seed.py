@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 from sqlalchemy import or_
 
-from app.core.database import Base, SessionLocal, engine
+from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.features.categories.model import Category
 from app.features.orders.model import Order, OrderItem, Payment

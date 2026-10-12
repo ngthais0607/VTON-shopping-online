@@ -12,7 +12,6 @@ from app.features.users.schemas import (
     LoginCommand,
     PasswordChange,
     RefreshTokenRequest,
-    TokenPair,
     TokenResponse,
     UserCreate,
     UserPatch,

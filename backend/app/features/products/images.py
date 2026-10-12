@@ -1,4 +1,5 @@
 import logging
+from io import BytesIO
 from pathlib import PurePosixPath
 from typing import BinaryIO
 from uuid import uuid4
@@ -9,8 +10,6 @@ from app.core.errors import BusinessRuleError
 from app.features.products import service
 from app.features.products.model import ProductImage
 from app.integrations.storage import ProductStorage
-
-from io import BytesIO
 
 logger = logging.getLogger(__name__)
 

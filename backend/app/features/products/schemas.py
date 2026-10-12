@@ -1,7 +1,6 @@
 from datetime import datetime
-from decimal import Decimal
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any
 
 from pydantic import (
     AliasChoices,

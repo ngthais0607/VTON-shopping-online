@@ -15,6 +15,7 @@ from app.features.products.schemas import (
     ProductFilters,
     ProductPatch,
     ProductSort,
+    ProductStockAdjustment,
     StockStatus,
 )
 
