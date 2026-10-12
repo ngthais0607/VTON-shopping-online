@@ -64,3 +64,9 @@ it('rejects all waiters when refresh fails without recursing', async () => {
   expect(refreshes).toBe(1);
   expect(localStorage.getItem('token')).toBeNull();
 });
+it('keeps credentials on a temporary refresh outage',async()=>{
+  axios.defaults.adapter = async config => result(config,{message:'Temporarily unavailable'},config.url?.endsWith('/users/refresh') ? 503 : 401);
+  const api = await import('../lib/api');
+  await expect(api.apiGet('/users/me')).rejects.toMatchObject({status:503});
+  expect(localStorage.getItem('token')).toBe('old');
+});

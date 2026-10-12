@@ -9,6 +9,10 @@ from sqlalchemy.orm import sessionmaker
 os.environ["SECRET_KEY"] = "super-secret-test-key-must-be-32-bytes-long-for-jwt-hs256!"
 os.environ["JWT_ALGORITHM"] = "HS256"
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+# Keep DTO URL expectations independent of a developer's local object-store settings.
+os.environ["MINIO_BUCKET"] = "product-images"
+os.environ["MINIO_ENDPOINT"] = "localhost:9000"
+os.environ["MINIO_EXTERNAL_URL"] = ""
 
 # Import các thành phần của ứng dụng sau khi đã thiết lập biến môi trường
 from app.core.database import Base, get_db

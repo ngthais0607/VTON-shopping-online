@@ -68,7 +68,7 @@ apiClient.interceptors.response.use(
             request.headers.set('Authorization', `Bearer ${token}`);
             return await apiClient(request);
         } catch (failure) {
-            if (version === getSessionGeneration()) clearAccessToken();
+            if (version === getSessionGeneration() && toApiError(failure).status === 401) clearAccessToken();
             throw toApiError(failure);
         }
     }

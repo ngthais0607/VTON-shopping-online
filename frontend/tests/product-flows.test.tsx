@@ -1,3 +1,5 @@
+/* Test image double avoids the Next.js image optimizer in jsdom. */
+/* eslint-disable @next/next/no-img-element */
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';

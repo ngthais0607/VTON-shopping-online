@@ -46,7 +46,7 @@ export default function Dashboard() {
           subtitle="Welcome back! Here&apos;s your ecommerce overview."
         />
         <main className="flex-1 p-8 flex flex-col items-center justify-center space-y-4">
-          <div className="text-red-500 font-semibold text-lg">{error}</div>
+          <div role="alert" className="text-red-500 font-semibold text-lg">{error.message}</div>
           <button
             onClick={() => loadData()}
             className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 active:scale-95 transition-all shadow-md"

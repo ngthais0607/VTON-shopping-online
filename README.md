@@ -1,6 +1,6 @@
 # AI-VTON backend MVP
 
-FastAPI commerce API for catalog, customer accounts, cart checkout, order tracking, and an admin dashboard. This backend refactor is API-breaking. **The checked-in Next.js frontend still calls old routes and payloads; it has not been migrated to this API and is not an end-to-end working client yet.**
+FastAPI commerce API for catalog, customer accounts, cart checkout, order tracking, and an admin dashboard. The checked-in Next.js client uses the versioned API, paged collections, current account contracts, product images, checkout and order tracking. Frontend component/transport tests and live HTTP flows against isolated MariaDB, Redis and MinIO have been exercised. Interactive browser verification and real SMTP delivery remain separate checks; this milestone is not a production-release certification.
 
 ## Architecture and scope
 
@@ -27,7 +27,7 @@ backend/
     seed.py                 demo-data seeder
     worker.py               ARQ task and cron entry points
   tests/                    unit/contract and gated external integration tests
-frontend/                   existing Next.js client; API migration pending
+frontend/                   Next.js storefront/admin client using the versioned API
 ```
 
 ## API contract
@@ -57,7 +57,7 @@ From the repository root, start local dependencies if Docker is available:
 docker compose up -d mariadb redis minio
 ```
 
-The example MariaDB endpoint is `localhost:3307`, Redis `localhost:6379`, MinIO API `localhost:9000`, and MinIO console `localhost:9001`. Do not apply the demo seed to a real database. The `arq_worker` Compose service reads `SECRET_KEY` from the environment of the `docker compose` process, not from `backend/.env`; set it before starting that service. An unset or empty value prevents worker startup. No production secret is checked in.
+The example MariaDB endpoint is `localhost:3307`, Redis `localhost:6379` (use `127.0.0.1` for IPv4-only Docker bindings on Windows), MinIO API `localhost:9000`, and MinIO console `localhost:9001`. Do not apply the demo seed to a real database. The `arq_worker` Compose service reads `SECRET_KEY` from the environment of the `docker compose` process, not from `backend/.env`; set it before starting that service. An unset or empty value prevents worker startup. No production secret is checked in.
 
 From `backend/` (PowerShell):
 
@@ -78,9 +78,23 @@ Do not reverse the migration/deploy order. `alembic current` should report `8f4c
 
 The seed script has **no `--help` or dry-run mode**; `python -m app.seed` immediately creates tables if needed and writes demo accounts, catalog, and historical orders to the configured database. Run it only after verifying `DATABASE_URL` points to an isolated local/demo database. It creates `admin@example.com` / `Admin@123456` and `user@example.com` / `User@123456`; rotate/remove these accounts outside disposable development. Public `/register` creates customers, not admins.
 
-## Frontend migration status
+## Frontend and session behavior
 
-`frontend/` is a Next.js 16 / React 19 client with Axios, SWR, Tailwind, and Vitest. It still calls pre-refactor routes: for example `/users/me` and `/orders/checkout-cart` without `/api/v1`, and it uses `PUT /users/me` where the backend now uses `PATCH`. Response assumptions also need review. Setting `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` alone does not make it compatible. Migrate and test the client against OpenAPI before presenting the storefront/dashboard as integrated.
+`frontend/` is a Next.js 16 / React 19 client with Axios, SWR, Tailwind and Vitest. `NEXT_PUBLIC_API_BASE_URL` accepts an API origin such as `http://localhost:8000`, or a base already ending in `/api/v1`; the client adds the version prefix exactly once. Configure the backend CORS origin to match the frontend host/port. Local HTTP development also requires `REFRESH_COOKIE_SECURE=False`.
+
+From `frontend/`:
+
+```powershell
+pnpm install --frozen-lockfile
+Copy-Item .env.example .env.local
+pnpm dev
+```
+
+Login sends `{identifier,password}` and accepts an email or username. The client keeps the access token in local storage and refreshes through the HttpOnly cookie, sharing one refresh attempt for simultaneous expired requests. Logout clears local credentials/private cache and calls the backend cookie-clearing endpoint; server-clear failures are visible. Password changes use PATCH, invalidate refresh tokens on the backend, and return the client to login. Backend access tokens retain their existing expiration semantics.
+
+Products, categories, customers and admin orders consume `{items,total,limit,offset}` pages. Category selectors load all pages. Profile/product/category edits use PATCH; order status retains PUT. Product images use `{id,url}`. Upload retry after a saved product does not create the product again. Dashboard charts describe the recent-order sample and do not invent weekly revenue or growth comparisons.
+
+Checkout uses backend totals and stock as the authority. The client blocks overlapping submissions from the same checkout action; this is not backend idempotency against retries after a lost network response. COD and the existing manual VietQR instructions remain supported under the existing currency rules. Opening or closing a QR modal is not payment confirmation; an admin must verify the transfer. A multi-item checkout retains a link to every returned order. Currency policy and VTON integration are deferred.
 
 ## Checks
 
@@ -91,10 +105,10 @@ From `backend/` with a local `SECRET_KEY` (or configured `.env`):
 .\.venv\Scripts\ruff.exe format --check app tests
 .\.venv\Scripts\ruff.exe check app tests
 .\.venv\Scripts\python.exe -m compileall -q app tests
-.\.venv\Scripts\python.exe -m pytest -q -W error::sqlalchemy.exc.SAWarning -p no:cacheprovider
+.\.venv\Scripts\python.exe -m pytest -q -W error::sqlalchemy.exc.SAWarning -p no:cacheprovider --basetemp=../.superpowers/pytest-temp
 ```
 
-Ten MariaDB integration tests skip unless `TEST_DATABASE_URL` is set. Use a dedicated empty, disposable MariaDB database; never point them at production or shared data. Before running the suite, set `DATABASE_URL` to that test database and run `alembic upgrade head`; then set `TEST_DATABASE_URL` to the same migrated database. The fulfillment-migration test creates and drops a separate `migration_<random>` database on that server, so the test account also needs `CREATE` and `DROP` database privileges. Confirm the server and account are isolated before granting them. The checkout, PATCH/checkout, transition, uniqueness, and fulfillment cases are in `tests/integration/`. SQLite unit tests and mocked adapters do not establish live MariaDB locking, Redis, MinIO, or SMTP behavior. The frontend has a separate `pnpm test` script from `frontend/`, but frontend compatibility has not been verified by this backend work.
+Ten MariaDB integration tests skip unless `TEST_DATABASE_URL` is set. Use a dedicated empty, disposable MariaDB database; never point them at production or shared data. Before running the suite, set `DATABASE_URL` to that test database and run `alembic upgrade head`; then set `TEST_DATABASE_URL` to the same migrated database. The fulfillment-migration test creates and drops a separate `migration_<random>` database on that server, so the test account also needs `CREATE` and `DROP` database privileges. Confirm the server and account are isolated before granting them. The checkout, PATCH/checkout, transition, uniqueness, and fulfillment cases are in `tests/integration/`. SQLite unit tests and mocked adapters alone do not establish live MariaDB locking, Redis, MinIO, or SMTP behavior. Each live run must record its isolated infrastructure and results separately. From `frontend/`, run `pnpm test`, `pnpm exec eslint . --max-warnings=0`, `pnpm exec tsc --noEmit` and `pnpm build`. The BE?FE repair review records the available frontend and live-service evidence. SMTP and an interactive browser flow are not claimed as verified.
 
 ## License
 

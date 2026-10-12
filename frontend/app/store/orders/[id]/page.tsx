@@ -171,7 +171,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                   </div>
                   <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Order #{order.id}</h1>
                   <p className="text-sky-100 text-xs sm:text-sm mt-1">
-                    Placed on {new Date(order.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                    Placed on {order.created_at ? new Date(order.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "N/A"}
                   </p>
                 </div>
 
