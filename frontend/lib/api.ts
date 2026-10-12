@@ -1,6 +1,28 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+export function normalizeApiBase(base: string): string {
+    const clean = base.replace(/\/+$/, '');
+    return clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
+}
+const API_BASE_URL = normalizeApiBase(process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000');
+
+export class ApiError extends Error {
+    constructor(message: string, public status?: number, public code?: string, public details?: unknown) {
+        super(message);
+        this.name = 'ApiError';
+    }
+}
+
+function toApiError(error: unknown): ApiError {
+    if (error instanceof ApiError) return error;
+    if (!axios.isAxiosError(error)) return new ApiError(error instanceof Error ? error.message : 'Request failed');
+    const data = error.response?.data;
+    const detail = data?.detail;
+    const message = data?.message || (typeof detail === 'string' ? detail : Array.isArray(detail)
+        ? detail.map((issue: { loc?: (string | number)[]; msg?: string }) => `${issue.loc?.slice(1).join('.') || 'Input'}: ${issue.msg || 'Invalid value'}`).join('; ')
+        : error.response ? `API Error: ${error.response.status}` : 'Unable to reach the server. Please try again.');
+    return new ApiError(message, error.response?.status, data?.code, data?.details ?? detail);
+}
 
 const apiClient = axios.create({
     baseURL: API_BASE_URL,
@@ -94,9 +116,7 @@ apiClient.interceptors.response.use(
             }
         }
 
-        const message = error.response?.data?.detail || error.response?.data?.message ||
-            `API Error: ${error.response?.status || 'Unknown'}`;
-        return Promise.reject(new Error(message));
+        return Promise.reject(toApiError(error));
     }
 );
 
@@ -118,6 +138,10 @@ export async function apiPost<T, B = unknown>(path: string, body: B): Promise<T>
 
 export async function apiPut<T, B = unknown>(path: string, body: B): Promise<T> {
     return apiClient.put<T, T, B>(path, body);
+}
+
+export async function apiPatch<T, B = unknown>(path: string, body: B): Promise<T> {
+    return apiClient.patch<T, T, B>(path, body);
 }
 
 export async function apiUpload<T>(
