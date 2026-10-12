@@ -1,4 +1,5 @@
-import axios from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
+import { clearAccessToken, getAccessToken, getSessionGeneration, setAccessToken } from './session';
 
 export function normalizeApiBase(base: string): string {
     const clean = base.replace(/\/+$/, '');
@@ -29,96 +30,54 @@ const apiClient = axios.create({
     withCredentials: true,
 });
 
-apiClient.interceptors.request.use((config) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (token) {
-        config.headers['Authorization'] = `Bearer ${token}`;
-    }
+interface SessionRequest extends InternalAxiosRequestConfig { _retry?: boolean; _generation?: number }
+let refreshPromise: Promise<string> | null = null;
+const isAuthRequest = (url = '') => /\/users\/(login|register|refresh|logout)$/.test(url);
+apiClient.interceptors.request.use((config: SessionRequest) => {
+    const token = getAccessToken();
+    config._generation ??= getSessionGeneration();
+    if (token && !isAuthRequest(config.url)) config.headers.set('Authorization', `Bearer ${token}`);
+    else config.headers.delete('Authorization');
     return config;
 });
-
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (reason?: unknown) => void }> = [];
-
-const processQueue = (error: Error | null, token: string | null = null) => {
-    failedQueue.forEach((prom) => {
-        if (error) {
-            prom.reject(error);
-        } else {
-            prom.resolve(token);
-        }
-    });
-    failedQueue = [];
-};
-
 apiClient.interceptors.response.use(
-    (response) => response.data,
-    async (error) => {
-        const originalRequest = error.config;
-
-        if (
-            error.response?.status === 401 &&
-            originalRequest &&
-            !originalRequest._retry &&
-            !originalRequest.url?.includes('/users/login') &&
-            !originalRequest.url?.includes('/users/refresh')
-        ) {
-            if (isRefreshing) {
-                return new Promise((resolve, reject) => {
-                    failedQueue.push({ resolve, reject });
-                })
-                    .then((token) => {
-                        originalRequest.headers['Authorization'] = `Bearer ${token}`;
-                        return apiClient(originalRequest);
-                    })
-                    .catch((err) => Promise.reject(err));
+    response => {
+        const config = response.config as SessionRequest;
+        if (!isAuthRequest(config.url) && config._generation !== getSessionGeneration()) throw new ApiError('Session changed. Please try again.', 401);
+        return response.data;
+    },
+    async error => {
+        const request = error.config as SessionRequest | undefined;
+        if (error.response?.status !== 401 || !request || isAuthRequest(request.url)) throw toApiError(error);
+        if (request._generation !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+        if (request._retry || !getAccessToken()) { clearAccessToken(); throw toApiError(error); }
+        request._retry = true;
+        const version = getSessionGeneration();
+        try {
+            if (!refreshPromise) {
+                refreshPromise = axios.post(`${API_BASE_URL}/users/refresh`, {}, { withCredentials: true }).then(response => {
+                    if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+                    const token = response.data.access_token;
+                    if (typeof token !== 'string' || !token) throw new ApiError('Invalid session response', 401);
+                    setAccessToken(token);
+                    return token;
+                }).finally(() => { refreshPromise = null; });
             }
-
-            originalRequest._retry = true;
-            isRefreshing = true;
-
-            try {
-                const refreshRes = await axios.post(
-                    `${API_BASE_URL}/users/refresh`,
-                    {},
-                    { withCredentials: true }
-                );
-                const newAccessToken = refreshRes.data.access_token;
-                if (typeof window !== 'undefined') {
-                    localStorage.setItem('token', newAccessToken);
-                }
-                apiClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
-                originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
-                processQueue(null, newAccessToken);
-                return apiClient(originalRequest);
-            } catch (refreshErr) {
-                processQueue(refreshErr as Error, null);
-                if (typeof window !== 'undefined') {
-                    localStorage.removeItem('token');
-                    const path = window.location.pathname;
-                    const isPublic = path === "/" || path === "/login" || path === "/register" || path.startsWith("/store");
-                    if (!isPublic) {
-                        window.location.href = '/login';
-                    }
-                }
-                return Promise.reject(refreshErr);
-            } finally {
-                isRefreshing = false;
-            }
+            const token = await refreshPromise;
+            if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+            request.headers.set('Authorization', `Bearer ${token}`);
+            return await apiClient(request);
+        } catch (failure) {
+            if (version === getSessionGeneration()) clearAccessToken();
+            throw toApiError(failure);
         }
-
-        if (error.response?.status === 401 && typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-            const path = window.location.pathname;
-            const isPublic = path === "/" || path === "/login" || path === "/register" || path.startsWith("/store");
-            if (!isPublic) {
-                window.location.href = '/login';
-            }
-        }
-
-        return Promise.reject(toApiError(error));
     }
 );
+export async function logoutSession(): Promise<void> {
+    clearAccessToken();
+    delete apiClient.defaults.headers.common.Authorization;
+    await apiPost<void>('/users/logout', {});
+}
 
 export async function apiGet<T>(path: string): Promise<T> {
     return apiClient.get<T, T>(path);

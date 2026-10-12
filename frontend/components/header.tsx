@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { apiGet } from '@/lib/api';
+import { useSession } from '@/hooks/use-session';
 import { User as UserType } from '@/lib/types';
 import Link from 'next/link';
 
@@ -25,27 +25,14 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, children }: HeaderProps) {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
-
-  useEffect(() => {
-    async function fetchMe() {
-      try {
-        const user = await apiGet<UserType>('/users/me');
-        setCurrentUser(user);
-      } catch (err) {
-        console.error('Failed to fetch user info', err);
-      }
-    }
-    fetchMe();
-  }, []);
-
-  const handleSignOut = () => {
-    localStorage.removeItem('token');
-    router.push('/login');
-    router.refresh();
+  const {user: currentUser, logout} = useSession();
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const handleSignOut = async () => {
+    try { await logout(); router.push('/login'); router.refresh(); }
+    catch (error) { setLogoutError(error instanceof Error ? error.message : 'Server logout failed; local session cleared.'); }
   };
 
-  const getInitials = (firstName?: string, lastName?: string) => {
+  const getInitials = (firstName?: string | null, lastName?: string | null) => {
     const first = firstName?.charAt(0) || '';
     const last = lastName?.charAt(0) || '';
     return (first + last).toUpperCase() || 'U';
@@ -53,6 +40,7 @@ export function Header({ title, subtitle, children }: HeaderProps) {
 
   return (
     <header className="bg-white border-b border-slate-100 sticky top-0 z-40">
+      {logoutError && <p role="alert">{logoutError}</p>}
       <div className="px-8 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">

@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useSession } from '@/hooks/use-session';
 import { apiGet } from "@/lib/api";
 import { User } from "@/lib/types";
 import { useProducts } from "@/hooks/use-products";
-import { useCategories } from "@/hooks/use-categories";
+import { useCategoryOptions } from "@/hooks/use-categories";
 
 import { Header } from "./components/Header";
 import { HeroSection } from "./components/HeroSection";
@@ -22,7 +23,7 @@ export default function StorefrontPage() {
     const [maxPrice, setMaxPrice] = useState<number | null>(null);
     const [stockStatus, setStockStatus] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState<string | null>("latest");
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const {user: currentUser} = useSession();
     
     const productsRef = useRef<HTMLDivElement>(null);
     const pageSize = 8; // Display 8 products per page in Storefront
@@ -31,7 +32,7 @@ export default function StorefrontPage() {
         productsRef.current?.scrollIntoView({ behavior: "smooth" });
     }
 
-    const { categories } = useCategories();
+    const { categories } = useCategoryOptions();
     const { products, total: totalProducts, isLoading: loading, mutate: mutateProducts } = useProducts({
         page: currentPage,
         pageSize,
@@ -57,32 +58,9 @@ export default function StorefrontPage() {
         setCurrentPage(1);
     }, [categories]);
 
-    const loadUserData = useCallback(async () => {
-        try {
-            const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-            if (token) {
-                const user = await apiGet<User>("/users/me").catch(() => null);
-                setCurrentUser(user);
-            } else {
-                setCurrentUser(null);
-            }
-        } catch (err) {
-            console.error("Failed to load user", err);
-        }
-    }, []);
-
-    useEffect(() => {
-        loadUserData();
-    }, [loadUserData]);
-
-    const handleLogout = () => {
-        localStorage.removeItem("token");
-        setCurrentUser(null);
-    };
-
     return (
         <div className="min-h-screen bg-background text-foreground antialiased font-sans flex flex-col">
-            <Header currentUser={currentUser} onShopNow={scrollToProducts} onLogout={handleLogout} />
+            <Header currentUser={currentUser} onShopNow={scrollToProducts} />
             
             <main className="flex-1">
                 <HeroSection onShopNow={scrollToProducts} />

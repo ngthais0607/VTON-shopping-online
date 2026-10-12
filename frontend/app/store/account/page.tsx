@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { apiGet, apiPut } from '@/lib/api';
+import { apiGet, apiPatch } from '@/lib/api';
 import { User, Package, Heart, CheckCircle2, Clock, XCircle, ArrowRight, ShieldCheck, Key, Save, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface UserProfile {
@@ -100,7 +100,7 @@ export default function CustomerAccountPage() {
     setSaveSuccess(null);
     setError(null);
     try {
-      const updated = await apiPut<UserProfile>('/users/me', {
+      const updated = await apiPatch<UserProfile>('/users/me', {
         username,
         email,
         first_name: firstName,

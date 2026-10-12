@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, registerSchema, LoginFormData, RegisterFormData } from "@/lib/validations/auth";
+import { setAccessToken, safeReturnPath } from '@/lib/session';
 import { apiPost, apiGet } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -107,17 +108,19 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
             }
         }
 
+        const validation = activeTab === "signin" ? loginSchema.safeParse(formData) : registerSchema.safeParse({ ...formData, username: formData.email.split('@')[0] });
+        if (!validation.success) { setError(validation.error.issues[0]?.message || 'Invalid input'); return; }
         setLoading(true);
 
         try {
             if (activeTab === "signin") {
                 // Login action
                 const response = await apiPost<{ access_token: string; token_type: string }, any>("/users/login", {
-                    email: formData.email,
+                    identifier: formData.email,
                     password: formData.password,
                 });
 
-                localStorage.setItem("token", response.access_token);
+                setAccessToken(response.access_token);
 
                 try {
                     const me = await apiGet<{ role?: string }>("/users/me");
@@ -141,7 +144,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                 
                 // Wait briefly for the toast to be seen before redirecting
                 setTimeout(() => {
-                    router.push("/store");
+                    router.push(safeReturnPath(new URLSearchParams(window.location.search).get("next")) || "/store");
                     router.refresh();
                 }, 800);
             } else {

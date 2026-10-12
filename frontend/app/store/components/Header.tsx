@@ -17,6 +17,7 @@ import {
 import { useCart } from "../context/CartContext";
 import { motion, AnimatePresence } from "motion/react";
 import Link from "next/link";
+import { useSession } from '@/hooks/use-session';
 import { User } from "@/lib/types";
 
 interface HeaderProps {
@@ -25,7 +26,9 @@ interface HeaderProps {
   onLogout?: () => void;
 }
 
-export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
+export function Header({ onShopNow }: HeaderProps) {
+  const {user: currentUser, logout} = useSession();
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -49,10 +52,10 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogoutClick = (e: React.MouseEvent) => {
+  const handleLogoutClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     setUserDropdownOpen(false);
-    if (onLogout) onLogout();
+    try { await logout(); } catch (error) { setLogoutError(error instanceof Error ? error.message : 'Server logout failed; local session cleared.'); }
   };
 
   const handleShopNowClick = () => {
@@ -71,6 +74,7 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
           : "bg-gradient-to-b from-white/90 via-sky-50/30 to-transparent backdrop-blur-xs"
       }`}
     >
+      {logoutError && <p role="alert">{logoutError}</p>}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         {/* Logo */}
         <Link href="/store" className="flex items-center gap-3 group">
@@ -211,7 +215,7 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
                       )}
                     </div>
 
-                    {onLogout && (
+                    {currentUser && (
                       <div className="pt-1">
                         <button
                           onClick={handleLogoutClick}
@@ -341,7 +345,7 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
                       Admin Dashboard
                     </Link>
                   )}
-                  {onLogout && (
+                  {currentUser && (
                     <button
                       onClick={(e) => {
                         setMobileOpen(false);

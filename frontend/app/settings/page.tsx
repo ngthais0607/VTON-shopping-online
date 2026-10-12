@@ -6,7 +6,9 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { apiGet, apiPut } from '@/lib/api';
+import { logoutSession } from '@/lib/api';
+import { registerSchema } from '@/lib/validations/auth';
+import { apiGet, apiPatch } from '@/lib/api';
 import { User } from '@/lib/types';
 import { UserCheck, KeyRound, Store, Bell, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -66,7 +68,7 @@ export default function SettingsPage() {
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiPut('/users/me', {
+      await apiPatch('/users/me', {
         first_name: firstName,
         last_name: lastName,
         email,
@@ -88,11 +90,13 @@ export default function SettingsPage() {
       return;
     }
     try {
-      await apiPut('/users/me/password', {
+      const checked = registerSchema.shape.password.safeParse(newPassword);
+      if (!checked.success) throw new Error(checked.error.issues[0]?.message);
+      await apiPatch('/users/me/password', {
         current_password: currentPassword,
         new_password: newPassword,
       });
-      triggerNotification('success', 'Password updated successfully!');
+      try { await logoutSession(); } finally { window.location.href = '/login'; }
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -248,7 +252,7 @@ export default function SettingsPage() {
                         type="password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Minimum 6 characters"
+                        placeholder="Minimum 8 characters"
                         required
                         className="bg-white rounded-xl py-2.5"
                       />
