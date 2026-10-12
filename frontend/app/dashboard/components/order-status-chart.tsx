@@ -13,24 +13,17 @@ import {
 } from "recharts";
 
 interface OrderStatusChartProps {
-  data?: { status: string; count: number; color?: string }[];
+  data: { status: string; count: number; color?: string }[];
 }
 
-const defaultData = [
-  { status: "Pending", count: 12, color: "#f59e0b" },
-  { status: "Processing", count: 19, color: "#3b82f6" },
-  { status: "Shipped", count: 24, color: "#8b5cf6" },
-  { status: "Delivered", count: 45, color: "#10b981" },
-  { status: "Cancelled", count: 4, color: "#f43f5e" },
-];
-
-export function OrderStatusChart({ data = defaultData }: OrderStatusChartProps) {
+export function OrderStatusChart({ data }: OrderStatusChartProps) {
+  if (data.length === 0) return <div className="bg-white p-6 rounded-2xl border border-slate-200"><h3>Recent Orders Status Breakdown</h3><p>No recent orders.</p></div>;
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-bold text-slate-900">Orders Status Breakdown</h3>
-          <p className="text-xs text-slate-500">Distribution across active order fulfillment stages</p>
+          <h3 className="text-base font-bold text-slate-900">Recent Orders Status Breakdown</h3>
+          <p className="text-xs text-slate-500">Distribution within the recent orders shown below</p>
         </div>
       </div>
 

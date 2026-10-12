@@ -1,4 +1,6 @@
 "use client";
+import { displayDate } from '@/lib/utils';
+
 import { useEffect, useState } from "react";
 import { apiGet, apiDelete } from "@/lib/api";
 import { useUsers } from '@/hooks/use-users';
@@ -176,7 +178,7 @@ export default function CustomersPage() {
                         @{user.username}
                       </TableCell>
                       <TableCell className="text-slate-500 text-xs font-semibold">
-                        {format(new Date(user.created_at), "MMM dd, yyyy")}
+                        {displayDate(user.created_at, "MMM dd, yyyy")}
                       </TableCell>
                       <TableCell className="py-4 pr-6">
                         <DropdownMenu>
@@ -267,7 +269,7 @@ export default function CustomersPage() {
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Date Joined</p>
-                    <p className="font-semibold text-slate-800">{format(new Date(selectedUser.created_at), "MMMM dd, yyyy")}</p>
+                    <p className="font-semibold text-slate-800">{displayDate(selectedUser.created_at, "MMMM dd, yyyy")}</p>
                   </div>
                 </div>
               </div>
@@ -334,7 +336,7 @@ export default function CustomersPage() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right text-slate-400 text-xs font-semibold pr-4">
-                          {format(new Date(order.created_at), "yyyy-MM-dd")}
+                          {displayDate(order.created_at, "yyyy-MM-dd")}
                         </TableCell>
                       </TableRow>
                     ))}

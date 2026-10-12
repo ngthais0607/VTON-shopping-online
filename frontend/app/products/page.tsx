@@ -1,4 +1,6 @@
 "use client";
+import { displayDate } from '@/lib/utils';
+
 
 import { useState, useEffect } from "react";
 import { apiDelete, apiPost, apiPatch, apiUpload } from "@/lib/api";
@@ -578,7 +580,7 @@ export default function ProductsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-slate-600 text-sm">
-                        {format(new Date(product.created_at), "MMM dd, yyyy")}
+                        {displayDate(product.created_at, "MMM dd, yyyy")}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -905,11 +907,11 @@ export default function ProductsPage() {
                 <div className="pt-4 border-t text-sm text-slate-600">
                   <p>
                     Created:{" "}
-                    {format(new Date(selectedProduct.created_at), "PPP")}
+                    {displayDate(selectedProduct.created_at, "PPP")}
                   </p>
                   <p>
                     Updated:{" "}
-                    {format(new Date(selectedProduct.updated_at), "PPP")}
+                    {displayDate(selectedProduct.updated_at, "PPP")}
                   </p>
                 </div>
               </div>

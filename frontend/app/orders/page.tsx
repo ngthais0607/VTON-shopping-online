@@ -1,5 +1,7 @@
 // Path: frontend/app/orders/page.tsx
 "use client";
+import { displayDate } from '@/lib/utils';
+
 
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
@@ -149,7 +151,7 @@ export default function OrdersPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right text-slate-600 text-sm">
-                        {order.created_at ? format(new Date(order.created_at), "MMM dd, yyyy") : "N/A"}
+                        {order.created_at ? displayDate(order.created_at, "MMM dd, yyyy") : "N/A"}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -193,7 +195,7 @@ export default function OrdersPage() {
           <DialogHeader>
             <DialogTitle>Order #{selectedOrder?.id} Details</DialogTitle>
             <DialogDescription>
-              Created on {selectedOrder?.created_at ? format(new Date(selectedOrder.created_at), "PPP p") : "N/A"}
+              Created on {selectedOrder?.created_at ? displayDate(selectedOrder.created_at, "PPP p") : "N/A"}
             </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
@@ -244,13 +246,13 @@ export default function OrdersPage() {
                 {selectedOrder.expires_at && selectedOrder.status === "pending" && (
                   <div className="flex justify-between text-amber-600">
                     <span>Expires At:</span>
-                    <span className="font-medium">{format(new Date(selectedOrder.expires_at), "yyyy-MM-dd HH:mm")}</span>
+                    <span className="font-medium">{displayDate(selectedOrder.expires_at, "yyyy-MM-dd HH:mm")}</span>
                   </div>
                 )}
                 {selectedOrder.paid_at && (
                   <div className="flex justify-between">
                     <span>Paid At:</span>
-                    <span className="font-medium text-green-600">{format(new Date(selectedOrder.paid_at), "yyyy-MM-dd HH:mm")}</span>
+                    <span className="font-medium text-green-600">{displayDate(selectedOrder.paid_at, "yyyy-MM-dd HH:mm")}</span>
                   </div>
                 )}
               </div>

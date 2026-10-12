@@ -1,4 +1,6 @@
 "use client";
+import { displayDate } from '@/lib/utils';
+
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -147,7 +149,7 @@ export default function CustomerOrdersPage() {
                                             Order #{order.id}
                                         </span>
                                         <span className="text-xs text-slate-400 font-semibold">
-                                            {format(new Date(order.created_at), "MMM dd, yyyy HH:mm")}
+                                            {displayDate(order.created_at, "MMM dd, yyyy HH:mm")}
                                         </span>
                                     </div>
                                     <h3 className="text-lg font-bold text-slate-900">{order.product_name}</h3>
