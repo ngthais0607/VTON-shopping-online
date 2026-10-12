@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { UploadCloud, X, Image as ImageIcon, Loader2, CheckCircle2 } from "lucide-react";
+import { ProductImage } from "@/lib/types";
 import { apiUpload } from "@/lib/api";
 import Image from "next/image";
 
@@ -9,14 +10,18 @@ interface ImageUploaderProps {
   productId?: number;
   currentImageUrl?: string;
   onUploadSuccess: (url: string) => void;
+  onFileSelected?: (file: File) => void;
 }
 
-export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: ImageUploaderProps) {
+export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onFileSelected }: ImageUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const localPreview = useRef<string | null>(null);
+  useEffect(() => () => { if (localPreview.current) URL.revokeObjectURL(localPreview.current); }, []);
+  useEffect(() => { setPreviewUrl(currentImageUrl || null); }, [currentImageUrl, productId]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -41,17 +46,15 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
       const formData = new FormData();
       formData.append("file", file);
 
-      // If productId exists, call API endpoint; else fallback to object URL preview
-      let uploadedUrl = URL.createObjectURL(file);
-
+      let uploadedUrl: string;
       if (productId) {
-        const response = await apiUpload<{ image?: { image_url: string } }>(
-          `/products/${productId}/upload-image`,
-          formData
-        );
-        if (response?.image?.image_url) {
-          uploadedUrl = response.image.image_url;
-        }
+        const response = await apiUpload<ProductImage>(`/products/${productId}/upload-image`, formData);
+        uploadedUrl = response.url;
+      } else {
+        if (localPreview.current) URL.revokeObjectURL(localPreview.current);
+        uploadedUrl = URL.createObjectURL(file);
+        localPreview.current = uploadedUrl;
+        onFileSelected?.(file);
       }
 
       setPreviewUrl(uploadedUrl);
@@ -82,6 +85,7 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
   };
 
   const handleRemove = () => {
+    if (localPreview.current) { URL.revokeObjectURL(localPreview.current); localPreview.current = null; }
     setPreviewUrl(null);
     onUploadSuccess("");
     if (inputRef.current) inputRef.current.value = "";
@@ -89,7 +93,16 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
 
   return (
     <div className="space-y-2">
-      <label className="text-xs font-semibold text-slate-700 block">Product Image (MinIO Storage)</label>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleChange}
+          />
+
+
+      <label className="text-xs font-semibold text-slate-700 block">Product Image</label>
 
       {previewUrl ? (
         <div className="relative rounded-2xl border border-slate-200 overflow-hidden group bg-slate-50 aspect-video flex items-center justify-center">
@@ -129,18 +142,10 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
               : "border-slate-300 hover:border-indigo-400 bg-slate-50/50"
           }`}
         >
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleChange}
-          />
-
           {uploading ? (
             <div className="flex flex-col items-center space-y-2 text-indigo-600 py-4">
               <Loader2 className="w-8 h-8 animate-spin" />
-              <span className="text-xs font-semibold">Uploading to MinIO...</span>
+              <span className="text-xs font-semibold">Uploading image...</span>
             </div>
           ) : (
             <>

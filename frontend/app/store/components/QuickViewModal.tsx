@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Product } from "@/lib/types";
+import { Product, ReviewSummary } from "@/lib/types";
 import { useCart } from "../context/CartContext";
 import { X, Star, ShoppingCart, Plus, Minus, Check, ShieldCheck, Truck, MessageSquare, ThumbsUp, CheckCircle2, Send, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -15,22 +15,6 @@ interface QuickViewModalProps {
   onClose: () => void;
 }
 
-interface Review {
-  id: number;
-  user_name: string;
-  rating: number;
-  title?: string;
-  comment?: string;
-  is_verified_purchase: boolean;
-  created_at?: string;
-}
-
-interface ProductReviewsData {
-  average_rating: number;
-  total_reviews: number;
-  reviews: Review[];
-}
-
 export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   const { addToCart } = useCart();
   const [quantity, setQuantity] = useState(1);
@@ -38,8 +22,8 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'reviews'>('details');
 
   // Reviews state
-  const [reviewsData, setReviewsData] = useState<ProductReviewsData>({
-    average_rating: 5.0,
+  const [reviewsData, setReviewsData] = useState<ReviewSummary>({
+    average_rating: null,
     total_reviews: 0,
     reviews: []
   });
@@ -58,10 +42,10 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   const fetchReviews = useCallback(async () => {
     setLoadingReviews(true);
     try {
-      const data = await apiGet<ProductReviewsData>(`/products/${product.id}/reviews`);
+      const data = await apiGet<ReviewSummary>(`/products/${product.id}/reviews`);
       setReviewsData(data);
     } catch (err) {
-      console.error('Failed to load product reviews', err);
+      setReviewMsg({type:'error',text:err instanceof Error ? err.message : 'Unable to load reviews'});
     } finally {
       setLoadingReviews(false);
     }
@@ -186,14 +170,14 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                           <Star
                             key={i}
                             className={`w-3.5 h-3.5 ${
-                              i < Math.round(reviewsData.average_rating)
+                              i < Math.round(reviewsData.average_rating ?? 0)
                                 ? "fill-amber-400 text-amber-400"
                                 : "text-slate-200"
                             }`}
                           />
                         ))}
                       </div>
-                      <span>{reviewsData.average_rating} ({reviewsData.total_reviews} reviews)</span>
+                      <span>{reviewsData.average_rating ?? 'No ratings'} ({reviewsData.total_reviews} reviews)</span>
                     </div>
 
                     <p className="text-xs text-slate-600 mt-4 leading-relaxed">
@@ -281,7 +265,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                 <div className="p-4 rounded-2xl bg-sky-50/70 border border-sky-100 flex items-center justify-between">
                   <div>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-extrabold text-slate-900">{reviewsData.average_rating}</span>
+                      <span className="text-3xl font-extrabold text-slate-900">{reviewsData.average_rating ?? 'No ratings'}</span>
                       <span className="text-sm font-semibold text-slate-500">out of 5.0</span>
                     </div>
                     <div className="flex text-amber-400 mt-1">
@@ -289,7 +273,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                         <Star
                           key={i}
                           className={`w-4 h-4 ${
-                            i < Math.round(reviewsData.average_rating)
+                            i < Math.round(reviewsData.average_rating ?? 0)
                               ? "fill-amber-400 text-amber-400"
                               : "text-slate-200"
                           }`}

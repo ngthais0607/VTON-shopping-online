@@ -33,7 +33,7 @@ export default function StorefrontPage() {
     }
 
     const { categories } = useCategoryOptions();
-    const { products, total: totalProducts, isLoading: loading, mutate: mutateProducts } = useProducts({
+    const { products, total: totalProducts, isLoading: loading, error: productsError, mutate: mutateProducts } = useProducts({
         page: currentPage,
         pageSize,
         search: searchQuery,
@@ -66,6 +66,7 @@ export default function StorefrontPage() {
                 <HeroSection onShopNow={scrollToProducts} />
                 
                 <div ref={productsRef}>
+                    {productsError && <p role="alert">{productsError.message}<button onClick={()=>mutateProducts()}>Retry</button></p>}
                     <FeaturedProducts 
                         products={products} 
                         loading={loading} 
@@ -78,15 +79,15 @@ export default function StorefrontPage() {
                         selectedCategory={selectedCategory}
                         setSelectedCategory={handleCategoryChange}
                         searchQuery={searchQuery}
-                        setSearchQuery={setSearchQuery}
+                        setSearchQuery={(value) => {setSearchQuery(value); setCurrentPage(1);}}
                         minPrice={minPrice}
-                        setMinPrice={setMinPrice}
+                        setMinPrice={(value) => {setMinPrice(value); setCurrentPage(1);}}
                         maxPrice={maxPrice}
-                        setMaxPrice={setMaxPrice}
+                        setMaxPrice={(value) => {setMaxPrice(value); setCurrentPage(1);}}
                         stockStatus={stockStatus}
-                        setStockStatus={setStockStatus}
+                        setStockStatus={(value) => {setStockStatus(value); setCurrentPage(1);}}
                         sortBy={sortBy}
-                        setSortBy={setSortBy}
+                        setSortBy={(value) => {setSortBy(value); setCurrentPage(1);}}
                         categories={categories}
                     />
                 </div>

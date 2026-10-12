@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { apiDelete, apiPost, apiPut, apiUpload } from "@/lib/api";
+import { apiDelete, apiPost, apiPatch, apiUpload } from "@/lib/api";
 import { useProducts } from "@/hooks/use-products";
 import { useCategoryOptions } from "@/hooks/use-categories";
 import { getAvailableStock } from "@/lib/inventory";
@@ -111,6 +111,8 @@ export default function ProductsPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [formData, setFormData] = useState<ProductFormData>({
@@ -151,14 +153,15 @@ export default function ProductsPage() {
   };
   const handleCreateProduct = async () => {
     const createdProduct = await apiPost<Product, ProductFormData>(
-      "/products/",
+      "/products",
       formData,
     );
     if (!createdProduct.id) return;
+    setEditingProduct(createdProduct);
     if (selectedImage) {
       const imageFormData = new FormData();
       imageFormData.append("file", selectedImage);
-      await apiUpload<{ file_name: string }>(
+      await apiUpload<{ id: string; url: string }>(
         `/products/${createdProduct.id}/upload-image`,
         imageFormData,
       );
@@ -167,6 +170,7 @@ export default function ProductsPage() {
     await mutateProducts();
     resetFormData();
     setCreateDialogOpen(false);
+    setEditingProduct(null);
   };
 
   const openEditProduct = (product: Product) => {
@@ -186,14 +190,14 @@ export default function ProductsPage() {
   };
   const handleUpdateProduct = async () => {
     if (!editingProduct) return;
-    await apiPut<Product, ProductFormData>(
+    await apiPatch<Product, ProductFormData>(
       `/products/${editingProduct.id}`,
       formData,
     );
     if (selectedImage) {
       const imageFormData = new FormData();
       imageFormData.append("file", selectedImage);
-      await apiUpload<{ file_name: string }>(
+      await apiUpload<{ id: string; url: string }>(
         `/products/${editingProduct.id}/upload-image`,
         imageFormData,
       );
@@ -209,6 +213,14 @@ export default function ProductsPage() {
     await mutateProducts();
     setDeleteProduct(null);
   };
+
+  const runSave = async (action: () => Promise<void>) => {
+    if (saving) return;
+    setSaving(true); setSaveError(null);
+    try { await action(); } catch (error) { setSaveError(error instanceof Error ? error.message : 'Save failed'); }
+    finally { setSaving(false); }
+  };
+  useEffect(() => { if (!loading && currentPage > 1 && products.length === 0 && totalProducts > 0) setCurrentPage(Math.max(1, Math.ceil(totalProducts / pageSize))); }, [loading, currentPage, products.length, totalProducts, pageSize]);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -409,11 +421,13 @@ export default function ProductsPage() {
                       }
                     />
                   </div>
+                  {saveError && <p role="alert">{saveError}</p>}
                   <ImageUploader
+                    onFileSelected={setSelectedImage}
                     productId={editingProduct?.id}
                     currentImageUrl={editingProduct?.images && editingProduct.images.length > 0 ? editingProduct.images[0].url : undefined}
                     onUploadSuccess={(url) => {
-                      if (url) {
+                      if (url && !url.startsWith("blob:")) {
                         mutateProducts();
                       }
                     }}
@@ -429,9 +443,9 @@ export default function ProductsPage() {
                   </Button>
                   <Button
                     onClick={
-                      editingProduct ? handleUpdateProduct : handleCreateProduct
+                      editingProduct ? () => runSave(handleUpdateProduct) : () => runSave(handleCreateProduct)
                     }
-                    disabled={!formData.name || formData.price <= 0}
+                    disabled={saving || !formData.name || formData.price <= 0}
                   >
                     {editingProduct ? "Update Product" : "Create Product"}
                   </Button>
