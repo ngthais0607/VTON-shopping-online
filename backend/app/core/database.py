@@ -31,11 +31,3 @@ def get_db():
         raise
     finally:
         db.close()
-
-
-def save_to_db(db, obj, commit: bool = True):
-    db.add(obj)
-    if commit:
-        db.commit()
-        db.refresh(obj)
-    return obj

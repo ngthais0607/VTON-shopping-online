@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Float, ForeignKey
+
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
+
 from app.core.database import Base
+
 
 class Order(Base):
     __tablename__ = "orders"
@@ -25,11 +28,18 @@ class Order(Base):
     expires_at = Column(DateTime, nullable=True)
     paid_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
+    )
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     product = relationship("Product", back_populates="orders")
     payments = relationship("Payment", back_populates="order")
+
 
 class Payment(Base):
     __tablename__ = "payments"
@@ -43,12 +53,18 @@ class Payment(Base):
     amount = Column(Float, nullable=False)
     currency = Column(String(10), nullable=False, default="USD")
     status = Column(String(50), nullable=False, default="pending", index=True)
-    
+
     checkout_url = Column(String(500), nullable=True)
 
     paid_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
+    )
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     order = relationship("Order", back_populates="payments")

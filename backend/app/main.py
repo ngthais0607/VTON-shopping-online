@@ -7,7 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import Settings, get_settings
-from app.core.errors import register_error_handlers
+from app.core.errors import COMMON_ERROR_RESPONSES, register_error_handlers
 from app.core.rate_limiter import limiter
 from app.features.categories.router import router as categories_router
 from app.features.dashboard.router import router as dashboard_router
@@ -28,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(
         title="AI-VTON E-Commerce Platform",
         lifespan=lifespan,
+        responses=COMMON_ERROR_RESPONSES,
     )
 
     application.state.settings = application_settings

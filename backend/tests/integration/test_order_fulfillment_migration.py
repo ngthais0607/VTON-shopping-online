@@ -8,7 +8,6 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
-
 pytestmark = pytest.mark.integration
 
 
@@ -23,7 +22,10 @@ def test_fulfillment_migration_backfills_legacy_orders():
     migration_url = source_url.set(database=database_name)
     server_engine = create_engine(server_url, isolation_level="AUTOCOMMIT")
     backend_dir = Path(__file__).resolve().parents[2]
-    environment = {**os.environ, "DATABASE_URL": migration_url.render_as_string(hide_password=False)}
+    environment = {
+        **os.environ,
+        "DATABASE_URL": migration_url.render_as_string(hide_password=False),
+    }
 
     try:
         with server_engine.connect() as connection:
@@ -63,12 +65,16 @@ def test_fulfillment_migration_backfills_legacy_orders():
 
         migration_engine = create_engine(migration_url)
         with migration_engine.connect() as connection:
-            legacy_order = connection.execute(
-                text(
-                    "SELECT customer_name, customer_phone, shipping_address, payment_method "
-                    "FROM orders WHERE id = 1"
+            legacy_order = (
+                connection.execute(
+                    text(
+                        "SELECT customer_name, customer_phone, shipping_address, payment_method "
+                        "FROM orders WHERE id = 1"
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
 
         assert legacy_order == {
             "customer_name": "Legacy customer",

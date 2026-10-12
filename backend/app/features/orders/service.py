@@ -75,11 +75,6 @@ def order_to_response(order: Order) -> OrderResponse:
     )
 
 
-def order_to_json(order: Order) -> dict:
-    """Compatibility adapter for the dashboard until its feature slice migrates."""
-    return order_to_response(order).model_dump(mode="json")
-
-
 def _vietqr_response(orders: list[Order]) -> VietQRResponse:
     bank = get_vietqr_bank_config()
     total = sum(order.total_amount for order in orders)

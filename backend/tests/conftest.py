@@ -109,7 +109,7 @@ def client(db_session, product_storage):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_product_storage] = lambda: product_storage
     app.state.product_storage = product_storage
-    with TestClient(app, raise_server_exceptions=False) as c:
+    with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
 

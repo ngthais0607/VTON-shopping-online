@@ -14,6 +14,16 @@ class ErrorResponse(BaseModel):
     details: Any | None = None
 
 
+COMMON_ERROR_RESPONSES: dict[int, dict[str, Any]] = {
+    400: {"model": ErrorResponse, "description": "Invalid application request"},
+    401: {"model": ErrorResponse, "description": "Authentication required"},
+    403: {"model": ErrorResponse, "description": "Access forbidden"},
+    404: {"model": ErrorResponse, "description": "Resource not found"},
+    409: {"model": ErrorResponse, "description": "Resource conflict"},
+    500: {"model": ErrorResponse, "description": "Internal server error"},
+}
+
+
 class ApplicationError(Exception):
     status_code = 400
     code = "application_error"
