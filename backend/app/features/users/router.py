@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.errors import AuthenticationError
 from app.core.rate_limiter import limiter
@@ -48,7 +47,7 @@ def login_user(
     db: Session = Depends(get_db),
 ):
     tokens = service.login_user(db, command)
-    _set_refresh_cookie(response, tokens.refresh_token)
+    _set_refresh_cookie(request, response, tokens.refresh_token)
     return tokens
 
 
@@ -70,7 +69,7 @@ def refresh_user_session(
             code="invalid_token",
         )
     tokens = service.refresh_user_session(db, refresh_token)
-    _set_refresh_cookie(response, tokens.refresh_token)
+    _set_refresh_cookie(request, response, tokens.refresh_token)
     return tokens
 
 
@@ -79,8 +78,13 @@ def refresh_user_session(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Logout user",
 )
-def logout_user(response: Response) -> None:
-    response.delete_cookie(key="refresh_token")
+def logout_user(request: Request, response: Response) -> None:
+    response.delete_cookie(
+        key="refresh_token",
+        secure=request.app.state.settings.refresh_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
 
 
 @router.get("/me", response_model=UserResponse, summary="Get current user")
@@ -167,11 +171,15 @@ def delete_user(
     service.delete_user(db, user_id)
 
 
-def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+def _set_refresh_cookie(
+    request: Request, response: Response, refresh_token: str
+) -> None:
+    settings = request.app.state.settings
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
         samesite="lax",
-        max_age=get_settings().refresh_token_expire_days * 24 * 3600,
+        secure=settings.refresh_cookie_secure,
+        max_age=settings.refresh_token_expire_days * 24 * 3600,
     )

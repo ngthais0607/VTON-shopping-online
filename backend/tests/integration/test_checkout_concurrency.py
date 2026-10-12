@@ -33,7 +33,9 @@ def test_checkout_final_unit_cannot_be_oversold():
         password_hash="unused",
         role="customer",
     )
-    product = Product(name=f"Final unit {suffix}", price=100, stock_quantity=1)
+    product = Product(
+        name=f"Final unit {suffix}", price=100, currency="VND", stock_quantity=1
+    )
     setup_session.add_all([user, product])
     setup_session.commit()
     user_id = user.id

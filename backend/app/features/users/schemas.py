@@ -1,7 +1,13 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _validate_new_password(password: str) -> str:
+    if len(password.encode("utf-8")) > 72 or "\x00" in password:
+        raise ValueError("Password must be at most 72 UTF-8 bytes and contain no NUL")
+    return password
 
 
 class UserCreate(BaseModel):
@@ -10,6 +16,11 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8, max_length=255)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, password: str) -> str:
+        return _validate_new_password(password)
 
 
 class UserPatch(BaseModel):
@@ -55,6 +66,11 @@ class TokenPair(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=255)
     new_password: str = Field(min_length=8, max_length=255)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, password: str) -> str:
+        return _validate_new_password(password)
 
 
 class RefreshTokenRequest(BaseModel):

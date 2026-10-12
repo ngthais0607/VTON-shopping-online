@@ -12,10 +12,10 @@ class CartItemRequest(BaseModel):
 
 class CheckoutCommand(BaseModel):
     items: list[CartItemRequest] = Field(min_length=1)
-    customer_name: str = Field(min_length=1)
-    customer_phone: str = Field(min_length=1)
-    shipping_address: str = Field(min_length=1)
-    notes: str | None = None
+    customer_name: str = Field(min_length=1, max_length=255)
+    customer_phone: str = Field(min_length=1, max_length=50)
+    shipping_address: str = Field(min_length=1, max_length=1000)
+    notes: str | None = Field(default=None, max_length=2000)
     payment_method: OrderPaymentMethod = OrderPaymentMethod.VIETQR
 
 
@@ -30,7 +30,7 @@ class VietQRResponse(BaseModel):
     account_no: str
     account_name: str
     memo: str
-    amount: float
+    amount: int
 
 
 class OrderResponse(BaseModel):

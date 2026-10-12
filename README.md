@@ -1,367 +1,101 @@
-# AI-VTON - E-Commerce Platform & Admin Dashboard
+# AI-VTON backend MVP
 
-A modern, full-stack E-Commerce platform combining a **luxury customer-facing storefront**, a **comprehensive admin management dashboard**, secure **VietQR and COD checkout**, **MinIO S3 object storage**, and an **ARQ + Redis background job queue**.
+FastAPI commerce API for catalog, customer accounts, cart checkout, order tracking, and an admin dashboard. This backend refactor is API-breaking. **The checked-in Next.js frontend still calls old routes and payloads; it has not been migrated to this API and is not an end-to-end working client yet.**
 
----
+## Architecture and scope
 
-## 📑 Table of Contents
-- [Architecture Overview](#-architecture-overview)
-- [Tech Stack](#-tech-stack)
-- [Key Features](#-key-features)
-- [Directory Structure](#-directory-structure)
-- [Prerequisites](#-prerequisites)
-- [Getting Started & Installation](#-getting-started--installation)
-  - [1. Start Docker Infrastructure](#1-start-docker-infrastructure)
-  - [2. Setup & Run Backend](#2-setup--run-backend)
-  - [3. Start ARQ Background Worker](#3-start-arq-background-worker)
-  - [4. Setup & Run Frontend](#4-setup--run-frontend)
-- [Default Seed Accounts](#-default-seed-accounts)
-- [API Documentation](#-api-documentation)
-- [Testing](#-testing)
+HTTP routers validate requests, require the appropriate user, and delegate to feature services. Services own SQLAlchemy queries and explicit write transactions; the order domain contains database-independent stock and transition rules. Outbound email, queue, object storage, and VietQR formatting live behind small integration boundaries; ARQ jobs adapt worker calls to services. Core owns typed settings, database sessions, authentication, common errors, and shared pagination. Dependencies flow from transport and jobs toward services/domain, and from services toward integrations—not from services into routers. A new feature starts as a `features/<name>/router.py`, `schemas.py`, and `service.py` slice. Add `domain.py` for meaningful policy that can be tested independently, and `repository.py` only for repeated or complex queries needing independent tests. Promote shared behavior into `core/` or `integrations/` after at least two real consumers need it. There is no generic repository, unit-of-work framework, event bus, or CQRS layer.
 
----
+The API uses synchronous SQLAlchemy/PyMySQL and a synchronous MinIO client. Some FastAPI and ARQ entry points are `async`, but backend I/O is **not fully asynchronous**. Database writes commit in service use cases; email enqueue after a commit is best effort and can fail without undoing the write. MinIO upload uses best-effort object deletion if the database write fails; object storage and SQL are not one atomic transaction.
 
-## 🏛 Architecture Overview
-
-```
-+-------------------------------------------------------------------------+
-|                           CLIENT / BROWSER                              |
-|   - Customer Storefront: http://localhost:3000/store                    |
-|   - Admin Dashboard:     http://localhost:3000/dashboard                |
-+------------------------------------+------------------------------------+
-                                     |
-                          REST API / HTTP Requests
-                                     |
-                                     v
-+-------------------------------------------------------------------------+
-|                        FASTAPI BACKEND (:8000)                          |
-|   - Auth & Users (JWT Access + HttpOnly Refresh Token)                  |
-|   - Products & Categories (Eager loading, S3 Storage)                   |
-|   - Orders & Checkout Cart (Multi-item, Stock Reservation)              |
-|   - Dashboard Analytics (KPIs, Low Stock, Recent Orders)                |
-|   - Authenticated Order Tracking & Payment Timeline                     |
-+-------------+----------------------+--------------------+---------------+
-              |                      |                    |
-        SQLAlchemy ORM          Redis Message         S3 API
-              |                    Queue                  |
-              v                      v                    v
-     +-----------------+    +-----------------+  +-----------------+
-     |  MariaDB 11.2   |    |  Redis 7        |  |  MinIO Storage  |
-     |  (Port: 3307)   |    |  (Port: 6379)   |  |  (Port: 9000)   |
-     +-----------------+    +--------+--------+  +-----------------+
-                                     |
-                             Job Enqueue
-                                     |
-                                     v
-                            +-----------------+
-                            |  ARQ Worker     |
-                            |  - Welcome Mail |
-                            |  - Order Mail   |
-                            |  - Payment Mail |
-                            |  - Cron Expire  |
-                            +-----------------+
+```text
+backend/
+  .env.example             settings example (never commit real secrets)
+  alembic/                 initial, order-fulfillment, refresh-version migrations
+  app/
+    core/                   config, database, errors, schemas, security, rate limiter
+    features/
+      categories/           model, router, schemas, service
+      dashboard/            router, schemas, service
+      orders/               constants, domain, model, router, schemas, service
+      products/             images, model, reviews, router, schemas, service
+      users/                model, router, schemas, service
+    integrations/           email, queue, storage, vietqr
+    jobs/                   email composition and order-expiration delegation
+    templates/emails/       HTML notification templates
+    main.py                 create_app(), routes, handlers, MinIO startup
+    seed.py                 demo-data seeder
+    worker.py               ARQ task and cron entry points
+  tests/                    unit/contract and gated external integration tests
+frontend/                   existing Next.js client; API migration pending
 ```
 
----
+## API contract
 
-## 💻 Tech Stack
+All application operations are under `/api/v1`; `/` is an unversioned message, and `/docs`, `/redoc`, and `/openapi.json` are framework documentation routes. Groups: `/api/v1/users`, `/api/v1/categories`, `/api/v1/products`, `/api/v1/orders`, and `/api/v1/dashboard`. Swagger UI is at `http://localhost:8000/docs` after the server starts. User, category, product, and admin-order lists use `{ "items": [...], "total": 0, "limit": 20, "offset": 0 }` (order default limit: 10). User, product, and category updates use `PATCH`; deletes return empty `204` responses.
 
-### 🔹 Backend
-- **Core Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python 3.11+) with full asynchronous I/O (`async`/`await`).
-- **Database & ORM**: 
-  - **MariaDB 11.2** (MySQL dialect) via `pymysql` and `cryptography`.
-  - **SQLAlchemy 2.0**: Eager loading to eliminate the N+1 query problem (`joinedload`, `selectinload`).
-  - **Alembic**: Database schema migrations and revision control.
-- **Asynchronous Task Queue & Scheduling**:
-  - **ARQ** + **Redis 7**: Distributed non-blocking background queue for email dispatching and scheduled cron maintenance.
-  - **aiosmtplib** + **Jinja2**: HTML email templating and async delivery.
-- **Object Storage**:
-  - **MinIO**: S3-compatible object storage service for high-performance product image uploads and downloads.
-- **Security & Rate Limiting**:
-  - **JWT (JSON Web Token)**: Short-lived access token (30 min) + Long-lived rotation refresh token (7 days) stored securely in `HttpOnly Cookie`.
-  - **Passlib & Bcrypt**: Salted cryptographic password hashing.
-  - **SlowAPI**: Redis-backed distributed rate limiting protecting `/login` and `/register` against brute-force attacks.
+Application errors use `{ "code": "...", "message": "...", "details": null }`; the shared shape is advertised for 400, 401, 403, 404, 409, and 500 responses. Framework validation errors such as 422 retain FastAPI's validation shape. Main operations:
 
-### 🔹 Frontend
-- **Framework**: [Next.js 16 (App Router)](https://nextjs.org/) + **React 19** + **TypeScript**.
-- **UI & Styling**:
-  - **Tailwind CSS v4** + **Radix UI** + **Shadcn UI**.
-  - **Pastel Ocean Blue** luxury design system with dark/light mode switching via `next-themes`.
-  - Micro-interactions and fluid animations powered by **Framer Motion (`motion/react`)**.
-- **State Management & Data Fetching**:
-  - **Axios** with automatic token interceptor and token refresh queue upon HTTP 401.
-  - **SWR**: Client-side stale-while-revalidate caching and real-time syncing.
-  - **React Hook Form** + **Zod**: Robust, type-safe schema validations.
-  - **CartContext**: Persistent multi-item cart state management via browser `localStorage`.
+- Public customer registration: `POST /api/v1/users/register`. Its request cannot select a role. The admin-only users API also creates customers; the local demo seed provisions the only documented admin account. There is no API role-promotion path.
+- Login: `POST /api/v1/users/login` accepts JSON (`identifier`, `password`); refresh: `POST /api/v1/users/refresh`; logout: `POST /api/v1/users/logout`. Protected routes use an HTTP bearer access token in OpenAPI. Login and refresh return a token pair and set an HttpOnly refresh cookie. Refresh also accepts a token in the request body. Logout clears the cookie; it does not revoke an issued access token. New passwords are limited to 72 UTF-8 bytes for bcrypt.
+- Cart checkout: `POST /api/v1/orders/checkout-cart`; owner/admin order read and tracking: `GET /api/v1/orders/{id}`, `/user/{user_id}`, and `/track/{id}`. Admin status change: `PUT /api/v1/orders/{id}/status`. A cart must use one currency; VietQR accepts VND only and uses one rounded VND amount in both the QR URL and response. COD accepts a homogeneous currency without conversion. VietQR checkout reserves stock in `pending` state until admin-confirmed payment or expiration; COD starts `confirmed`. There is no bank webhook or customer payment-confirmation endpoint.
+- Public catalog/category reads; admin catalog/category writes and product image upload; authenticated product reviews. Admin-only dashboard metrics, recent-order summaries, and low-stock summaries.
 
----
+Refresh rotation uses the durable `users.refresh_version` integer. Each successful refresh consumes the previous version for that user, so a second concurrent use conflicts. This is **per-user** rotation: refreshing in one browser invalidates that user's older refresh tokens in other browsers. Existing refresh tokens lacking the new version claim and legacy email-subject access/refresh tokens are invalid; users must log in again after rollout. Deploy the Alembic migration **before** deploying code that reads `refresh_version`.
 
-## ✨ Key Features
+## Local prerequisites and configuration
 
-### 🛒 1. Customer Storefront (`/store`)
-- **Luxury Storefront Homepage**:
-  - Hero section, trust badges, curated featured products, and newsletter CTAs.
-  - **Advanced Filtering**: Multi-field fuzzy search (product name & description), category selection, Min/Max dual-slider price range filter, stock status toggles, and sorting options (price, creation date).
-- **Quick View Modal**:
-  - Instant product details overlay with high-resolution image galleries, star ratings, stock counts, and quick add-to-cart actions.
-- **Product Reviews & Ratings**:
-  - 1-to-5 star customer ratings, written reviews, and automated *Verified Purchase* verification.
-- **Slide-over Cart Drawer**:
-  - Persistent slide-out cart drawer accessible across all pages with real-time quantity increments/decrements, item removal, and auto-calculated totals.
-- **Multi-Item Cart Checkout**:
-  - Single-transaction checkout for multiple cart items via `/orders/checkout-cart`.
-  - Supports **VietQR Bank Transfer** and **COD (Cash On Delivery)**.
-- **VietQR Payment Flow**:
-  - Dynamic QR code generation containing bank ID, account number, amount, and order memo `LUXESTORE_{order_id}`.
-  - There is no bank webhook integration. Customers cannot confirm their own payment; an administrator confirms payment after external verification.
-- **Authenticated Order Tracking Page**:
-  - Tracking at `/store/orders/{id}` requires authentication. Customers can view only their own orders, while administrators can inspect any order.
-  - COD checkout creates a `confirmed` order without a payment-expiration deadline; VietQR creates a `pending` order with a 30-minute deadline.
-- **Standard Informational Subpages**:
-  - Fully written subpages for About Us, Contact, Help Center, Careers, Blog, Press, Return Policy, Privacy Policy, Terms of Service, and Cookie Policy.
+- Python 3.11+ and a virtual environment; install `backend/requirements.txt` plus `backend/requirements-dev.txt` for checks.
+- For a running server: MariaDB, Redis, and MinIO (the root Compose file provides local instances). Startup ensures a MinIO bucket/policy, so MinIO must be reachable. Redis is needed for background notification enqueue and the ARQ worker. SMTP is optional for local console logging, but real delivery needs valid SMTP settings.
+- `SECRET_KEY` is required and must be private/nonempty. `DATABASE_URL` defaults to `sqlite:///./app.db` only for local experimentation; use MariaDB for deployed operation and concurrency validation. `REDIS_URL` defaults to `memory://`, an unavailable-queue sentinel, not an in-memory ARQ worker. Defaults are not production configuration.
 
-### 🛡️ 2. Admin Management Dashboard (`/dashboard`)
-- **Executive Dashboard Overview**:
-  - Real-time KPI metrics: Total Products, Active Catalog Items, Low-Stock Warnings (< 20 units remaining), Pending Orders, and Gross Revenue.
-  - Interactive revenue and order status distribution charts.
-  - Fast-action tables for recent transactions and low-stock replenishment alerts.
-- **Product Catalog Management (`/products`)**:
-  - Paginated table, search filters, modal-based CRUD operations, and drag-and-drop image upload to MinIO S3.
-- **Category Management (`/categories`)**:
-  - Full CRUD operations with auto-calculated linked product counts.
-- **Order Management (`/orders`)**:
-  - Centralized order oversight with validated transitions (`pending`, `confirmed`, `paid`, `cancelled`, `expired`), audit timestamps, and stock reconciliation.
-- **Customer Management (`/customers`)**:
-  - User directory, search by name/email, and role-based permissions (`admin` / `customer`).
+Copy `backend/.env.example` to `backend/.env` and set at least `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, MinIO credentials/endpoint, `CORS_ORIGINS`, and VietQR bank fields for your environment. The settings model also supports `JWT_ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS`, `REFRESH_COOKIE_SECURE`, `MINIO_BUCKET`, `MINIO_EXTERNAL_URL`, `EMAILS_ENABLED`, `EMAILS_CONSOLE_LOG`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAILS_FROM_EMAIL`, and `EMAILS_FROM_NAME`. Environment variables override `.env`; `CORS_ORIGINS` is comma-separated. Refresh cookies are `Secure` by default; set `REFRESH_COOKIE_SECURE=False` only for plain-HTTP local development. Example credentials and seeded passwords are for disposable local development only.
 
-### ⚙️ 3. Inventory Locking & Background Worker
-- **Stock Reservation Engine**:
-  - Placing an order increments `reserved_quantity`, locking units without immediately decreasing total inventory, effectively preventing overselling.
-  - Successful payment (`paid`) converts reserved units into `sold_quantity`.
-  - Cancelled or expired orders automatically restore reserved quantities back to available stock.
-- **ARQ Background Worker & Cron Jobs**:
-  - `send_welcome_email_task`: Sends a branded welcome email upon user registration.
-  - `send_order_confirmation_email_task`: Dispatches detailed invoice emails upon order creation.
-  - `send_payment_received_email_task`: Confirms successful payment reconciliation.
-  - Scheduled cron task running every minute to automatically expire unverified VietQR `pending` orders after 30 minutes.
-
----
-
-## 📁 Directory Structure
-
-```
-AI-VTON/
-├── docker-compose.yml              # MariaDB, Redis, MinIO, ARQ worker services
-├── README.md                       # Comprehensive project documentation
-├── backend/
-│   ├── alembic/                    # Alembic database migration scripts
-│   ├── app/
-│   │   ├── core/                   # DB connection, JWT Security, Rate Limiter, Queue, Email
-│   │   ├── features/               # Modular domain-driven features:
-│   │   │   ├── users/              # Auth, profile, user management
-│   │   │   ├── products/           # Catalog CRUD, image upload, reviews
-│   │   │   ├── categories/         # Category CRUD
-│   │   │   ├── orders/             # Atomic checkout, lifecycle rules, tracking
-│   │   │   └── dashboard/          # Analytics metrics, charts, low stock alerts
-│   │   ├── integrations/           # MinIO client, VietQR generator, Paddle
-│   │   ├── jobs/                   # Order expiration logic
-│   │   ├── templates/              # Jinja2 HTML email templates
-│   │   ├── main.py                 # FastAPI application entry point
-│   │   ├── seed.py                 # Database seeder script
-│   │   └── worker.py               # ARQ Worker settings & cron registrations
-│   ├── requirements.txt            # Python dependencies
-│   └── tests/                      # Pytest unit & integration test suite
-└── frontend/
-    ├── app/
-    │   ├── store/                  # Customer Storefront (Home, Checkout, Tracking, Info)
-    │   ├── dashboard/              # Admin Dashboard
-    │   ├── products/               # Admin Products page
-    │   ├── categories/             # Admin Categories page
-    │   ├── orders/                 # Admin Orders page
-    │   ├── customers/              # Admin Customers page
-    │   ├── settings/               # Admin Settings page
-    │   ├── login/ & register/      # Authentication pages
-    │   └── layout.tsx              # Root Layout
-    ├── components/                 # Reusable UI components & Radix UI primitives
-    ├── lib/                        # Axios instance, SWR config, Types, Zod schemas
-    └── tests/                      # Vitest frontend unit tests
-```
-
----
-
-## 📦 Prerequisites
-
-- **Docker & Docker Compose** (to run MariaDB, Redis, MinIO)
-- **Python 3.11+**
-- **Node.js 18+** & **pnpm** (or npm)
-
----
-
-## 🚀 Getting Started & Installation
-
-### 1. Start Docker Infrastructure
-
-Run the following command in the project root directory to start MariaDB, Redis, and MinIO:
-
-```bash
-docker-compose up -d mariadb redis minio
-```
-
-Verify that all containers are healthy:
-```bash
-docker ps
-```
-- **MariaDB**: port `3307`
-- **Redis**: port `6379`
-- **MinIO Console**: `http://localhost:9001` (Username: `admin` / Password: `password123`)
-
----
-
-### 2. Setup & Run Backend
-
-1. **Navigate to the backend directory**:
-   ```bash
-   cd backend
-   ```
-
-2. **Create and activate a virtual environment**:
-   ```bash
-   # Windows
-   python -m venv .venv
-   .venv\Scripts\activate
-
-   # Linux / macOS
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configure Environment Variables (.env)**:
-   Copy the provided `.env.example` template to `.env` and fill in your local credentials:
-   ```bash
-   cp .env.example .env
-   ```
-   > **Note**: Ensure you configure your own `SECRET_KEY`, `DATABASE_URL`, and VietQR banking details (`VIETQR_ACCOUNT_NO`, `VIETQR_BANK_ID`) in `.env`. Never commit your real `.env` file.
-
-
-5. **Run Migrations & Seed Database**:
-   ```bash
-   # Apply database migrations
-   alembic upgrade head
-
-   # Seed default accounts and sample catalog
-   python -m app.seed
-   ```
-
-6. **Start the FastAPI Backend Server**:
-   ```bash
-   uvicorn app.main:app --reload --port 8000
-   ```
-   The backend API will be running at: `http://localhost:8000`
-
----
-
-### 3. Start ARQ Background Worker
-
-Open a new terminal session (with the virtual environment activated in `backend`):
-```bash
-cd backend
-arq app.worker.WorkerSettings
-```
-> Alternatively, start the worker in Docker: `docker-compose up -d arq_worker`.
-
----
-
-### 4. Setup & Run Frontend
-
-1. **Open a new terminal and navigate to `frontend`**:
-   ```bash
-   cd frontend
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pnpm install
-   # Or: npm install
-   ```
-
-3. **Configure Environment Variables**:
-   Create a `.env.local` file in `frontend/` (if not already present):
-   ```env
-   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-   ```
-
-4. **Start the Next.js Development Server**:
-   ```bash
-   pnpm dev
-   # Or: npm run dev
-   ```
-   The application will be running at: `http://localhost:3000`
-
----
-
-## 🔑 Default Seed Accounts
-
-After executing `python -m app.seed`, the following default test accounts are ready for use:
-
-| Role | Email / Username | Password | Intended Usage |
-| :--- | :--- | :--- | :--- |
-| **Administrator** | `admin@example.com` / `admin` | `Admin@123456` | Access `/dashboard`, manage products, categories, orders, and review analytics |
-| **Demo Customer** | `user@example.com` / `demouser` | `User@123456` | Access `/store`, browse catalog, checkout with VietQR, submit verified reviews |
-
----
-
-## 📖 API Documentation
-
-FastAPI provides automated interactive documentation interfaces:
-
-- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
-### Primary Endpoint Groups:
-- `/users`: Authentication, login, register, token refresh, profile updates, and admin user administration.
-- `/products`: Catalog listing, multi-field search and filters, MinIO image upload, product reviews and ratings.
-- `/categories`: Category CRUD and product associations.
-- `/orders`: Sole order-creation API via atomic multi-item checkout (`/checkout-cart`), authenticated owner/admin tracking (`/track/{id}`), and admin-only lifecycle updates. No VietQR webhook route is exposed.
-- `/dashboard`: High-level metrics, revenue stats, recent orders, and low-stock alerts.
-
-### MariaDB checkout concurrency regression
-
-Use a dedicated empty database to verify that two simultaneous checkouts cannot oversell the final unit:
+From the repository root, start local dependencies if Docker is available:
 
 ```powershell
-$env:DATABASE_URL = "mysql+pymysql://root:password123@localhost:3307/fastapi_founder_test"
-$env:TEST_DATABASE_URL = $env:DATABASE_URL
-cd backend
+docker compose up -d mariadb redis minio
+```
+
+The example MariaDB endpoint is `localhost:3307`, Redis `localhost:6379`, MinIO API `localhost:9000`, and MinIO console `localhost:9001`. Do not apply the demo seed to a real database. The `arq_worker` Compose service reads `SECRET_KEY` from the environment of the `docker compose` process, not from `backend/.env`; set it before starting that service. An unset or empty value prevents worker startup. No production secret is checked in.
+
+From `backend/` (PowerShell):
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
+Copy-Item .env.example .env   # then edit .env for local services
 .\.venv\Scripts\alembic.exe upgrade head
-.\.venv\Scripts\python.exe -m pytest tests/integration/test_checkout_concurrency.py -v
+.\.venv\Scripts\alembic.exe current
+.\.venv\Scripts\uvicorn.exe app.main:app --reload --port 8000
 ```
 
----
+Do not reverse the migration/deploy order. `alembic current` should report `8f4c2d1a7b90 (head)` for this revision. Importing the app alone does not verify service connectivity; serving requests runs the MinIO startup hook. To run notifications and minute-by-minute pending-order expiration, open another configured `backend/` terminal:
 
-## 🧪 Testing
-
-### Backend Tests (Pytest)
-The backend test suite runs against an isolated SQLite test database with automatic rollback:
-```bash
-cd backend
-pytest -v
+```powershell
+.\.venv\Scripts\arq.exe app.worker.WorkerSettings
 ```
 
-### Frontend Tests (Vitest)
-Unit tests for React contexts, hooks, and UI interactions:
-```bash
-cd frontend
-pnpm test
-# Or: npm test
+The seed script has **no `--help` or dry-run mode**; `python -m app.seed` immediately creates tables if needed and writes demo accounts, catalog, and historical orders to the configured database. Run it only after verifying `DATABASE_URL` points to an isolated local/demo database. It creates `admin@example.com` / `Admin@123456` and `user@example.com` / `User@123456`; rotate/remove these accounts outside disposable development. Public `/register` creates customers, not admins.
+
+## Frontend migration status
+
+`frontend/` is a Next.js 16 / React 19 client with Axios, SWR, Tailwind, and Vitest. It still calls pre-refactor routes: for example `/users/me` and `/orders/checkout-cart` without `/api/v1`, and it uses `PUT /users/me` where the backend now uses `PATCH`. Response assumptions also need review. Setting `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000` alone does not make it compatible. Migrate and test the client against OpenAPI before presenting the storefront/dashboard as integrated.
+
+## Checks
+
+From `backend/` with a local `SECRET_KEY` (or configured `.env`):
+
+```powershell
+.\.venv\Scripts\python.exe -c "from app.main import app; from app.worker import WorkerSettings; print('imports OK')"
+.\.venv\Scripts\ruff.exe format --check app tests
+.\.venv\Scripts\ruff.exe check app tests
+.\.venv\Scripts\python.exe -m compileall -q app tests
+.\.venv\Scripts\python.exe -m pytest -q -W error::sqlalchemy.exc.SAWarning -p no:cacheprovider
 ```
 
----
+Ten MariaDB integration tests skip unless `TEST_DATABASE_URL` is set. Use a dedicated empty, disposable MariaDB database; never point them at production or shared data. Before running the suite, set `DATABASE_URL` to that test database and run `alembic upgrade head`; then set `TEST_DATABASE_URL` to the same migrated database. The fulfillment-migration test creates and drops a separate `migration_<random>` database on that server, so the test account also needs `CREATE` and `DROP` database privileges. Confirm the server and account are isolated before granting them. The checkout, PATCH/checkout, transition, uniqueness, and fulfillment cases are in `tests/integration/`. SQLite unit tests and mocked adapters do not establish live MariaDB locking, Redis, MinIO, or SMTP behavior. The frontend has a separate `pnpm test` script from `frontend/`, but frontend compatibility has not been verified by this backend work.
 
-## 📄 License
-This project is proprietary and developed for high-performance e-commerce operations.
-All contributions and inquiries should be directed to the AI-VTON development team.
+## License
+
+Proprietary project; no public license is granted by this repository.

@@ -5,8 +5,14 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.errors import ConflictError, ForbiddenError, ResourceNotFoundError
+from app.core.errors import (
+    BusinessRuleError,
+    ConflictError,
+    ForbiddenError,
+    ResourceNotFoundError,
+)
 from app.core.schemas import Page
+from app.features.categories.model import Category
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 from app.features.orders.domain import (
     aggregate_cart_items,
@@ -25,7 +31,7 @@ from app.features.orders.schemas import (
 from app.features.products.model import Product
 from app.features.users.model import User
 from app.integrations.queue import TaskQueue
-from app.integrations.vietqr import generate_vietqr_url, get_vietqr_bank_config
+from app.integrations.vietqr import build_vietqr_instructions
 
 logger = logging.getLogger(__name__)
 
@@ -76,24 +82,10 @@ def order_to_response(order: Order) -> OrderResponse:
 
 
 def _vietqr_response(orders: list[Order]) -> VietQRResponse:
-    bank = get_vietqr_bank_config()
     total = sum(order.total_amount for order in orders)
     memo = f"LUXESTORE_{'_'.join(str(order.id) for order in orders)}"
-    return VietQRResponse(
-        qr_url=generate_vietqr_url(
-            bank_id=bank["bank_id"],
-            account_no=bank["account_no"],
-            account_name=bank["account_name"],
-            amount=total,
-            memo=memo,
-        ),
-        bank_id=bank["bank_id"],
-        bank_name=bank["bank_name"],
-        account_no=bank["account_no"],
-        account_name=bank["account_name"],
-        memo=memo,
-        amount=total,
-    )
+    instructions = build_vietqr_instructions(total, memo)
+    return VietQRResponse(**vars(instructions))
 
 
 async def _enqueue_best_effort(queue: TaskQueue, task_name: str, order_id: int) -> None:
@@ -120,6 +112,10 @@ async def checkout_cart(
                 Product.id == product_id,
                 Product.is_deleted.is_(False),
                 Product.is_active.is_(True),
+                (
+                    Product.category_id.is_(None)
+                    | Product.category.has(Category.is_deleted.is_(False))
+                ),
             )
             .populate_existing()
             .with_for_update()
@@ -136,6 +132,16 @@ async def checkout_cart(
                 f"Requested: {quantity}, Available: {available}"
             )
 
+    currencies = {product.currency.upper() for product in by_id.values()}
+    if len(currencies) != 1:
+        raise BusinessRuleError(
+            "Cart must use one currency", code="mixed_cart_currency"
+        )
+    if command.payment_method == OrderPaymentMethod.VIETQR and currencies != {"VND"}:
+        raise BusinessRuleError(
+            "VietQR requires VND", code="unsupported_payment_currency"
+        )
+
     checkout_time = now or datetime.now(timezone.utc)
     is_vietqr = command.payment_method == OrderPaymentMethod.VIETQR
     orders: list[Order] = []
@@ -149,7 +155,7 @@ async def checkout_cart(
             unit_price=product.price,
             quantity=quantity,
             total_amount=product.price * quantity,
-            currency=product.currency,
+            currency=product.currency.upper(),
             status=OrderStatus.PENDING.value
             if is_vietqr
             else OrderStatus.CONFIRMED.value,
@@ -216,7 +222,7 @@ async def change_order_status(
     product_id = db.query(Order.product_id).filter(Order.id == order_id).scalar()
     if product_id is None:
         raise OrderNotFoundError("Order not found")
-    _lock_transition_products(db, {product_id})
+    locked_products = _lock_transition_products(db, {product_id})
     order = (
         db.query(Order)
         .filter(Order.id == order_id)
@@ -228,6 +234,7 @@ async def change_order_status(
         raise OrderNotFoundError("Order not found")
     if order.product_id != product_id:
         raise ConflictError("Order product changed during transition")
+    order.product = locked_products[product_id]
     apply_order_transition(order, new_status)
     db.commit()
     db.refresh(order)
@@ -307,7 +314,9 @@ def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
         .order_by(Order.id)
         .all()
     )
-    _lock_transition_products(db, {product_id for _, product_id in candidates})
+    locked_products = _lock_transition_products(
+        db, {product_id for _, product_id in candidates}
+    )
     expired_count = 0
     for order_id, discovered_product_id in candidates:
         order = (
@@ -330,20 +339,23 @@ def expire_pending_orders(db: Session, now: datetime | None = None) -> int:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         if expires_at > current_time:
             continue
+        order.product = locked_products[discovered_product_id]
         apply_order_transition(order, OrderStatus.EXPIRED, current_time)
         expired_count += 1
     db.commit()
     return expired_count
 
 
-def _lock_transition_products(db: Session, product_ids: set[int]) -> None:
+def _lock_transition_products(db: Session, product_ids: set[int]) -> dict[int, Product]:
     # Checkout, status changes, and expiration acquire product locks first by ID.
     # populate_existing refreshes products already present in this session's identity map.
+    locked: dict[int, Product] = {}
     for product_id in sorted(product_ids):
-        (
+        locked[product_id] = (
             db.query(Product)
             .filter(Product.id == product_id)
             .populate_existing()
             .with_for_update()
             .one()
         )
+    return locked

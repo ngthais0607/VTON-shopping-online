@@ -1,11 +1,18 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 
+from app.core.config import get_settings
 from app.core.rate_limiter import limiter
 from app.features.users.model import User
 from app.integrations import queue as queue_module
-from app.integrations.queue import ArqTaskQueue, get_task_queue, parse_redis_settings
+from app.integrations.queue import (
+    ArqTaskQueue,
+    create_task_queue,
+    get_task_queue,
+    parse_redis_settings,
+)
 
 
 def test_worker_uses_queue_parser_for_credentials_and_tls(monkeypatch):
@@ -66,15 +73,7 @@ def test_parse_redis_settings_preserves_credentials_and_tls():
     ids=["malformed", "credentials", "tls"],
 )
 def test_task_queue_dependency_defers_url_parsing(monkeypatch, redis_url):
-    monkeypatch.setattr(
-        queue_module,
-        "get_settings",
-        lambda: SimpleNamespace(redis_url=redis_url),
-    )
-    get_task_queue.cache_clear()
-
-    assert get_task_queue() is not None
-    get_task_queue.cache_clear()
+    assert create_task_queue(redis_url) is not None
 
 
 @pytest.mark.asyncio
@@ -117,18 +116,10 @@ async def test_arq_queue_reports_rejected_enqueue(monkeypatch):
 async def test_unconfigured_queue_fails_on_enqueue_not_dependency_resolution(
     monkeypatch,
 ):
-    monkeypatch.setattr(
-        queue_module,
-        "get_settings",
-        lambda: SimpleNamespace(redis_url="memory://"),
-    )
-    get_task_queue.cache_clear()
-
-    queue = get_task_queue()
+    queue = create_task_queue("memory://")
 
     with pytest.raises(RuntimeError, match="not configured"):
         await queue.enqueue("send_welcome_email_task", 42)
-    get_task_queue.cache_clear()
 
 
 def test_malformed_queue_url_does_not_fail_registration_before_commit(
@@ -156,3 +147,49 @@ def test_malformed_queue_url_does_not_fail_registration_before_commit(
         == 1
     )
     assert "Failed to enqueue welcome email" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_concurrent_enqueues_share_one_lazy_pool_and_close_it(monkeypatch):
+    created = 0
+    released = asyncio.Event()
+
+    class Pool:
+        closed = False
+
+        async def enqueue_job(self, *_args):
+            return object()
+
+        async def aclose(self):
+            self.closed = True
+
+    pool = Pool()
+
+    async def create_pool(_settings):
+        nonlocal created
+        created += 1
+        await released.wait()
+        return pool
+
+    monkeypatch.setattr(queue_module, "create_pool", create_pool)
+    queue = ArqTaskQueue("redis://localhost:6379/0")
+    tasks = [asyncio.create_task(queue.enqueue("task", index)) for index in range(2)]
+    await asyncio.sleep(0)
+    released.set()
+    await asyncio.gather(*tasks)
+    await queue.aclose()
+
+    assert created == 1
+    assert pool.closed
+
+
+def test_queue_dependency_is_owned_by_app_not_global_cache(monkeypatch):
+    from app.main import create_app
+
+    settings = get_settings().model_copy(
+        update={"redis_url": "redis://localhost:6379/0"}
+    )
+    first = create_app(settings)
+    second = create_app(settings)
+    assert get_task_queue(SimpleNamespace(app=first)) is first.state.task_queue
+    assert first.state.task_queue is not second.state.task_queue

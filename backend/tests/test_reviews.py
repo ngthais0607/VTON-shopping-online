@@ -12,6 +12,7 @@ def persist_product(db_session, **overrides):
     values = {
         "name": "Review product",
         "price": 99.99,
+        "currency": "VND",
         "stock_quantity": 10,
     }
     product = Product(**(values | overrides))

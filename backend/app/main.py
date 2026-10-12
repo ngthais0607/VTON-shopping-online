@@ -14,13 +14,19 @@ from app.features.dashboard.router import router as dashboard_router
 from app.features.orders.router import router as order_router
 from app.features.products.router import router as product_router
 from app.features.users.router import router as user_router
+from app.integrations.queue import ArqTaskQueue, create_task_queue
 from app.integrations.storage import MinioProductStorage
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-    application.state.product_storage.ensure_bucket()
-    yield
+    try:
+        application.state.product_storage.ensure_bucket()
+        yield
+    finally:
+        queue = application.state.task_queue
+        if isinstance(queue, ArqTaskQueue):
+            await queue.aclose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -33,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application.state.settings = application_settings
     application.state.product_storage = MinioProductStorage(application_settings)
+    application.state.task_queue = create_task_queue(application_settings.redis_url)
     application.state.limiter = limiter
     application.add_exception_handler(
         RateLimitExceeded,

@@ -1,6 +1,8 @@
 import ast
 from pathlib import Path
 
+import pytest
+
 BACKEND_ROOT = Path(__file__).parents[1]
 APP_ROOT = BACKEND_ROOT / "app"
 ROUTER_FILES = tuple(sorted((APP_ROOT / "features").glob("**/router.py")))
@@ -23,12 +25,55 @@ def _import_roots(node: ast.Import | ast.ImportFrom) -> set[str]:
     return {node.module.split(".", 1)[0]}
 
 
-def _imported_modules(node: ast.Import | ast.ImportFrom) -> set[str]:
+def _imported_modules(
+    node: ast.Import | ast.ImportFrom,
+    *,
+    current_package: str | None = None,
+) -> set[str]:
     if isinstance(node, ast.Import):
         return {alias.name for alias in node.names}
-    if node.module is None:
-        return set()
-    return {node.module}
+
+    if node.level:
+        if current_package is None:
+            return set()
+        package_parts = current_package.split(".")
+        parent_count = node.level - 1
+        if parent_count >= len(package_parts):
+            return set()
+        base_parts = package_parts[: len(package_parts) - parent_count]
+        if node.module is not None:
+            base_parts.extend(node.module.split("."))
+        base_module = ".".join(base_parts)
+    else:
+        base_module = node.module or ""
+
+    imported_modules = {base_module} if base_module else set()
+    imported_modules.update(
+        f"{base_module}.{alias.name}"
+        for alias in node.names
+        if base_module and alias.name != "*"
+    )
+    return imported_modules
+
+
+@pytest.mark.parametrize(
+    ("source", "current_package"),
+    [
+        ("from app.features.users import router", "app.core"),
+        ("from ..features.users import router", "app.core"),
+    ],
+)
+def test_import_resolution_includes_feature_router_aliases(
+    source: str,
+    current_package: str,
+) -> None:
+    import_node = ast.parse(source).body[0]
+    assert isinstance(import_node, ast.ImportFrom)
+
+    assert "app.features.users.router" in _imported_modules(
+        import_node,
+        current_package=current_package,
+    )
 
 
 def _orm_model_names() -> set[str]:
@@ -112,7 +157,12 @@ def test_core_and_integrations_do_not_import_feature_routers() -> None:
                 continue
             imported_routers = {
                 module
-                for module in _imported_modules(node)
+                for module in _imported_modules(
+                    node,
+                    current_package=".".join(
+                        path.parent.relative_to(BACKEND_ROOT).parts
+                    ),
+                )
                 if module.startswith("app.features.") and module.endswith(".router")
             }
             for imported_router in sorted(imported_routers):

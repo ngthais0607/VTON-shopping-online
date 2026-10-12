@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import jwt
 from fastapi import Depends
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -20,10 +20,7 @@ ALGORITHM = settings.jwt_algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 REFRESH_TOKEN_EXPIRE_DAYS = settings.refresh_token_expire_days
 
-oauth2_password_bearer = OAuth2PasswordBearer(
-    tokenUrl="/api/v1/users/login",
-    auto_error=False,
-)
+http_bearer = HTTPBearer(auto_error=False)
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -38,7 +35,10 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return password_context.verify(plain_password, hashed_password)
+    try:
+        return password_context.verify(plain_password, hashed_password)
+    except ValueError:
+        return False
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
@@ -74,13 +74,13 @@ def verify_refresh_token(token: str) -> str:
 
 
 def get_current_user(
-    token: str | None = Depends(oauth2_password_bearer),
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
     db: Session = Depends(get_db),
 ) -> User:
-    if not token:
+    if credentials is None or not credentials.credentials:
         raise _invalid_token()
 
-    user_id = int(decode_access_token(token))
+    user_id = int(decode_access_token(credentials.credentials))
     user = (
         db.query(User)
         .filter(

@@ -142,8 +142,8 @@ class ProductResponse(BaseModel):
 
 class ReviewCreate(BaseModel):
     rating: int = Field(ge=1, le=5)
-    title: str | None = None
-    comment: str | None = None
+    title: str | None = Field(default=None, max_length=255)
+    comment: str | None = Field(default=None, max_length=1000)
 
 
 class ReviewResponse(BaseModel):

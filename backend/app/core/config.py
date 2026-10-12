@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = Field(default=30, gt=0)
     refresh_token_expire_days: int = Field(default=7, gt=0)
+    refresh_cookie_secure: bool = True
 
     redis_url: str = "memory://"
     cors_origins: Annotated[

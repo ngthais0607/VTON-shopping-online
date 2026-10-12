@@ -90,7 +90,23 @@ def update_product(
     product_id: int,
     command: ProductPatch,
 ) -> Product:
-    product = _get_active_product(db, product_id)
+    product = (
+        db.query(Product)
+        .filter(Product.id == product_id, Product.is_deleted.is_(False))
+        .populate_existing()
+        .with_for_update()
+        .first()
+    )
+    if product is None or (
+        product.category_id is not None
+        and db.query(Category.is_deleted)
+        .filter(Category.id == product.category_id)
+        .scalar()
+        is not False
+    ):
+        raise ResourceNotFoundError(
+            f"Product {product_id} was not found", code="product_not_found"
+        )
     changes = command.model_dump(exclude_unset=True)
 
     category = product.category

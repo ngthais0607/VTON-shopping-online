@@ -39,7 +39,7 @@ def test_admin_order_list_uses_page_contract(client, db_session, mock_admin_auth
 
 
 def test_order_lookup_hides_another_customers_order(client, db_session, mock_user_auth):
-    product = Product(name="Hidden order", price=20, stock_quantity=2)
+    product = Product(name="Hidden order", price=20, currency="VND", stock_quantity=2)
     persist(db_session, product)
     created = client.post(
         "/api/v1/orders/checkout-cart",
@@ -67,7 +67,7 @@ def test_order_lookup_hides_another_customers_order(client, db_session, mock_use
 
 
 def test_checkout_reports_typed_stock_conflict(client, db_session, mock_user_auth):
-    product = Product(name="One left", price=20, stock_quantity=1)
+    product = Product(name="One left", price=20, currency="VND", stock_quantity=1)
     persist(db_session, product)
     response = client.post(
         "/api/v1/orders/checkout-cart",
@@ -85,7 +85,7 @@ def test_checkout_reports_typed_stock_conflict(client, db_session, mock_user_aut
 def test_order_list_paginates_newest_first(
     client, db_session, mock_user_auth, mock_admin_auth
 ):
-    product = Product(name="Page order", price=12, stock_quantity=4)
+    product = Product(name="Page order", price=12, currency="VND", stock_quantity=4)
     persist(db_session, product)
     first = _checkout(client, product.id)
     second = _checkout(client, product.id)
@@ -136,7 +136,7 @@ def test_create_order_success(client, db_session, mock_user_auth):
     product = Product(
         name="Mũ bảo hiểm Test",
         price=50.0,
-        currency="USD",
+        currency="VND",
         stock_quantity=10,
         reserved_quantity=0,
         sold_quantity=0,
@@ -165,7 +165,7 @@ def test_create_order_out_of_stock(client, db_session, mock_user_auth):
     product = Product(
         name="Sản phẩm hiếm",
         price=10.0,
-        currency="USD",
+        currency="VND",
         stock_quantity=1,
         reserved_quantity=0,
         sold_quantity=0,
@@ -190,7 +190,7 @@ def test_update_order_status_to_paid(
     product = Product(
         name="Áo khoác Test",
         price=100.0,
-        currency="USD",
+        currency="VND",
         stock_quantity=5,
         reserved_quantity=0,
         sold_quantity=0,
@@ -225,7 +225,7 @@ def test_update_order_status_to_cancelled(
     product = Product(
         name="Giày thể thao Test",
         price=80.0,
-        currency="USD",
+        currency="VND",
         stock_quantity=10,
         reserved_quantity=0,
         sold_quantity=0,
@@ -251,7 +251,7 @@ def test_update_order_status_to_cancelled(
 
 
 def _create_trackable_order(client, db_session, mock_user_auth):
-    product = Product(name="Track Watch", price=150.0, currency="USD", stock_quantity=5)
+    product = Product(name="Track Watch", price=150.0, currency="VND", stock_quantity=5)
     persist(db_session, product)
 
     resp_create = _checkout(client, product.id)
@@ -350,7 +350,7 @@ def test_public_expire_route_is_removed(client, db_session, mock_user_auth):
 
 def test_checkout_persists_fulfillment_fields(client, db_session, mock_user_auth):
     product = Product(
-        name="Fulfillment Test", price=25.0, currency="USD", stock_quantity=5
+        name="Fulfillment Test", price=25.0, currency="VND", stock_quantity=5
     )
     persist(db_session, product)
 
@@ -367,7 +367,7 @@ def test_checkout_persists_fulfillment_fields(client, db_session, mock_user_auth
 
 
 def test_vietqr_checkout_is_pending_and_expires(client, db_session, mock_user_auth):
-    product = Product(name="VietQR Test", price=25.0, currency="USD", stock_quantity=5)
+    product = Product(name="VietQR Test", price=25.0, currency="VND", stock_quantity=5)
     persist(db_session, product)
 
     response = _checkout(client, product.id, payment_method="vietqr")
@@ -425,7 +425,7 @@ def test_enqueue_failure_does_not_rollback_committed_order(
     client, db_session, mock_user_auth, fake_order_queue
 ):
     product = Product(
-        name="Queue Failure", price=25.0, currency="USD", stock_quantity=5
+        name="Queue Failure", price=25.0, currency="VND", stock_quantity=5
     )
     persist(db_session, product)
 
@@ -457,7 +457,10 @@ def test_allowed_order_transitions_update_inventory(
     expected_sold,
 ):
     product = Product(
-        name=f"Transition {payment_method} {new_status}", price=30, stock_quantity=5
+        name=f"Transition {payment_method} {new_status}",
+        price=30,
+        currency="VND",
+        stock_quantity=5,
     )
     persist(db_session, product)
     checkout = _checkout(client, product.id, quantity=2, payment_method=payment_method)
@@ -493,7 +496,10 @@ def test_rejected_order_transitions_do_not_mutate_inventory(
     rejected_status,
 ):
     product = Product(
-        name=f"Rejected {payment_method} {rejected_status}", price=30, stock_quantity=5
+        name=f"Rejected {payment_method} {rejected_status}",
+        price=30,
+        currency="VND",
+        stock_quantity=5,
     )
     persist(db_session, product)
     checkout = _checkout(client, product.id, quantity=2, payment_method=payment_method)
@@ -545,7 +551,7 @@ def test_rejected_transition_service_does_not_mutate_inventory():
 def test_unknown_order_status_returns_422(
     client, db_session, mock_user_auth, mock_admin_auth
 ):
-    product = Product(name="Unknown status", price=30, stock_quantity=5)
+    product = Product(name="Unknown status", price=30, currency="VND", stock_quantity=5)
     persist(db_session, product)
     checkout = _checkout(client, product.id)
     order_id = checkout.json()["orders"][0]["id"]
@@ -558,7 +564,9 @@ def test_unknown_order_status_returns_422(
 
 
 def test_duplicate_cart_items_are_aggregated(client, db_session, mock_user_auth):
-    product = Product(name="Duplicate cart", price=20, stock_quantity=10)
+    product = Product(
+        name="Duplicate cart", price=20, currency="VND", stock_quantity=10
+    )
     persist(db_session, product)
     payload = {
         "items": [
@@ -583,7 +591,7 @@ def test_duplicate_cart_items_are_aggregated(client, db_session, mock_user_auth)
 def test_invalid_item_rolls_back_all_orders_and_reservations(
     client, db_session, mock_user_auth
 ):
-    product = Product(name="Atomic cart", price=20, stock_quantity=10)
+    product = Product(name="Atomic cart", price=20, currency="VND", stock_quantity=10)
     persist(db_session, product)
     payload = {
         "items": [
@@ -606,7 +614,7 @@ def test_invalid_item_rolls_back_all_orders_and_reservations(
 
 
 def test_out_of_stock_returns_409(client, db_session, mock_user_auth):
-    product = Product(name="Stock conflict", price=20, stock_quantity=1)
+    product = Product(name="Stock conflict", price=20, currency="VND", stock_quantity=1)
     persist(db_session, product)
 
     response = _checkout(client, product.id, quantity=2)
@@ -617,7 +625,9 @@ def test_out_of_stock_returns_409(client, db_session, mock_user_auth):
 def test_checkout_enqueues_emails_only_after_commit(
     client, db_session, mock_user_auth, fake_order_queue
 ):
-    product = Product(name="Commit ordering", price=20, stock_quantity=2)
+    product = Product(
+        name="Commit ordering", price=20, currency="VND", stock_quantity=2
+    )
     persist(db_session, product)
     events = []
     original_commit = db_session.commit
@@ -652,7 +662,9 @@ def test_payment_email_failure_does_not_fail_committed_status_update(
     mock_admin_auth,
     fake_order_queue,
 ):
-    product = Product(name="Payment queue failure", price=20, stock_quantity=2)
+    product = Product(
+        name="Payment queue failure", price=20, currency="VND", stock_quantity=2
+    )
     persist(db_session, product)
     checkout = _checkout(client, product.id)
     order_id = checkout.json()["orders"][0]["id"]

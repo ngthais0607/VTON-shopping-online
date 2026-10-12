@@ -255,6 +255,7 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
     product = Product(
         name=f"Checkout expire {suffix}",
         price=100,
+        currency="VND",
         stock_quantity=2,
         reserved_quantity=1,
         sold_quantity=0,
