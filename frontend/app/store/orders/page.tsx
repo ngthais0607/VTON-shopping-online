@@ -152,10 +152,16 @@ export default function CustomerOrdersPage() {
                                             {displayDate(order.created_at, "MMM dd, yyyy HH:mm")}
                                         </span>
                                     </div>
-                                    <h3 className="text-lg font-bold text-slate-900">{order.product_name}</h3>
+                                    <h3 className="text-lg font-bold text-slate-900">
+                                        {order.product_name || (order.items && order.items.length > 0 ? (order.items.length === 1 ? order.items[0].product_name : `${order.items[0].product_name} (+${order.items.length - 1} items)`) : `Order #${order.id}`)}
+                                    </h3>
                                     <div className="flex items-center gap-4 text-sm text-slate-500 font-medium">
-                                        <span>Quantity: <strong className="text-slate-800">{order.quantity}</strong></span>
-                                        <span>Unit Price: <strong className="text-slate-800">${order.unit_price.toFixed(2)}</strong></span>
+                                        <span>Quantity: <strong className="text-slate-800">{order.quantity ?? (order.items ? order.items.reduce((s, it) => s + it.quantity, 0) : 1)}</strong></span>
+                                        {order.unit_price != null ? (
+                                            <span>Unit Price: <strong className="text-slate-800">${order.unit_price.toFixed(2)}</strong></span>
+                                        ) : (order.items && order.items.length > 0 ? (
+                                            <span className="text-xs text-sky-600 font-semibold">{order.items.length} items</span>
+                                        ) : null)}
                                     </div>
                                 </div>
 

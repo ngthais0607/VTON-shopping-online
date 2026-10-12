@@ -60,7 +60,7 @@ export default function CustomerAccountPage() {
 
   function loadWishlist() {
     try {
-      const stored = localStorage.getItem('luxestore_wishlist');
+      const stored = localStorage.getItem('truelook_wishlist') || localStorage.getItem('luxestore_wishlist');
       if (stored) {
         setWishlist(JSON.parse(stored));
       }

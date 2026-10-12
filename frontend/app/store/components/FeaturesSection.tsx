@@ -64,7 +64,7 @@ export function FeaturesSection() {
           className="text-center mb-16 space-y-3"
         >
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-100/80 text-sky-800 border border-sky-200 text-xs font-bold uppercase tracking-wider backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-sky-600" /> Why Choose LuxeStore
+            <Sparkles className="w-3.5 h-3.5 text-sky-600" /> Why Choose TrueLook
           </span>
           <h2
             className="text-slate-900 font-extrabold tracking-tight"

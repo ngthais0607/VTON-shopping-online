@@ -312,13 +312,27 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             <div className="bg-white rounded-3xl p-8 border border-sky-100 shadow-sm space-y-6">
               <h3 className="text-base font-extrabold text-slate-900">Order Items & Summary</h3>
 
-              <div className="flex items-center justify-between py-4 border-y border-slate-100 text-sm">
-                <div>
-                  <h4 className="font-bold text-slate-900">{order.product_name}</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">Quantity: {order.quantity} x ${order.unit_price.toFixed(2)}</p>
+              {order.items && order.items.length > 0 ? (
+                <div className="divide-y divide-slate-100 border-y border-slate-100">
+                  {order.items.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between py-3 text-sm">
+                      <div>
+                        <h4 className="font-bold text-slate-900">{item.product_name}</h4>
+                        <p className="text-xs text-slate-500 mt-0.5">Quantity: {item.quantity} x ${item.unit_price.toFixed(2)}</p>
+                      </div>
+                      <span className="font-extrabold text-slate-900">${(item.subtotal ?? (item.unit_price * item.quantity)).toFixed(2)}</span>
+                    </div>
+                  ))}
                 </div>
-                <span className="font-extrabold text-slate-900">${(order.unit_price * order.quantity).toFixed(2)}</span>
-              </div>
+              ) : (
+                <div className="flex items-center justify-between py-4 border-y border-slate-100 text-sm">
+                  <div>
+                    <h4 className="font-bold text-slate-900">{order.product_name || "Product"}</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Quantity: {order.quantity ?? 1} x ${(order.unit_price ?? 0).toFixed(2)}</p>
+                  </div>
+                  <span className="font-extrabold text-slate-900">${((order.unit_price ?? 0) * (order.quantity ?? 1)).toFixed(2)}</span>
+                </div>
+              )}
 
               <div className="space-y-2 text-xs text-slate-600">
                 <div className="flex justify-between">

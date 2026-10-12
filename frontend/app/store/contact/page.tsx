@@ -24,7 +24,7 @@ export default function ContactPage() {
               Contact Support
             </span>
             <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900" style={{ fontFamily: "var(--font-display)" }}>
-              Get In Touch With LuxeStore
+              Get In Touch With TrueLook
             </h1>
             <p className="text-slate-500 text-sm">
               Have questions or need assistance? Our support team is here to help 24/7.
@@ -41,7 +41,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-900 text-sm">Headquarters</h4>
-                    <p className="text-xs text-slate-500">123 Luxe Plaza, Suite 400, New York, NY 10001</p>
+                    <p className="text-xs text-slate-500">123 TrueLook Plaza, Suite 400, New York, NY 10001</p>
                   </div>
                 </div>
               </div>
@@ -53,7 +53,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-900 text-sm">Email Address</h4>
-                    <p className="text-xs text-slate-500">support@luxestore.com</p>
+                    <p className="text-xs text-slate-500">support@truelook.com</p>
                   </div>
                 </div>
               </div>

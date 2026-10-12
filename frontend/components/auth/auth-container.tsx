@@ -138,8 +138,8 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                     console.error("Failed to check user role", err);
                 }
 
-                toast.success("Welcome to LuxeStore!", {
-                    description: "Redirecting to storefront...",
+                toast.success("Welcome to TrueLook!", {
+                    description: "Redirecting to homepage...",
                 });
                 
                 // Wait briefly for the toast to be seen before redirecting
@@ -187,7 +187,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
     };
 
     const handleSocialClick = (platform: string) => {
-        toast.info(`${platform} login is not configured for this demo storefront.`, {
+        toast.info(`${platform} login is not configured for this demo homepage.`, {
             description: "Please register/sign in using your email address instead.",
         });
     };
@@ -211,7 +211,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                         <div className="space-y-4 relative z-10">
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-[10px] font-bold tracking-wide text-indigo-700">
                                 <Sparkles className="h-3 w-3 text-indigo-600" />
-                                LuxeStore VIP Club
+                                TrueLook VIP Club
                             </span>
                             
                             <h2 className="text-2xl font-extrabold tracking-tight leading-snug text-slate-900">
@@ -308,8 +308,8 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                             </h3>
                             <p className="text-xs text-slate-400 mt-1.5 leading-relaxed font-medium">
                                 {activeTab === "signin" 
-                                    ? "Sign in to LuxeStore to continue shopping." 
-                                    : "Join LuxeStore — free forever, cancel anytime."}
+                                    ? "Sign in to TrueLook to continue shopping." 
+                                    : "Join TrueLook — free forever, cancel anytime."}
                             </p>
                         </div>
 

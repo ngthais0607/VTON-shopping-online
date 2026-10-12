@@ -10,10 +10,10 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: {
-    default: 'LuxeStore | Premium E-Commerce',
-    template: '%s | LuxeStore'
+    default: 'TrueLook | Premium E-Commerce',
+    template: '%s | TrueLook'
   },
-  description: 'LuxeStore - Trải nghiệm mua sắm trực tuyến cao cấp',
+  description: 'TrueLook - Trải nghiệm mua sắm trực tuyến cao cấp',
   generator: 'v0.app',
   icons: {
     icon: [

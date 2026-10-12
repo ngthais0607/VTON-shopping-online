@@ -4,7 +4,7 @@ import { HelpCircle, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Help Center | LuxeStore",
+  title: "Help Center | TrueLook",
   description: "Find answers to frequently asked questions about orders, payments, shipping, and returns.",
 };
 
@@ -27,7 +27,7 @@ const faqs = [
   {
     category: "Returns & Exchanges",
     questions: [
-      { q: "What is your return policy?", a: "LuxeStore offers 7-day hassle-free returns for defective items or shipping damage." }
+      { q: "What is your return policy?", a: "TrueLook offers 7-day hassle-free returns for defective items or shipping damage." }
     ]
   }
 ];

@@ -86,7 +86,7 @@ export function Header({ onShopNow }: HeaderProps) {
               className="text-slate-900 tracking-tight flex items-center gap-1"
               style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "1.25rem" }}
             >
-              Luxe<span className="bg-gradient-to-r from-sky-600 via-cyan-600 to-blue-700 bg-clip-text text-transparent">Store</span>
+              True<span className="bg-gradient-to-r from-sky-600 via-cyan-600 to-blue-700 bg-clip-text text-transparent">Look</span>
               <Sparkles className="w-3.5 h-3.5 text-sky-500 animate-pulse inline" />
             </span>
             <span className="text-[10px] uppercase font-bold tracking-widest text-sky-700/70 -mt-1">Ocean Retail</span>

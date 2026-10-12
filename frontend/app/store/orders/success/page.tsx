@@ -31,7 +31,7 @@ function OrderSuccessContent() {
       <div className="space-y-2">
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Order Placed Successfully!</h1>
         <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-          Thank you for shopping with LuxeStore. Your order was created. View each order for its current payment status.
+          Thank you for shopping with TrueLook. Your order was created. View each order for its current payment status.
         </p>
       </div>
 

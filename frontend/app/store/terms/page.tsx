@@ -2,8 +2,8 @@ import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 
 export const metadata = {
-  title: "Terms of Service | LuxeStore",
-  description: "Terms of service and user agreement for LuxeStore retail platform.",
+  title: "Terms of Service | TrueLook",
+  description: "Terms of service and user agreement for TrueLook retail platform.",
 };
 
 export default function TermsPage() {
@@ -26,12 +26,12 @@ export default function TermsPage() {
           <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6 text-xs leading-relaxed text-slate-600">
             <section className="space-y-2">
               <h3 className="text-sm font-bold text-slate-900">1. Acceptance of Terms</h3>
-              <p>By accessing or placing orders on LuxeStore, you agree to comply with and be bound by these service terms.</p>
+              <p>By accessing or placing orders on TrueLook, you agree to comply with and be bound by these service terms.</p>
             </section>
 
             <section className="space-y-2">
               <h3 className="text-sm font-bold text-slate-900">2. Pricing & Orders</h3>
-              <p>All prices displayed are subject to promotional updates. LuxeStore reserves the right to adjust pricing or cancel orders resulting from system pricing errors.</p>
+              <p>All prices displayed are subject to promotional updates. TrueLook reserves the right to adjust pricing or cancel orders resulting from system pricing errors.</p>
             </section>
           </div>
         </div>

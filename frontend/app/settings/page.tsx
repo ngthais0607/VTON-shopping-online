@@ -285,7 +285,7 @@ export default function SettingsPage() {
                 <Card className="p-6 border border-slate-100 bg-white shadow-sm rounded-2xl space-y-6">
                   <div>
                     <h3 className="text-base font-bold text-slate-950">Store Preferences</h3>
-                    <p className="text-slate-400 text-xs mt-1">Configure global variables for the client storefront interface</p>
+                    <p className="text-slate-400 text-xs mt-1">Configure global variables for the client homepage interface</p>
                   </div>
 
                   <div className="space-y-4">

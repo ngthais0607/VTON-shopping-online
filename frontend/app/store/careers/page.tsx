@@ -4,8 +4,8 @@ import { MapPin, Clock } from "lucide-react";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Careers | LuxeStore",
-  description: "Join LuxeStore team - Vibrant work culture and career growth opportunities.",
+  title: "Careers | TrueLook",
+  description: "Join TrueLook team - Vibrant work culture and career growth opportunities.",
 };
 
 const jobs = [
@@ -23,7 +23,7 @@ export default function CareersPage() {
         <div className="max-w-5xl mx-auto px-5 lg:px-8 py-10 space-y-12">
           <div className="text-center max-w-2xl mx-auto space-y-3">
             <span className="px-3 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold uppercase tracking-wider">
-              Careers at LuxeStore
+              Careers at TrueLook
             </span>
             <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900" style={{ fontFamily: "var(--font-display)" }}>
               Build The Future Of E-Commerce

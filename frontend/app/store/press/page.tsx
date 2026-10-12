@@ -3,8 +3,8 @@ import { Footer } from "../components/Footer";
 import { Newspaper, Download } from "lucide-react";
 
 export const metadata = {
-  title: "Press & Media | LuxeStore Press",
-  description: "Official press kits, media guidelines, and news releases for LuxeStore.",
+  title: "Press & Media | TrueLook Press",
+  description: "Official press kits, media guidelines, and news releases for TrueLook.",
 };
 
 export default function PressPage() {

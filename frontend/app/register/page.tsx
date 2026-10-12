@@ -23,17 +23,17 @@ export default function RegisterPage() {
                         <span className="inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white border border-slate-100 shadow-[0_4px_12px_rgba(0,0,0,0.03)] text-slate-500 group-hover:text-indigo-600 group-hover:border-indigo-100 group-hover:shadow-[0_4px_16px_rgba(99,102,241,0.08)] transition-all">
                             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
                         </span>
-                        Back to store
+                        Back to homepage
                     </Link>
                 </div>
 
-                {/* Center: LuxeStore Logo */}
+                {/* Center: TrueLook Logo */}
                 <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
                     <div className="h-10 w-10 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                         <Zap className="h-5 w-5 fill-white text-white" />
                     </div>
                     <span className="text-xl font-bold tracking-tight text-slate-900">
-                        <span className="text-indigo-600">Luxe</span>Store
+                        <span className="text-indigo-600">True</span>Look
                     </span>
                 </div>
 
@@ -49,7 +49,7 @@ export default function RegisterPage() {
 
             {/* Simple Footer */}
             <footer className="w-full text-center py-6 text-xs text-slate-400 relative z-10 border-t border-slate-100/50 bg-white/10 backdrop-blur-sm">
-                © {new Date().getFullYear()} LuxeStore. All rights reserved.
+                © {new Date().getFullYear()} TrueLook. All rights reserved.
             </footer>
         </div>
     );

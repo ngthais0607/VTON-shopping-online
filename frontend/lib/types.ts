@@ -41,13 +41,24 @@ export interface Category {
 export type OrderStatus = "pending" | "confirmed" | "paid" | "cancelled" | "expired";
 export type OrderPaymentMethod = "vietqr" | "cod";
 
-export interface Order {
+export interface OrderItem {
   id: number;
-  user_id: number | null;
+  order_id: number;
   product_id: number;
   product_name: string;
   unit_price: number;
   quantity: number;
+  subtotal: number;
+}
+
+export interface Order {
+  id: number;
+  public_code?: string;
+  user_id: number | null;
+  product_id?: number;
+  product_name?: string;
+  unit_price?: number;
+  quantity?: number;
   total: number;
   total_amount: number;
   currency: string;
@@ -61,6 +72,7 @@ export interface Order {
   expires_at: string | null;
   paid_at: string | null;
   created_at: string | null;
+  items?: OrderItem[];
 }
 
 export interface User {
@@ -76,7 +88,7 @@ export interface User {
 
 export interface Page<T> { items: T[]; total: number; limit: number; offset: number }
 export interface ProductImage { id: string; url: string }
-export interface TokenPair { access_token: string; refresh_token: string; token_type: string }
+export interface TokenPair { access_token: string; refresh_token?: string; token_type: string }
 export interface ReviewResponse {
   id: number; product_id: number; user_id: number; user_name: string; rating: number;
   title: string | null; comment: string | null; is_verified_purchase: boolean; created_at: string | null;

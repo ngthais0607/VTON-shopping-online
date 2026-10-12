@@ -3,8 +3,8 @@ import { Footer } from "../components/Footer";
 import { RefreshCw, CheckCircle2 } from "lucide-react";
 
 export const metadata = {
-  title: "Returns Policy | LuxeStore",
-  description: "Transparent 7-day return and refund policy at LuxeStore.",
+  title: "Returns Policy | TrueLook",
+  description: "Transparent 7-day return and refund policy at TrueLook.",
 };
 
 export default function ReturnsPage() {
@@ -22,7 +22,7 @@ export default function ReturnsPage() {
               Product Return Policy
             </h1>
             <p className="text-slate-500 text-sm">
-              LuxeStore guarantees a seamless shopping experience with flexible 7-day returns.
+              TrueLook guarantees a seamless shopping experience with flexible 7-day returns.
             </p>
           </div>
 

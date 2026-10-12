@@ -26,7 +26,7 @@ export default function StorefrontPage() {
     const {user: currentUser} = useSession();
     
     const productsRef = useRef<HTMLDivElement>(null);
-    const pageSize = 8; // Display 8 products per page in Storefront
+    const pageSize = 8; // Display 8 products per page on Homepage
 
     function scrollToProducts() {
         productsRef.current?.scrollIntoView({ behavior: "smooth" });

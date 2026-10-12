@@ -3,8 +3,8 @@ import { Footer } from "../components/Footer";
 import { Cookie } from "lucide-react";
 
 export const metadata = {
-  title: "Cookie Policy | LuxeStore",
-  description: "Information regarding cookie usage and browser storage on LuxeStore.",
+  title: "Cookie Policy | TrueLook",
+  description: "Information regarding cookie usage and browser storage on TrueLook.",
 };
 
 export default function CookiePage() {

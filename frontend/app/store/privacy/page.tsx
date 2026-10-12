@@ -2,8 +2,8 @@ import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 
 export const metadata = {
-  title: "Privacy Policy | LuxeStore",
-  description: "Commitment to protecting your personal data and privacy at LuxeStore.",
+  title: "Privacy Policy | TrueLook",
+  description: "Commitment to protecting your personal data and privacy at TrueLook.",
 };
 
 export default function PrivacyPage() {
@@ -36,7 +36,7 @@ export default function PrivacyPage() {
 
             <section className="space-y-2">
               <h3 className="text-sm font-bold text-slate-900">3. Data Security Standards</h3>
-              <p>LuxeStore employs industry-standard SSL/TLS encryption and Bcrypt password hashing to protect personal information against unauthorized access.</p>
+              <p>TrueLook employs industry-standard SSL/TLS encryption and Bcrypt password hashing to protect personal information against unauthorized access.</p>
             </section>
           </div>
         </div>

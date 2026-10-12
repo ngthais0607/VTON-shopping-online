@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 
 export const metadata = {
-  title: "Blog & Journal | LuxeStore",
+  title: "Blog & Journal | TrueLook",
   description: "Stay updated with retail trends, fashion guides, and product announcements.",
 };
 

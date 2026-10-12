@@ -125,10 +125,10 @@ export default function OrdersPage() {
                         #{order.id}
                       </TableCell>
                       <TableCell className="text-slate-600">
-                        {order.product_name}
+                        {order.product_name || (order.items && order.items.length > 0 ? (order.items.length === 1 ? order.items[0].product_name : `${order.items[0].product_name} (+${order.items.length - 1})`) : "N/A")}
                       </TableCell>
                       <TableCell className="text-slate-600">
-                        {order.quantity}
+                        {order.quantity ?? (order.items ? order.items.reduce((acc, it) => acc + it.quantity, 0) : 1)}
                       </TableCell>
                       <TableCell className="font-semibold text-slate-900">
                         ${orderTotal.toFixed(2)}
@@ -205,18 +205,32 @@ export default function OrdersPage() {
                   <span className="text-slate-500">Customer ID:</span>
                   <span className="font-medium text-slate-900">#{selectedOrder.user_id}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Product Name:</span>
-                  <span className="font-medium text-slate-900">{selectedOrder.product_name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Unit Price:</span>
-                  <span className="font-medium text-slate-900">${selectedOrder.unit_price.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Quantity:</span>
-                  <span className="font-medium text-slate-900">{selectedOrder.quantity}</span>
-                </div>
+                {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Items ({selectedOrder.items.length})</span>
+                    {selectedOrder.items.map((it, idx) => (
+                      <div key={idx} className="flex justify-between text-xs py-1 border-b last:border-b-0">
+                        <span className="text-slate-700">{it.product_name} x {it.quantity}</span>
+                        <span className="font-medium text-slate-900">${(it.subtotal ?? (it.unit_price * it.quantity)).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Product Name:</span>
+                      <span className="font-medium text-slate-900">{selectedOrder.product_name || "N/A"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Unit Price:</span>
+                      <span className="font-medium text-slate-900">${(selectedOrder.unit_price ?? 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Quantity:</span>
+                      <span className="font-medium text-slate-900">{selectedOrder.quantity ?? 1}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between border-t pt-2 mt-2">
                   <span className="font-semibold text-slate-700">Total Amount:</span>
                   <span className="font-bold text-slate-900">${(selectedOrder.total ?? selectedOrder.total_amount ?? 0).toFixed(2)}</span>

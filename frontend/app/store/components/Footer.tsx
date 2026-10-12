@@ -58,7 +58,7 @@ export function Footer() {
                 <Zap className="w-5 h-5 text-white" fill="white" />
               </div>
               <span className="text-white text-lg tracking-tight font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
-                Luxe<span className="text-indigo-400">Store</span>
+                True<span className="text-indigo-400">Look</span>
               </span>
             </Link>
 
@@ -69,11 +69,11 @@ export function Footer() {
             <div className="space-y-2 text-xs text-slate-400 pt-2">
               <div className="flex items-center gap-2">
                 <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span>123 Luxe Plaza, Suite 400, New York, NY</span>
+                <span>123 TrueLook Plaza, Suite 400, New York, NY</span>
               </div>
               <div className="flex items-center gap-2">
                 <Mail className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span>support@luxestore.com</span>
+                <span>support@truelook.com</span>
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
@@ -121,7 +121,7 @@ export function Footer() {
 
         {/* Bottom Bar */}
         <div className="mt-14 pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
-          <p>© 2026 LuxeStore E-Commerce Platform. All rights reserved.</p>
+          <p>© 2026 TrueLook E-Commerce Platform. All rights reserved.</p>
           <div className="flex items-center gap-3">
             <span className="text-slate-500">Payments Secured By</span>
             {["VietQR", "Visa", "Mastercard", "PayPal"].map((name) => (
