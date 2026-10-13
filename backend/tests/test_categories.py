@@ -262,9 +262,9 @@ def test_update_category_rejects_parent_if_has_children(
 
 def test_get_category_tree_hierarchy(client, db_session):
     root1 = persist_category(db_session, name="Men")
-    root2 = persist_category(db_session, name="Women")
-    sub1 = persist_category(db_session, name="Shirts", parent_id=root1.id)
-    sub2 = persist_category(db_session, name="Pants", parent_id=root1.id)
+    persist_category(db_session, name="Women")
+    persist_category(db_session, name="Shirts", parent_id=root1.id)
+    persist_category(db_session, name="Pants", parent_id=root1.id)
     persist_category(db_session, name="Deleted", parent_id=root1.id, is_deleted=True)
 
     response = client.get("/api/v1/categories/tree")

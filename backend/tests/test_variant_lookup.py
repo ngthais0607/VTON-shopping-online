@@ -1,4 +1,3 @@
-import pytest
 
 from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant

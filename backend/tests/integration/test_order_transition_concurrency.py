@@ -278,7 +278,7 @@ def test_two_orders_sharing_product_preserve_both_transitions(
 
     setup.add_all([first, second])
     setup.commit()
-    product_id, variant_id, first_id, second_id = product.id, variant.id, first.id, second.id
+    _product_id, variant_id, first_id, second_id = product.id, variant.id, first.id, second.id
     setup.close()
 
     start = Barrier(2)

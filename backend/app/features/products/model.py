@@ -1,9 +1,9 @@
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
     Boolean,
-    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -13,8 +13,6 @@ from sqlalchemy import (
     String,
 )
 from sqlalchemy.orm import relationship
-
-import uuid
 
 from app.core.database import Base
 from app.core.slug import slugify

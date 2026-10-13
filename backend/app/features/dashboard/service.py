@@ -13,8 +13,8 @@ from app.features.dashboard.schemas import (
 from app.features.orders.constants import OrderStatus
 from app.features.orders.model import Order, Payment
 from app.features.products.model import Product
-from app.features.products.variant_model import ProductVariant
 from app.features.products.schemas import CategorySummary
+from app.features.products.variant_model import ProductVariant
 
 
 def _available_stock():

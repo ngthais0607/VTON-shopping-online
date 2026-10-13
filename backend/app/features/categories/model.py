@@ -1,9 +1,8 @@
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
-
-import uuid
 
 from app.core.database import Base
 from app.core.slug import slugify

@@ -1,8 +1,7 @@
-import pytest
 from sqlalchemy.orm import Session
 
 from app.features.categories.model import Category
-from app.features.products.model import Product, ProductImage
+from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 from app.seed import seed_database
 

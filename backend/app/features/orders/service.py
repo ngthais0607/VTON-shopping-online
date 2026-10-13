@@ -19,7 +19,6 @@ from app.features.categories.model import Category
 from app.features.dashboard.service import invalidate_dashboard_cache
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 from app.features.orders.domain import (
-    aggregate_cart_items,
     apply_order_transition,
     available_stock,
 )

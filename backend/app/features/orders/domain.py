@@ -7,7 +7,6 @@ from typing import Any, Protocol
 from app.core.errors import BusinessRuleError, ConflictError
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 from app.features.orders.model import Order
-from app.features.products.model import Product
 
 
 class CartLine(Protocol):

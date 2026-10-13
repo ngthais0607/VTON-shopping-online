@@ -339,6 +339,8 @@ def test_public_registrations_are_customers_even_when_database_starts_empty(
     limiter.reset()
     queue = RecordingQueue()
     client.app.dependency_overrides[get_task_queue] = lambda: queue
+    db_session.query(User).delete()
+    db_session.commit()
 
     responses = [
         client.post(
