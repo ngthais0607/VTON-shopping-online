@@ -9,6 +9,7 @@ from app.features.categories.schemas import (
     CategoryCreate,
     CategoryPatch,
     CategoryResponse,
+    CategoryTreeItem,
 )
 from app.features.users.model import User
 
@@ -27,6 +28,15 @@ def create_category(
     current_admin: User = Depends(get_current_admin),
 ):
     return service.create_category(db, command, current_admin.id)
+
+
+@router.get(
+    "/tree",
+    response_model=list[CategoryTreeItem],
+    summary="Get category hierarchy tree",
+)
+def get_category_tree(db: Session = Depends(get_db)):
+    return service.get_category_tree(db)
 
 
 @router.get(
