@@ -9,6 +9,7 @@ import { apiGet } from "@/lib/api";
 import { QuickViewModal } from "./QuickViewModal";
 import { useCart } from "../context/CartContext";
 import { getAvailableStock } from "@/lib/inventory";
+import { FashionFilters } from "@/components/store/fashion-filters";
 
 interface ProductUI {
   source: DBProduct;
@@ -521,9 +522,11 @@ export function FeaturedProducts({
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="w-full max-w-2xl bg-white border border-sky-200 rounded-2xl p-5 shadow-sm space-y-4 overflow-hidden"
+                className="w-full max-w-2xl space-y-4 overflow-hidden"
               >
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FashionFilters />
+                <div className="bg-white border border-sky-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* Min Price */}
                   <div>
                     <label className="text-xs font-bold text-slate-700 mb-1 block">Min Price ($)</label>

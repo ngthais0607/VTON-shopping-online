@@ -14,6 +14,10 @@ export interface UseProductsParams {
   is_active?: boolean | null;
   stock_status?: string | null;
   sort_by?: string | null;
+  gender?: string | null;
+  brand?: string | null;
+  size?: string | null;
+  color?: string | null;
 }
 
 export function useProducts(params?: UseProductsParams) {
@@ -40,6 +44,18 @@ export function useProducts(params?: UseProductsParams) {
   }
   if (params?.sort_by && params.sort_by !== "latest") {
     query.append("sort", params.sort_by);
+  }
+  if (params?.gender && params.gender !== "all") {
+    query.append("gender", params.gender);
+  }
+  if (params?.brand && params.brand !== "all") {
+    query.append("brand", params.brand);
+  }
+  if (params?.size && params.size !== "all") {
+    query.append("size", params.size);
+  }
+  if (params?.color && params.color !== "all") {
+    query.append("color", params.color);
   }
 
   const queryString = query.toString();
