@@ -1,10 +1,33 @@
-FROM python:3.11-slim
+# Stage 1: Build dependencies
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Stage 2: Production runtime
+FROM python:3.11-slim AS runner
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Create non-root user and group
+RUN addgroup --system --gid 1001 appgroup && \
+    adduser --system --uid 1001 --gid 1001 appuser
 
+# Copy installed python dependencies from builder
+COPY --from=builder /root/.local /home/appuser/.local
+
+# Copy application source
 COPY . .
+
+# Ensure app directory permissions
+RUN chown -R appuser:appgroup /app /home/appuser
+
+USER appuser
+ENV PATH="/home/appuser/.local/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8000
 
 CMD ["fastapi", "run", "app/main.py", "--port", "8000"]

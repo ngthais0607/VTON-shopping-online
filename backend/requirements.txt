@@ -7,7 +7,6 @@ python-multipart
 minio
 python-dotenv
 httpx
-apscheduler
 pyjwt
 pydantic-settings
 alembic==1.13.1
