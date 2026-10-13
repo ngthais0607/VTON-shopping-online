@@ -76,11 +76,11 @@ class OrderItem(Base):
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     variant_id = Column(
-        Integer, ForeignKey("product_variants.id"), nullable=True, index=True
+        Integer, ForeignKey("product_variants.id"), nullable=False, index=True
     )
-    sku = Column(String(64), nullable=True)
-    size = Column(String(20), nullable=True)
-    color_name = Column(String(50), nullable=True)
+    sku = Column(String(64), nullable=False)
+    size = Column(String(20), nullable=False)
+    color_name = Column(String(50), nullable=False)
 
     product_name = Column(String(255), nullable=False)
     unit_price = Column(Numeric(12, 2), nullable=False)

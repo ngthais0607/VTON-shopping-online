@@ -17,7 +17,7 @@ from app.features.orders.domain import (
     apply_order_transition,
     available_stock,
 )
-from app.features.orders.model import Order
+from app.features.orders.model import Order, OrderItem
 from app.features.orders.schemas import CheckoutCommand
 from app.features.orders.service import (
     change_order_status,
@@ -27,6 +27,7 @@ from app.features.orders.service import (
     expire_pending_orders as expire_orders,
 )
 from app.features.products.model import Product
+from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
 from app.worker import cron_expire_pending_orders
 
@@ -43,10 +44,27 @@ def _create_pending_order(session_factory):
         role="admin",
     )
     product = Product(
-        name=f"Transition {suffix}", price=100, stock_quantity=1, reserved_quantity=1
+        name=f"Transition {suffix}",
+        slug=f"transition-{suffix}",
+        price=100,
+        currency="USD",
     )
     session.add_all([admin, product])
     session.flush()
+
+    variant = ProductVariant(
+        product_id=product.id,
+        sku=f"SKU-{suffix}",
+        size="M",
+        color_name="Black",
+        stock_quantity=1,
+        reserved_quantity=1,
+        sold_quantity=0,
+        is_active=True,
+    )
+    session.add(variant)
+    session.flush()
+
     order = Order(
         user_id=admin.id,
         product_id=product.id,
@@ -62,9 +80,22 @@ def _create_pending_order(session_factory):
         payment_method="vietqr",
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
+    item = OrderItem(
+        order=order,
+        product_id=product.id,
+        product_name=product.name,
+        variant_id=variant.id,
+        sku=variant.sku,
+        size=variant.size,
+        color_name=variant.color_name,
+        unit_price=product.price,
+        quantity=1,
+        subtotal=product.price,
+    )
+    order.items = [item]
     session.add(order)
     session.commit()
-    identifiers = admin.id, product.id, order.id
+    identifiers = admin.id, product.id, variant.id, order.id
     session.close()
     return identifiers
 
@@ -79,7 +110,7 @@ def _session_factory():
 
 def test_admin_transition_rechecks_status_after_waiting_for_lock():
     engine, session_factory = _session_factory()
-    _, product_id, order_id = _create_pending_order(session_factory)
+    _, product_id, variant_id, order_id = _create_pending_order(session_factory)
     locking_session = session_factory()
     locked_order = (
         locking_session.query(Order)
@@ -113,9 +144,9 @@ def test_admin_transition_rechecks_status_after_waiting_for_lock():
 
     verify_session = session_factory()
     assert verify_session.get(Order, order_id).status == "expired"
-    product = verify_session.get(Product, product_id)
-    assert product.reserved_quantity == 0
-    assert product.sold_quantity == 0
+    final_variant = verify_session.get(ProductVariant, variant_id)
+    assert final_variant.reserved_quantity == 0
+    assert final_variant.sold_quantity == 0
     verify_session.close()
     locking_session.close()
     engine.dispose()
@@ -123,7 +154,7 @@ def test_admin_transition_rechecks_status_after_waiting_for_lock():
 
 def test_expiration_worker_rechecks_status_after_waiting_for_lock():
     engine, session_factory = _session_factory()
-    _, product_id, order_id = _create_pending_order(session_factory)
+    _, product_id, variant_id, order_id = _create_pending_order(session_factory)
     locking_session = session_factory()
     locked_order = (
         locking_session.query(Order)
@@ -145,9 +176,9 @@ def test_expiration_worker_rechecks_status_after_waiting_for_lock():
 
     verify_session = session_factory()
     assert verify_session.get(Order, order_id).status == "paid"
-    product = verify_session.get(Product, product_id)
-    assert product.reserved_quantity == 0
-    assert product.sold_quantity == 1
+    final_variant = verify_session.get(ProductVariant, variant_id)
+    assert final_variant.reserved_quantity == 0
+    assert final_variant.sold_quantity == 1
     verify_session.close()
     locking_session.close()
     engine.dispose()
@@ -169,13 +200,26 @@ def test_two_orders_sharing_product_preserve_both_transitions(
     suffix = uuid4().hex
     product = Product(
         name=f"Shared product {suffix}",
+        slug=f"shared-product-{suffix}",
         price=100,
-        stock_quantity=2,
-        reserved_quantity=2,
-        sold_quantity=0,
+        currency="USD",
     )
     setup.add(product)
     setup.flush()
+
+    variant = ProductVariant(
+        product_id=product.id,
+        sku=f"SKU-SHARED-{suffix}",
+        size="ONE_SIZE",
+        color_name="Default",
+        stock_quantity=2,
+        reserved_quantity=2,
+        sold_quantity=0,
+        is_active=True,
+    )
+    setup.add(variant)
+    setup.flush()
+
     first = Order(
         product=product,
         product_name=product.name,
@@ -190,6 +234,20 @@ def test_two_orders_sharing_product_preserve_both_transitions(
         payment_method="vietqr",
         expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
+    item1 = OrderItem(
+        order=first,
+        product_id=product.id,
+        product_name=product.name,
+        variant_id=variant.id,
+        sku=variant.sku,
+        size=variant.size,
+        color_name=variant.color_name,
+        unit_price=100,
+        quantity=1,
+        subtotal=100,
+    )
+    first.items = [item1]
+
     second = Order(
         product=product,
         product_name=product.name,
@@ -204,9 +262,23 @@ def test_two_orders_sharing_product_preserve_both_transitions(
         payment_method="vietqr",
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
+    item2 = OrderItem(
+        order=second,
+        product_id=product.id,
+        product_name=product.name,
+        variant_id=variant.id,
+        sku=variant.sku,
+        size=variant.size,
+        color_name=variant.color_name,
+        unit_price=100,
+        quantity=1,
+        subtotal=100,
+    )
+    second.items = [item2]
+
     setup.add_all([first, second])
     setup.commit()
-    product_id, first_id, second_id = product.id, first.id, second.id
+    product_id, variant_id, first_id, second_id = product.id, variant.id, first.id, second.id
     setup.close()
 
     start = Barrier(2)
@@ -214,8 +286,7 @@ def test_two_orders_sharing_product_preserve_both_transitions(
     def transition(order_id, status, use_worker):
         session = session_factory()
         try:
-            # Both sessions hold the old counters before either transition begins.
-            assert session.get(Product, product_id).reserved_quantity == 2
+            assert session.get(ProductVariant, variant_id).reserved_quantity == 2
             start.wait(timeout=10)
             if use_worker:
                 assert expire_orders(session) == 1
@@ -235,9 +306,9 @@ def test_two_orders_sharing_product_preserve_both_transitions(
     verify = session_factory()
     assert verify.get(Order, first_id).status == "paid"
     assert verify.get(Order, second_id).status == second_status.value
-    final_product = verify.get(Product, product_id)
-    assert final_product.reserved_quantity == 0
-    assert final_product.sold_quantity == expected_sold
+    final_variant = verify.get(ProductVariant, variant_id)
+    assert final_variant.reserved_quantity == 0
+    assert final_variant.sold_quantity == expected_sold
     verify.close()
     engine.dispose()
 
@@ -254,14 +325,26 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
     )
     product = Product(
         name=f"Checkout expire {suffix}",
+        slug=f"checkout-expire-{suffix}",
         price=100,
         currency="VND",
-        stock_quantity=2,
-        reserved_quantity=1,
-        sold_quantity=0,
     )
     setup.add_all([user, product])
     setup.flush()
+
+    variant = ProductVariant(
+        product_id=product.id,
+        sku=f"SKU-EXPIRE-{suffix}",
+        size="ONE_SIZE",
+        color_name="Default",
+        stock_quantity=2,
+        reserved_quantity=1,
+        sold_quantity=0,
+        is_active=True,
+    )
+    setup.add(variant)
+    setup.flush()
+
     expiring_order = Order(
         user_id=user.id,
         product=product,
@@ -269,7 +352,7 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
         unit_price=100,
         quantity=1,
         total_amount=100,
-        currency="USD",
+        currency="VND",
         status="pending",
         customer_name="Earlier Buyer",
         customer_phone="123",
@@ -277,24 +360,38 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
         payment_method="vietqr",
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
+    item = OrderItem(
+        order=expiring_order,
+        product_id=product.id,
+        product_name=product.name,
+        variant_id=variant.id,
+        sku=variant.sku,
+        size=variant.size,
+        color_name=variant.color_name,
+        unit_price=100,
+        quantity=1,
+        subtotal=100,
+    )
+    expiring_order.items = [item]
     setup.add(expiring_order)
     setup.commit()
-    user_id, product_id, expiring_id = user.id, product.id, expiring_order.id
+    user_id, product_id, variant_id, expiring_id = user.id, product.id, variant.id, expiring_order.id
     setup.close()
 
     checkout_locked = Event()
     expiration_discovered = Event()
     command = CheckoutCommand(
-        items=[{"product_id": product_id, "quantity": 1}],
+        items=[{"product_id": product_id, "variant_id": variant_id, "quantity": 1}],
         customer_name="Later Buyer",
         customer_phone="456",
         shipping_address="Address",
+        payment_method="vietqr",
     )
 
-    def pause_checkout_with_product_lock(locked_product):
+    def pause_checkout_with_product_lock(locked_target):
         checkout_locked.set()
         assert expiration_discovered.wait(timeout=10)
-        return available_stock(locked_product)
+        return available_stock(locked_target)
 
     def run_checkout():
         session = session_factory()
@@ -337,8 +434,8 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
     verify = session_factory()
     assert verify.get(Order, expiring_id).status == "expired"
     assert verify.get(Order, checkout_response.orders[0].id).status == "pending"
-    final_product = verify.get(Product, product_id)
-    assert final_product.reserved_quantity == 1
-    assert final_product.sold_quantity == 0
+    final_variant = verify.get(ProductVariant, variant_id)
+    assert final_variant.reserved_quantity == 1
+    assert final_variant.sold_quantity == 0
     verify.close()
     engine.dispose()

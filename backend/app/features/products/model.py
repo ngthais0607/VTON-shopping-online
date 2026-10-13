@@ -21,21 +21,12 @@ from app.features.products.variant_model import ProductVariant  # noqa: F401
 class Product(Base):
     __tablename__ = "products"
     __table_args__ = (
-        CheckConstraint(
-            "stock_quantity >= 0", name="ck_products_stock_quantity_nonneg"
-        ),
-        CheckConstraint(
-            "reserved_quantity >= 0", name="ck_products_reserved_quantity_nonneg"
-        ),
-        CheckConstraint(
-            "sold_quantity >= 0", name="ck_products_sold_quantity_nonneg"
-        ),
         Index("ix_products_gender_active", "gender", "is_active"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
-    slug = Column(String(255), unique=True, nullable=True, index=True)
+    slug = Column(String(255), unique=True, nullable=False, index=True)
     price = Column(Numeric(12, 2), nullable=False, index=True)
     description = Column(String(1000), nullable=True)
 
@@ -46,19 +37,43 @@ class Product(Base):
     care_instructions = Column(String(500), nullable=True)
     size_chart = Column(JSON, nullable=True)
 
-    stock_quantity = Column(Integer, nullable=False, default=0)
-    reserved_quantity = Column(Integer, nullable=False, default=0)
-    sold_quantity = Column(Integer, nullable=False, default=0)
-
     category_id = Column(
         Integer, ForeignKey("categories.id"), nullable=True, index=True
     )
     category = relationship("Category", back_populates="products")
 
     currency = Column(String(10), nullable=False, default="VND")
-    paddle_product_id = Column(String(100), nullable=True)
-    paddle_price_id = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True, index=True)
+
+    @property
+    def stock_quantity(self) -> int:
+        if getattr(self, "variants", None):
+            return sum(v.stock_quantity for v in self.variants if v.is_active)
+        return getattr(self, "_stock_quantity", 0) or 0
+
+    @stock_quantity.setter
+    def stock_quantity(self, value: int):
+        self._stock_quantity = value
+
+    @property
+    def reserved_quantity(self) -> int:
+        if getattr(self, "variants", None):
+            return sum(v.reserved_quantity for v in self.variants if v.is_active)
+        return getattr(self, "_reserved_quantity", 0) or 0
+
+    @reserved_quantity.setter
+    def reserved_quantity(self, value: int):
+        self._reserved_quantity = value
+
+    @property
+    def sold_quantity(self) -> int:
+        if getattr(self, "variants", None):
+            return sum(v.sold_quantity for v in self.variants if v.is_active)
+        return getattr(self, "_sold_quantity", 0) or 0
+
+    @sold_quantity.setter
+    def sold_quantity(self, value: int):
+        self._sold_quantity = value
 
     variants = relationship(
         "ProductVariant", back_populates="product", cascade="all, delete-orphan"

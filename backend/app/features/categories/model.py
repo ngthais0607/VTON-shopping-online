@@ -11,7 +11,7 @@ class Category(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
-    slug = Column(String(255), unique=True, nullable=True, index=True)
+    slug = Column(String(255), unique=True, nullable=False, index=True)
     parent_id = Column(
         Integer, ForeignKey("categories.id"), nullable=True, index=True
     )

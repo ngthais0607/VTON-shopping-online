@@ -9,10 +9,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.features.orders.model import Order
+from app.features.orders.model import Order, OrderItem
 from app.features.orders.schemas import CheckoutCommand
 from app.features.orders.service import InsufficientStockError, checkout_cart
 from app.features.products.model import Product
+from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
 
 pytestmark = pytest.mark.integration
@@ -34,16 +35,34 @@ def test_checkout_final_unit_cannot_be_oversold():
         role="customer",
     )
     product = Product(
-        name=f"Final unit {suffix}", price=100, currency="VND", stock_quantity=1
+        name=f"Final unit {suffix}",
+        slug=f"final-unit-{suffix}",
+        price=100,
+        currency="VND",
     )
     setup_session.add_all([user, product])
+    setup_session.flush()
+
+    variant = ProductVariant(
+        product_id=product.id,
+        sku=f"FINAL-{suffix}",
+        size="M",
+        color_name="Black",
+        stock_quantity=1,
+        reserved_quantity=0,
+        sold_quantity=0,
+        is_active=True,
+    )
+    setup_session.add(variant)
     setup_session.commit()
+
     user_id = user.id
     product_id = product.id
+    variant_id = variant.id
     setup_session.close()
 
     checkout = CheckoutCommand(
-        items=[{"product_id": product_id, "quantity": 1}],
+        items=[{"product_id": product_id, "variant_id": variant_id, "quantity": 1}],
         customer_name="Concurrent Buyer",
         customer_phone="0123456789",
         shipping_address="123 Concurrency Street",
@@ -68,14 +87,14 @@ def test_checkout_final_unit_cannot_be_oversold():
         results = list(executor.map(lambda _: run_checkout(), range(2)))
 
     verify_session = session_factory()
-    final_product = verify_session.get(Product, product_id)
+    final_variant = verify_session.get(ProductVariant, variant_id)
     order_count = (
-        verify_session.query(Order).filter(Order.product_id == product_id).count()
+        verify_session.query(OrderItem).filter(OrderItem.variant_id == variant_id).count()
     )
     assert sorted(results) == ["conflict", "success"]
     assert order_count == 1
-    assert final_product.reserved_quantity == 1
-    assert final_product.sold_quantity == 0
+    assert final_variant.reserved_quantity == 1
+    assert final_variant.sold_quantity == 0
     verify_session.close()
 
 
@@ -95,22 +114,52 @@ def test_multi_item_checkout_atomicity_under_concurrency():
         role="customer",
     )
     product_a = Product(
-        name=f"Limited item {suffix}", price=50, currency="VND", stock_quantity=1
+        name=f"Limited item {suffix}",
+        slug=f"limited-item-{suffix}",
+        price=50,
+        currency="VND",
     )
     product_b = Product(
-        name=f"Abundant item {suffix}", price=30, currency="VND", stock_quantity=10
+        name=f"Abundant item {suffix}",
+        slug=f"abundant-item-{suffix}",
+        price=30,
+        currency="VND",
     )
     setup_session.add_all([user, product_a, product_b])
+    setup_session.flush()
+
+    variant_a = ProductVariant(
+        product_id=product_a.id,
+        sku=f"SKU-A-{suffix}",
+        size="M",
+        color_name="Black",
+        stock_quantity=1,
+        reserved_quantity=0,
+        sold_quantity=0,
+        is_active=True,
+    )
+    variant_b = ProductVariant(
+        product_id=product_b.id,
+        sku=f"SKU-B-{suffix}",
+        size="L",
+        color_name="White",
+        stock_quantity=10,
+        reserved_quantity=0,
+        sold_quantity=0,
+        is_active=True,
+    )
+    setup_session.add_all([variant_a, variant_b])
     setup_session.commit()
+
     user_id = user.id
-    pid_a = product_a.id
-    pid_b = product_b.id
+    pid_a, vid_a = product_a.id, variant_a.id
+    pid_b, vid_b = product_b.id, variant_b.id
     setup_session.close()
 
     checkout = CheckoutCommand(
         items=[
-            {"product_id": pid_a, "quantity": 1},
-            {"product_id": pid_b, "quantity": 2},
+            {"product_id": pid_a, "variant_id": vid_a, "quantity": 1},
+            {"product_id": pid_b, "variant_id": vid_b, "quantity": 2},
         ],
         customer_name="Multi Item Buyer",
         customer_phone="0987654321",
@@ -138,12 +187,12 @@ def test_multi_item_checkout_atomicity_under_concurrency():
     assert sorted(results) == ["conflict", "success"]
 
     verify_session = session_factory()
-    final_a = verify_session.get(Product, pid_a)
-    final_b = verify_session.get(Product, pid_b)
+    final_a = verify_session.get(ProductVariant, vid_a)
+    final_b = verify_session.get(ProductVariant, vid_b)
 
-    # Product A: 1 reserved, 0 available
+    # Variant A: 1 reserved, 0 available
     assert final_a.reserved_quantity == 1
-    # Product B: 2 reserved, 8 available (NOT 4 reserved from a partial reservation leak!)
+    # Variant B: 2 reserved, 8 available (NOT 4 reserved from a partial reservation leak!)
     assert final_b.reserved_quantity == 2
 
     # Exactly 1 order created, with 2 order items
@@ -152,4 +201,3 @@ def test_multi_item_checkout_atomicity_under_concurrency():
     order = orders[0]
     assert len(order.items) == 2
     verify_session.close()
-

@@ -21,6 +21,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    cols = {c["name"] for c in inspector.get_columns("orders")}
+
+    if "public_code" not in cols:
+        with op.batch_alter_table("orders", schema=None) as batch_op:
+            batch_op.add_column(sa.Column("public_code", sa.String(36), nullable=True))
 
     # Defensive backfill for any legacy rows that might lack a public_code
     orders_table = sa.table(

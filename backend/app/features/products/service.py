@@ -108,6 +108,17 @@ def update_product(
     product_id: int,
     command: ProductPatch,
 ) -> Product:
+    # 1. Lock variants first in ascending order to prevent deadlocks with checkout
+    variants = (
+        db.query(ProductVariant)
+        .filter(ProductVariant.product_id == product_id)
+        .order_by(ProductVariant.id.asc())
+        .populate_existing()
+        .with_for_update()
+        .all()
+    )
+
+    # 2. Lock product next
     product = (
         db.query(Product)
         .filter(Product.id == product_id, Product.is_deleted.is_(False))

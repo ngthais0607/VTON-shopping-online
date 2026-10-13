@@ -16,6 +16,7 @@ from app.features.orders.service import InsufficientStockError, checkout_cart
 from app.features.products.model import Product
 from app.features.products.schemas import ProductPatch
 from app.features.products.service import update_product
+from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
 
 pytestmark = pytest.mark.integration
@@ -36,11 +37,27 @@ def test_product_patch_serializes_with_checkout():
             password_hash="unused",
         )
         product = Product(
-            name=f"Patch race {suffix}", price=10, currency="VND", stock_quantity=1
+            name=f"Patch race {suffix}",
+            slug=f"patch-race-{suffix}",
+            price=10,
+            currency="VND",
         )
         setup.add_all([user, product])
+        setup.flush()
+
+        variant = ProductVariant(
+            product_id=product.id,
+            sku=f"PATCH-{suffix}",
+            size="M",
+            color_name="Black",
+            stock_quantity=1,
+            reserved_quantity=0,
+            sold_quantity=0,
+            is_active=True,
+        )
+        setup.add(variant)
         setup.commit()
-        user_id, product_id = user.id, product.id
+        user_id, product_id, variant_id = user.id, product.id, variant.id
 
     patch_locked = Event()
     checkout_reading = Event()
@@ -53,7 +70,7 @@ def test_product_patch_serializes_with_checkout():
             ):
                 if (
                     "FOR UPDATE" in statement.upper()
-                    and "products" in statement.lower()
+                    and ("products" in statement.lower() or "product_variants" in statement.lower())
                 ):
                     patch_locked.set()
                     assert checkout_reading.wait(10), (
@@ -71,7 +88,7 @@ def test_product_patch_serializes_with_checkout():
         with sessions() as session:
             user = session.get(User, user_id)
             command = CheckoutCommand(
-                items=[{"product_id": product_id, "quantity": 1}],
+                items=[{"product_id": product_id, "variant_id": variant_id, "quantity": 1}],
                 customer_name="Buyer",
                 customer_phone="123",
                 shipping_address="Home",
@@ -79,7 +96,7 @@ def test_product_patch_serializes_with_checkout():
             )
 
             def signal_read(state):
-                if state.is_select and state.bind_mapper.class_ is Product:
+                if state.is_select and (state.bind_mapper.class_ is Product or state.bind_mapper.class_ is ProductVariant):
                     checkout_reading.set()
 
             event.listen(session, "do_orm_execute", signal_read)
@@ -96,7 +113,7 @@ def test_product_patch_serializes_with_checkout():
             patch_future.result(timeout=20)
             checkout_future.result(timeout=20)
         with sessions() as verify:
-            current = verify.get(Product, product_id)
-            assert (current.stock_quantity, current.reserved_quantity) == (0, 0)
+            current_v = verify.get(ProductVariant, variant_id)
+            assert (current_v.stock_quantity, current_v.reserved_quantity) == (0, 0)
     finally:
         engine.dispose()

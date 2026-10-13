@@ -103,21 +103,68 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("payments", schema=None) as batch_op:
-        batch_op.drop_constraint("uq_payments_provider_trans_id", type_="unique")
-        batch_op.alter_column("amount", existing_type=sa.Numeric(12, 2), type_=sa.Float(), nullable=False)
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    table_names = inspector.get_table_names()
 
-    with op.batch_alter_table("products", schema=None) as batch_op:
-        batch_op.alter_column("price", existing_type=sa.Numeric(12, 2), type_=sa.Float(), nullable=False)
+    if "payments" in table_names:
+        uniques = {u["name"] for u in inspector.get_unique_constraints("payments")}
+        indexes = {i["name"] for i in inspector.get_indexes("payments")}
+        with op.batch_alter_table("payments", schema=None) as batch_op:
+            if "uq_payments_provider_trans_id" in uniques or "uq_payments_provider_trans_id" in indexes:
+                batch_op.drop_constraint("uq_payments_provider_trans_id", type_="unique")
+            batch_op.alter_column("amount", existing_type=sa.Numeric(12, 2), type_=sa.Float(), nullable=False)
 
-    with op.batch_alter_table("orders", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_orders_public_code"))
-        batch_op.drop_column("public_code")
-        batch_op.alter_column("total_amount", existing_type=sa.Numeric(12, 2), type_=sa.Float(), nullable=False)
-        batch_op.alter_column("quantity", existing_type=sa.Integer(), nullable=False)
-        batch_op.alter_column("unit_price", existing_type=sa.Numeric(12, 2), type_=sa.Float(), nullable=False)
-        batch_op.alter_column("product_name", existing_type=sa.String(255), nullable=False)
-        batch_op.alter_column("product_id", existing_type=sa.Integer(), nullable=False)
+    if "products" in table_names:
+        with op.batch_alter_table("products", schema=None) as batch_op:
+            batch_op.alter_column("price", existing_type=sa.Numeric(12, 2), type_=sa.Float(), nullable=False)
 
-    op.drop_table("order_items")
-    op.drop_table("product_reviews")
+    if "orders" in table_names:
+        # Backfill any null columns from order_items if available, or fallback defaults
+        if "order_items" in table_names:
+            try:
+                bind.execute(
+                    sa.text(
+                        """
+                        UPDATE orders o
+                        JOIN order_items oi ON oi.order_id = o.id
+                        SET o.product_id = COALESCE(o.product_id, oi.product_id),
+                            o.product_name = COALESCE(o.product_name, oi.product_name),
+                            o.unit_price = COALESCE(o.unit_price, oi.unit_price),
+                            o.quantity = COALESCE(o.quantity, oi.quantity)
+                        WHERE o.quantity IS NULL OR o.product_id IS NULL
+                        """
+                    )
+                )
+            except Exception:
+                pass
+        bind.execute(
+            sa.text(
+                """
+                UPDATE orders
+                SET quantity = COALESCE(quantity, 1),
+                    unit_price = COALESCE(unit_price, total_amount, 0),
+                    product_name = COALESCE(product_name, 'Legacy Order'),
+                    product_id = COALESCE(product_id, 1)
+                WHERE quantity IS NULL OR product_id IS NULL OR product_name IS NULL OR unit_price IS NULL
+                """
+            )
+        )
+
+        cols = {c["name"] for c in inspector.get_columns("orders")}
+        indexes = {i["name"] for i in inspector.get_indexes("orders")}
+        with op.batch_alter_table("orders", schema=None) as batch_op:
+            if "ix_orders_public_code" in indexes:
+                batch_op.drop_index(batch_op.f("ix_orders_public_code"))
+            if "public_code" in cols:
+                batch_op.drop_column("public_code")
+            batch_op.alter_column("total_amount", existing_type=sa.Numeric(12, 2), type_=sa.Float(), nullable=False)
+            batch_op.alter_column("quantity", existing_type=sa.Integer(), nullable=False)
+            batch_op.alter_column("unit_price", existing_type=sa.Numeric(12, 2), type_=sa.Float(), nullable=False)
+            batch_op.alter_column("product_name", existing_type=sa.String(255), nullable=False)
+            batch_op.alter_column("product_id", existing_type=sa.Integer(), nullable=False)
+
+    if "order_items" in table_names:
+        op.drop_table("order_items")
+    if "product_reviews" in table_names:
+        op.drop_table("product_reviews")

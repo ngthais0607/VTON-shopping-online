@@ -276,8 +276,6 @@ async def checkout_cart(
         quantity = variant_quantities[vid]
         v = by_variant_id[vid]
         v.reserved_quantity += quantity
-        if hasattr(v.product, "reserved_quantity") and v.product.reserved_quantity is not None:
-            v.product.reserved_quantity += quantity
 
     total_amount = sum(
         Decimal(str(by_variant_id[vid].price if by_variant_id[vid].price is not None else by_variant_id[vid].product.price)) * qty
