@@ -119,16 +119,5 @@ def downgrade() -> None:
         batch_op.alter_column("product_name", existing_type=sa.String(255), nullable=False)
         batch_op.alter_column("product_id", existing_type=sa.Integer(), nullable=False)
 
-    with op.batch_alter_table("order_items", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_order_items_product_id"))
-        batch_op.drop_index(batch_op.f("ix_order_items_order_id"))
-        batch_op.drop_index(batch_op.f("ix_order_items_id"))
     op.drop_table("order_items")
-
-    with op.batch_alter_table("product_reviews", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_product_reviews_created_at"))
-        batch_op.drop_index(batch_op.f("ix_product_reviews_is_verified_purchase"))
-        batch_op.drop_index(batch_op.f("ix_product_reviews_user_id"))
-        batch_op.drop_index(batch_op.f("ix_product_reviews_product_id"))
-        batch_op.drop_index(batch_op.f("ix_product_reviews_id"))
     op.drop_table("product_reviews")

@@ -22,8 +22,15 @@ from app.features.orders.model import Order, Payment
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
 
-# Ghi đè cấu hình sqlalchemy.url bằng DATABASE_URL từ app
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+# Ghi đè cấu hình sqlalchemy.url bằng TEST_DATABASE_URL hoặc DATABASE_URL từ app
+config_url = config.get_main_option("sqlalchemy.url")
+target_url = os.environ.get("TEST_DATABASE_URL")
+if not target_url:
+    if config_url and config_url != "sqlite:///./app.db":
+        target_url = config_url
+    else:
+        target_url = DATABASE_URL
+config.set_main_option("sqlalchemy.url", target_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

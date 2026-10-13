@@ -93,6 +93,12 @@ jobs:
             exit 1
           }
 
+      - name: Verify Migration Downgrade & Upgrade Roundtrip
+        working-directory: backend
+        run: |
+          python -m alembic downgrade base
+          python -m alembic upgrade head
+
       - name: Run Tests (Unit & Concurrency Integration)
         working-directory: backend
         run: |

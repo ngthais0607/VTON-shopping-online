@@ -19,6 +19,7 @@ This document summarizes the architectural hardening, data integrity improvement
 2. `c91f8a4e2b10_add_order_fulfillment_fields.py`: Added `public_code`, `payment_method`, `notes`, `expires_at`, `paid_at`.
 3. `8f4c2d1a7b90_add_user_refresh_version.py`: Added durable `refresh_version` on users for revocation.
 4. `d4a7c8e91f23_order_items_and_reviews_integrity.py`: Created `order_items` and `product_reviews`, backfilled legacy orders into `order_items`, added quantity constraints (`stock_quantity >= 0`, `reserved_quantity >= 0`, `sold_quantity >= 0`).
+   > **CẢNH BÁO MẤT DỮ LIỆU (DATA LOSS WARNING):** Chạy `alembic downgrade` qua revision này sẽ DROP hoàn toàn hai bảng `order_items` và `product_reviews`, làm mất toàn bộ chi tiết sản phẩm của các đơn hàng và toàn bộ đánh giá của khách hàng mà không thể khôi phục nếu không có bản sao lưu trước đó.
 5. `e5b8c9d0f1a2_performance_indexes.py`: Added composite indexes (`ix_orders_user_status`, `ix_orders_status_created_at`, `ix_orders_status_expires_at`, `ix_products_cat_active_price`) and MariaDB `FULLTEXT` index (`ix_products_name_desc_ft`).
 
 ### How to Apply Migrations

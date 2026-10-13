@@ -19,6 +19,7 @@ __pycache__/
 venv/
 ENV/
 .pytest_cache/
+.pytest_temp/
 *.db
 *.sqlite
 *.sqlite3
