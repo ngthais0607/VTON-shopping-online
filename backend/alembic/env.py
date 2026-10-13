@@ -21,20 +21,17 @@ from app.features.users.model import User  # noqa: F401  # Alembic autogenerate 
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
 
-# Ghi đè cấu hình sqlalchemy.url bằng TEST_DATABASE_URL hoặc DATABASE_URL từ app
+# Ghi đè cấu hình sqlalchemy.url bằng cấu hình truyền vào hoặc biến môi trường
 config_url = config.get_main_option("sqlalchemy.url")
-target_url = os.environ.get("TEST_DATABASE_URL")
-if not target_url:
-    if config_url and config_url != "sqlite:///./app.db":
-        target_url = config_url
-    else:
-        target_url = DATABASE_URL
+if config_url and config_url != "sqlite:///./app.db":
+    target_url = config_url
+else:
+    target_url = os.environ.get("DATABASE_URL") or os.environ.get("TEST_DATABASE_URL") or DATABASE_URL
 config.set_main_option("sqlalchemy.url", target_url)
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
+# Interpret the config file for Python logging without resetting existing loggers.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
