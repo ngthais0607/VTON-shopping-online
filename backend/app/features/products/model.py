@@ -1,11 +1,13 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -27,12 +29,21 @@ class Product(Base):
         CheckConstraint(
             "sold_quantity >= 0", name="ck_products_sold_quantity_nonneg"
         ),
+        Index("ix_products_gender_active", "gender", "is_active"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
+    slug = Column(String(255), unique=True, nullable=True, index=True)
     price = Column(Numeric(12, 2), nullable=False, index=True)
     description = Column(String(1000), nullable=True)
+
+    brand = Column(String(100), nullable=True)
+    gender = Column(String(20), nullable=False, default="unisex")
+    material = Column(String(255), nullable=True)
+    fit = Column(String(50), nullable=True)
+    care_instructions = Column(String(500), nullable=True)
+    size_chart = Column(JSON, nullable=True)
 
     stock_quantity = Column(Integer, nullable=False, default=0)
     reserved_quantity = Column(Integer, nullable=False, default=0)
@@ -48,7 +59,10 @@ class Product(Base):
     paddle_price_id = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True, index=True)
 
-    images = relationship("ProductImage", back_populates="product")
+    variants = relationship(
+        "ProductVariant", back_populates="product", cascade="all, delete-orphan"
+    )
+    images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
     reviews = relationship(
@@ -74,6 +88,10 @@ class ProductImage(Base):
     id = Column(String(100), primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     object_name = Column(String(255), nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+    is_primary = Column(Boolean, default=False, nullable=False)
+    color_name = Column(String(50), nullable=True)
+    kind = Column(String(30), default="model_photo", nullable=False)
 
     product = relationship("Product", back_populates="images")
 
@@ -87,6 +105,7 @@ class ProductReview(Base):
     rating = Column(Integer, nullable=False, default=5)
     title = Column(String(255), nullable=True)
     comment = Column(String(1000), nullable=True)
+    fit_feedback = Column(String(20), nullable=True)
     is_verified_purchase = Column(Boolean, default=False, index=True)
 
     created_at = Column(

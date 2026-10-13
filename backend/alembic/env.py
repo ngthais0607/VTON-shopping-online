@@ -16,6 +16,7 @@ from app.core.database import DATABASE_URL, Base
 from app.features.categories.model import Category  # noqa: F401  # Alembic autogenerate registration
 from app.features.orders.model import Order, Payment  # noqa: F401  # Alembic autogenerate registration
 from app.features.products.model import Product, ProductImage, ProductReview  # noqa: F401  # Alembic autogenerate registration
+from app.features.products.variant_model import ProductVariant  # noqa: F401  # Alembic autogenerate registration
 from app.features.users.model import User  # noqa: F401  # Alembic autogenerate registration
 
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.

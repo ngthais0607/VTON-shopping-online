@@ -11,8 +11,15 @@ class Category(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
-    products = relationship("Product", back_populates="category")
+    slug = Column(String(255), unique=True, nullable=True, index=True)
+    parent_id = Column(
+        Integer, ForeignKey("categories.id"), nullable=True, index=True
+    )
     description = Column(String(1000), nullable=True)
+
+    parent = relationship("Category", remote_side=[id], back_populates="children")
+    children = relationship("Category", back_populates="parent")
+    products = relationship("Product", back_populates="category")
 
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
