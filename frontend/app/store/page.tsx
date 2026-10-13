@@ -36,17 +36,17 @@ function StorefrontContent() {
 
     const { categories, error: categoriesError, isLoading: categoriesLoading, mutate: retryCategories } = useCategoryOptions();
 
-    // Read URL facets/filters
-    const urlCategory = searchParams.get("category_id");
-    const urlGender = searchParams.get("gender");
-    const urlBrand = searchParams.get("brand");
-    const urlSize = searchParams.get("size");
-    const urlColor = searchParams.get("color");
-    const urlStock = searchParams.get("stock_status");
-    const urlMinPrice = searchParams.get("min_price");
-    const urlMaxPrice = searchParams.get("max_price");
-    const urlSort = searchParams.get("sort") || searchParams.get("sort_by");
-    const urlSearch = searchParams.get("search");
+    // Read URL facets/filters safely with optional chaining
+    const urlCategory = searchParams?.get?.("category_id");
+    const urlGender = searchParams?.get?.("gender");
+    const urlBrand = searchParams?.get?.("brand");
+    const urlSize = searchParams?.get?.("size");
+    const urlColor = searchParams?.get?.("color");
+    const urlStock = searchParams?.get?.("stock_status");
+    const urlMinPrice = searchParams?.get?.("min_price");
+    const urlMaxPrice = searchParams?.get?.("max_price");
+    const urlSort = searchParams?.get?.("sort") || searchParams?.get?.("sort_by");
+    const urlSearch = searchParams?.get?.("search");
 
     const effectiveCategoryId = urlCategory ? parseInt(urlCategory) : selectedCategoryId;
     const effectiveMinPrice = urlMinPrice ? parseFloat(urlMinPrice) : minPrice;

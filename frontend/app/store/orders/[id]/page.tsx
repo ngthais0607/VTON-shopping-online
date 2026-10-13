@@ -318,6 +318,12 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                     <div key={idx} className="flex items-center justify-between py-3 text-sm">
                       <div>
                         <h4 className="font-bold text-slate-900">{item.product_name}</h4>
+                        {(item.size || item.color_name) && (
+                          <p className="text-xs text-slate-600 font-medium mt-0.5">
+                            {[item.size && `Size ${item.size}`, item.color_name && `Màu ${item.color_name}`].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
+                        {item.sku && <p className="text-[11px] text-slate-400 font-mono mt-0.5">SKU: {item.sku}</p>}
                         <p className="text-xs text-slate-500 mt-0.5">Quantity: {item.quantity} x ${item.unit_price.toFixed(2)}</p>
                       </div>
                       <span className="font-extrabold text-slate-900">${(item.subtotal ?? (item.unit_price * item.quantity)).toFixed(2)}</span>

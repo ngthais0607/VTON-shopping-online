@@ -28,17 +28,17 @@ export function FashionFilters({
     swrFetcher,
   );
 
-  // Read active filters from URL query parameters
-  const activeCategory = searchParams.get("category_id") || "";
-  const activeGender = searchParams.get("gender") || "";
-  const activeBrand = searchParams.get("brand") || "";
-  const activeSize = searchParams.get("size") || "";
-  const activeColor = searchParams.get("color") || "";
-  const activeStock = searchParams.get("stock_status") || "";
+  // Read active filters from URL query parameters safely
+  const activeCategory = searchParams?.get?.("category_id") || "";
+  const activeGender = searchParams?.get?.("gender") || "";
+  const activeBrand = searchParams?.get?.("brand") || "";
+  const activeSize = searchParams?.get?.("size") || "";
+  const activeColor = searchParams?.get?.("color") || "";
+  const activeStock = searchParams?.get?.("stock_status") || "";
 
   const updateParam = useCallback(
     (key: string, value: string | null) => {
-      const current = new URLSearchParams(searchParams.toString());
+      const current = new URLSearchParams(searchParams?.toString() || "");
       if (!value || value === "all" || value === "") {
         current.delete(key);
       } else {
@@ -51,7 +51,7 @@ export function FashionFilters({
   );
 
   const resetAll = useCallback(() => {
-    const current = new URLSearchParams(searchParams.toString());
+    const current = new URLSearchParams(searchParams?.toString() || "");
     current.delete("category_id");
     current.delete("gender");
     current.delete("brand");

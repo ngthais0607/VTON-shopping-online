@@ -209,8 +209,17 @@ export default function OrdersPage() {
                   <div className="space-y-1.5 pt-1">
                     <span className="text-xs font-semibold text-slate-500 uppercase">Items ({selectedOrder.items.length})</span>
                     {selectedOrder.items.map((it, idx) => (
-                      <div key={idx} className="flex justify-between text-xs py-1 border-b last:border-b-0">
-                        <span className="text-slate-700">{it.product_name} x {it.quantity}</span>
+                      <div key={idx} className="flex justify-between items-start text-xs py-1.5 border-b last:border-b-0">
+                        <div>
+                          <span className="text-slate-800 font-medium">{it.product_name}</span>
+                          {(it.size || it.color_name) && (
+                            <span className="text-slate-500 block text-[11px]">
+                              {[it.size && `Size: ${it.size}`, it.color_name && `Màu: ${it.color_name}`].filter(Boolean).join(" · ")}
+                            </span>
+                          )}
+                          {it.sku && <span className="text-slate-400 font-mono block text-[10px]">SKU: {it.sku}</span>}
+                          <span className="text-slate-500 block text-[11px]">Qty: {it.quantity}</span>
+                        </div>
                         <span className="font-medium text-slate-900">${(it.subtotal ?? (it.unit_price * it.quantity)).toFixed(2)}</span>
                       </div>
                     ))}

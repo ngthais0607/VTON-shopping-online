@@ -97,6 +97,7 @@ export default function CheckoutPage() {
       const payload: CheckoutCommand = {
         items: cartItems.map((item) => ({
           product_id: item.product.id,
+          variant_id: item.variantId,
           quantity: item.quantity,
         })),
         customer_name: customerName,
@@ -308,20 +309,28 @@ export default function CheckoutPage() {
               </h3>
 
               <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                {cartItems.map(({ product, quantity }) => (
-                  <div key={product.id} className="flex gap-3 items-center">
+                {cartItems.map(({ product, quantity, variant, variantId }) => (
+                  <div key={variantId || product.id} className="flex gap-3 items-center">
                     <div className="w-14 h-14 rounded-xl bg-slate-100 relative overflow-hidden flex-shrink-0 border border-slate-100">
-                      {product.images?.[0]?.url || product.image_url ? (
-                        <Image src={product.images?.[0]?.url || product.image_url || ""} alt={product.name} fill className="object-cover" />
+                      {variant?.image_url || product.images?.[0]?.url || product.image_url ? (
+                        <Image src={variant?.image_url || product.images?.[0]?.url || product.image_url || ""} alt={product.name} fill className="object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400">No Pic</div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-slate-800 text-xs truncate">{product.name}</h4>
+                      {(variant?.size || variant?.color_name) && (
+                        <p className="text-[11px] text-slate-500 font-medium">
+                          {[variant.size && `Size ${variant.size}`, variant.color_name && `Màu ${variant.color_name}`].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                      {variant?.sku && (
+                        <p className="text-[10px] text-slate-400 font-mono">SKU: {variant.sku}</p>
+                      )}
                       <p className="text-[11px] text-slate-400">Qty: {quantity}</p>
                     </div>
-                    <span className="font-bold text-slate-900 text-xs">${(product.price * quantity).toLocaleString()}</span>
+                    <span className="font-bold text-slate-900 text-xs">${((variant?.price ?? product.price) * quantity).toLocaleString()}</span>
                   </div>
                 ))}
               </div>

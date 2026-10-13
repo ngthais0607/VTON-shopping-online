@@ -73,16 +73,16 @@ export function CartDrawer() {
                   </Button>
                 </div>
               ) : (
-                cartItems.map(({ product, quantity }) => (
+                cartItems.map(({ product, quantity, variant, variantId }) => (
                   <div
-                    key={product.id}
+                    key={variantId || product.id}
                     className="flex gap-4 p-3 rounded-2xl border border-sky-100 hover:border-sky-200 transition-all bg-white shadow-xs"
                   >
                     {/* Image */}
                     <div className="w-20 h-20 rounded-xl bg-slate-100 relative overflow-hidden flex-shrink-0 border border-slate-100">
-                      {product.images?.[0]?.url || product.image_url ? (
+                      {variant?.image_url || product.images?.[0]?.url || product.image_url ? (
                         <Image
-                          src={product.images?.[0]?.url || product.image_url || ""}
+                          src={variant?.image_url || product.images?.[0]?.url || product.image_url || ""}
                           alt={product.name}
                           fill
                           className="object-cover"
@@ -100,32 +100,56 @@ export function CartDrawer() {
                         <div className="flex justify-between items-start gap-2">
                           <h4 className="font-semibold text-slate-900 text-sm line-clamp-1">{product.name}</h4>
                           <button
-                            onClick={() => removeFromCart(product.id)}
-                            className="text-slate-400 hover:text-rose-500 transition-colors p-0.5"
+                            onClick={() => removeFromCart(variantId || product.id)}
+                            className="text-slate-400 hover:text-rose-500 transition-colors p-0.5 cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
+                        {/* Variant Attributes (Size & Color) */}
+                        {(variant?.size || variant?.color_name) && (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            {variant.color_name && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                                {variant.color_hex && (
+                                  <span
+                                    className="w-2 h-2 rounded-full border border-black/10 inline-block"
+                                    style={{ backgroundColor: variant.color_hex }}
+                                  />
+                                )}
+                                {variant.color_name}
+                              </span>
+                            )}
+                            {variant.size && (
+                              <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md font-bold">
+                                Size {variant.size}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {variant?.sku && (
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">SKU: {variant.sku}</p>
+                        )}
                         <p className="text-xs text-slate-500 mt-0.5">{product.category?.name || "Product"}</p>
                       </div>
 
                       <div className="flex items-center justify-between mt-2">
                         <span className="font-bold text-slate-900 text-sm">
-                          ${(product.price * quantity).toLocaleString()}
+                          ${((variant?.price ?? product.price) * quantity).toLocaleString()}
                         </span>
 
                         {/* Quantity Controls */}
                         <div className="flex items-center gap-1 bg-sky-50/80 rounded-lg p-1 border border-sky-100">
                           <button
-                            onClick={() => updateQuantity(product.id, quantity - 1)}
-                            className="w-5 h-5 rounded-md bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 shadow-xs"
+                            onClick={() => updateQuantity(variantId || product.id, quantity - 1)}
+                            className="w-5 h-5 rounded-md bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 shadow-xs cursor-pointer"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
                           <span className="w-6 text-center text-xs font-bold text-slate-800">{quantity}</span>
                           <button
-                            onClick={() => updateQuantity(product.id, quantity + 1)}
-                            className="w-5 h-5 rounded-md bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 shadow-xs"
+                            onClick={() => updateQuantity(variantId || product.id, quantity + 1)}
+                            className="w-5 h-5 rounded-md bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 shadow-xs cursor-pointer"
                           >
                             <Plus className="w-3 h-3" />
                           </button>
@@ -162,8 +186,8 @@ export function CartDrawer() {
                   </div>
                 </div>
 
-                <Link href="/store" onClick={() => setIsCartOpen(false)} className="block w-full">
-                  <Button className="w-full h-11 bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white font-semibold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-sky-500/25 active:scale-[0.98] transition-all">
+                <Link href="/store/checkout" onClick={() => setIsCartOpen(false)} className="block w-full">
+                  <Button className="w-full h-11 bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white font-semibold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-sky-500/25 active:scale-[0.98] transition-all cursor-pointer">
                     <span>Checkout</span>
                     <ArrowRight className="w-4 h-4" />
                   </Button>
