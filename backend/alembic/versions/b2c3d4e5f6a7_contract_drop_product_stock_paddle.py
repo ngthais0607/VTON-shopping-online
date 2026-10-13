@@ -5,10 +5,11 @@ Revises: a1b2c3d4e5f6
 Create Date: 2026-10-13 15:30:00.000000
 """
 
-from typing import Sequence, Union
 import logging
+from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 logger = logging.getLogger("alembic.runtime.migration")
