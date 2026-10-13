@@ -63,11 +63,12 @@ def upgrade() -> None:
     op.create_index('ix_products_gender_active', 'products', ['gender', 'is_active'], unique=False)
 
     # 3. Add columns to categories
-    op.add_column('categories', sa.Column('slug', sa.String(length=255), nullable=True))
-    op.add_column('categories', sa.Column('parent_id', sa.Integer(), nullable=True))
-    op.create_foreign_key('fk_categories_parent_id', 'categories', 'categories', ['parent_id'], ['id'])
-    op.create_index('ix_categories_slug', 'categories', ['slug'], unique=True)
-    op.create_index('ix_categories_parent_id', 'categories', ['parent_id'], unique=False)
+    with op.batch_alter_table('categories', schema=None) as batch_op:
+        batch_op.add_column(sa.Column('slug', sa.String(length=255), nullable=True))
+        batch_op.add_column(sa.Column('parent_id', sa.Integer(), nullable=True))
+        batch_op.create_foreign_key('fk_categories_parent_id', 'categories', ['parent_id'], ['id'])
+        batch_op.create_index('ix_categories_slug', ['slug'], unique=True)
+        batch_op.create_index('ix_categories_parent_id', ['parent_id'], unique=False)
 
     # 4. Add columns to product_images
     op.add_column('product_images', sa.Column('sort_order', sa.Integer(), server_default='0', nullable=False))
@@ -76,12 +77,14 @@ def upgrade() -> None:
     op.add_column('product_images', sa.Column('kind', sa.String(length=30), server_default='model_photo', nullable=False))
 
     # 5. Add columns to order_items
-    op.add_column('order_items', sa.Column('variant_id', sa.Integer(), nullable=True))
-    op.add_column('order_items', sa.Column('sku', sa.String(length=64), nullable=True))
-    op.add_column('order_items', sa.Column('size', sa.String(length=20), nullable=True))
-    op.add_column('order_items', sa.Column('color_name', sa.String(length=50), nullable=True))
-    op.create_foreign_key('fk_order_items_variant_id', 'order_items', 'product_variants', ['variant_id'], ['id'])
-    op.create_index('ix_order_items_variant_id', 'order_items', ['variant_id'], unique=False)
+    with op.batch_alter_table('order_items', schema=None) as batch_op:
+        batch_op.add_column(sa.Column('variant_id', sa.Integer(), nullable=True))
+        batch_op.add_column(sa.Column('sku', sa.String(length=64), nullable=True))
+        batch_op.add_column(sa.Column('size', sa.String(length=20), nullable=True))
+        batch_op.add_column(sa.Column('color_name', sa.String(length=50), nullable=True))
+        batch_op.create_foreign_key('fk_order_items_variant_id', 'product_variants', ['variant_id'], ['id'])
+        batch_op.create_index('ix_order_items_variant_id', ['variant_id'], unique=False)
+
 
     # 6. Add column to product_reviews
     op.add_column('product_reviews', sa.Column('fit_feedback', sa.String(length=20), nullable=True))
@@ -136,28 +139,43 @@ def upgrade() -> None:
         )
 
     # Backfill order_items.variant_id and snapshot columns
-    bind.execute(
-        sa.text(
-            """
-            UPDATE order_items oi
-            JOIN product_variants pv ON pv.product_id = oi.product_id AND pv.sku = CONCAT('P', oi.product_id, '-DEFAULT')
-            SET oi.variant_id = pv.id,
-                oi.sku = pv.sku,
-                oi.size = 'ONE_SIZE',
-                oi.color_name = 'Default'
-            """
+    if bind.dialect.name == "sqlite":
+        bind.execute(
+            sa.text(
+                """
+                UPDATE order_items
+                SET variant_id = (SELECT pv.id FROM product_variants pv WHERE pv.product_id = order_items.product_id LIMIT 1),
+                    sku = (SELECT pv.sku FROM product_variants pv WHERE pv.product_id = order_items.product_id LIMIT 1),
+                    size = 'ONE_SIZE',
+                    color_name = 'Default'
+                """
+            )
         )
-    )
+    else:
+        bind.execute(
+            sa.text(
+                """
+                UPDATE order_items oi
+                JOIN product_variants pv ON pv.product_id = oi.product_id AND pv.sku = CONCAT('P', oi.product_id, '-DEFAULT')
+                SET oi.variant_id = pv.id,
+                    oi.sku = pv.sku,
+                    oi.size = 'ONE_SIZE',
+                    oi.color_name = 'Default'
+                """
+            )
+        )
+
 
 
 def downgrade() -> None:
     # 1. Drop order_items foreign keys and columns
-    op.drop_constraint('fk_order_items_variant_id', 'order_items', type_='foreignkey')
-    op.drop_index('ix_order_items_variant_id', table_name='order_items')
-    op.drop_column('order_items', 'color_name')
-    op.drop_column('order_items', 'size')
-    op.drop_column('order_items', 'sku')
-    op.drop_column('order_items', 'variant_id')
+    with op.batch_alter_table('order_items', schema=None) as batch_op:
+        batch_op.drop_constraint('fk_order_items_variant_id', type_='foreignkey')
+        batch_op.drop_index('ix_order_items_variant_id')
+        batch_op.drop_column('color_name')
+        batch_op.drop_column('size')
+        batch_op.drop_column('sku')
+        batch_op.drop_column('variant_id')
 
     # 2. Drop product_reviews fit_feedback
     op.drop_column('product_reviews', 'fit_feedback')
@@ -169,11 +187,13 @@ def downgrade() -> None:
     op.drop_column('product_images', 'sort_order')
 
     # 4. Drop categories columns & foreign key
-    op.drop_constraint('fk_categories_parent_id', 'categories', type_='foreignkey')
-    op.drop_index('ix_categories_parent_id', table_name='categories')
-    op.drop_index('ix_categories_slug', table_name='categories')
-    op.drop_column('categories', 'parent_id')
-    op.drop_column('categories', 'slug')
+    with op.batch_alter_table('categories', schema=None) as batch_op:
+        batch_op.drop_constraint('fk_categories_parent_id', type_='foreignkey')
+        batch_op.drop_index('ix_categories_parent_id')
+        batch_op.drop_index('ix_categories_slug')
+        batch_op.drop_column('parent_id')
+        batch_op.drop_column('slug')
+
 
     # 5. Drop products columns & indexes
     op.drop_index('ix_products_gender_active', table_name='products')

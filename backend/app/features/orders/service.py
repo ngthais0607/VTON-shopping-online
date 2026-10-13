@@ -37,6 +37,7 @@ from app.features.orders.schemas import (
     VietQRWebhookResponse,
 )
 from app.features.products.model import Product
+from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
 from app.integrations.queue import TaskQueue
 from app.integrations.vietqr import build_vietqr_instructions
@@ -78,9 +79,14 @@ def order_to_response(order: Order) -> OrderResponse:
             unit_price=item.unit_price,
             quantity=item.quantity,
             subtotal=item.subtotal,
+            variant_id=item.variant_id,
+            sku=item.sku,
+            size=item.size,
+            color_name=item.color_name,
         )
         for item in order_items
     ]
+
 
     if order_items:
         first_item = order_items[0]
@@ -163,14 +169,68 @@ async def checkout_cart(
     queue: TaskQueue,
     now: datetime | None = None,
 ) -> CheckoutResponse:
-    quantities = aggregate_cart_items(command.items)
-    product_ids = sorted(quantities)
-    by_id: dict[int, Product] = {}
-    for product_id in product_ids:
-        product = (
+    # 1. Resolve variant ID for each cart item
+    variant_quantities: dict[int, int] = {}
+    for item in command.items:
+        if item.quantity <= 0:
+            raise BusinessRuleError("Quantity must be greater than zero", code="invalid_cart_item")
+        vid = item.variant_id
+        if vid is None:
+            # lookup or auto-create variant for product_id
+            prod = (
+                db.query(Product)
+                .filter(
+                    Product.id == item.product_id,
+                    Product.is_deleted.is_(False),
+                )
+                .first()
+            )
+            if prod is None:
+                raise ProductNotFoundError(f"Product ID {item.product_id} not found")
+            v = (
+                db.query(ProductVariant)
+                .filter(
+                    ProductVariant.product_id == prod.id,
+                    ProductVariant.is_active.is_(True),
+                )
+                .first()
+            )
+            if v is None:
+                v = ProductVariant(
+                    product_id=prod.id,
+                    sku=f"P{prod.id}-DEFAULT",
+                    size="ONE_SIZE",
+                    color_name="Default",
+                    stock_quantity=getattr(prod, "stock_quantity", 0) or 0,
+                    reserved_quantity=getattr(prod, "reserved_quantity", 0) or 0,
+                    sold_quantity=getattr(prod, "sold_quantity", 0) or 0,
+                    is_active=True,
+                )
+                db.add(v)
+                db.flush()
+            vid = v.id
+        variant_quantities[vid] = variant_quantities.get(vid, 0) + item.quantity
+
+    variant_ids = sorted(variant_quantities.keys())
+    by_variant_id: dict[int, ProductVariant] = {}
+    for vid in variant_ids:
+        variant = (
+            db.query(ProductVariant)
+            .filter(
+                ProductVariant.id == vid,
+                ProductVariant.is_active.is_(True),
+            )
+            .populate_existing()
+            .with_for_update()
+            .first()
+        )
+        if variant is None:
+            raise ProductNotFoundError(f"Product variant ID {vid} not found")
+
+        parent_product = (
             db.query(Product)
             .filter(
-                Product.id == product_id,
+                Product.id == variant.product_id,
                 Product.is_deleted.is_(False),
                 Product.is_active.is_(True),
                 (
@@ -178,22 +238,23 @@ async def checkout_cart(
                     | Product.category.has(Category.is_deleted.is_(False))
                 ),
             )
-            .populate_existing()
-            .with_for_update()
             .first()
         )
-        if product is None:
-            raise ProductNotFoundError(f"Product ID {product_id} not found")
-        by_id[product_id] = product
-        quantity = quantities[product_id]
-        available = available_stock(product)
+        if parent_product is None:
+            raise ProductNotFoundError(f"Product for variant ID {vid} not found or inactive")
+
+        variant.product = parent_product
+        by_variant_id[vid] = variant
+
+        quantity = variant_quantities[vid]
+        available = available_stock(variant)
         if available < quantity:
             raise InsufficientStockError(
-                f"Not enough stock available for product '{product.name}'. "
+                f"Not enough stock available for variant '{variant.sku}' of product '{parent_product.name}'. "
                 f"Requested: {quantity}, Available: {available}"
             )
 
-    currencies = {product.currency.upper() for product in by_id.values()}
+    currencies = {v.product.currency.upper() for v in by_variant_id.values()}
     if len(currencies) != 1:
         raise BusinessRuleError(
             "Cart must use one currency", code="mixed_cart_currency"
@@ -210,13 +271,17 @@ async def checkout_cart(
         checkout_time = checkout_time.replace(tzinfo=timezone.utc)
     is_vietqr = command.payment_method == OrderPaymentMethod.VIETQR
 
-    # Atomic inventory reservation
-    for product_id in product_ids:
-        quantity = quantities[product_id]
-        by_id[product_id].reserved_quantity += quantity
+    # Atomic inventory reservation on variants
+    for vid in variant_ids:
+        quantity = variant_quantities[vid]
+        v = by_variant_id[vid]
+        v.reserved_quantity += quantity
+        if hasattr(v.product, "reserved_quantity") and v.product.reserved_quantity is not None:
+            v.product.reserved_quantity += quantity
 
     total_amount = sum(
-        Decimal(str(by_id[pid].price)) * qty for pid, qty in quantities.items()
+        Decimal(str(by_variant_id[vid].price if by_variant_id[vid].price is not None else by_variant_id[vid].product.price)) * qty
+        for vid, qty in variant_quantities.items()
     )
 
     order = Order(
@@ -242,17 +307,22 @@ async def checkout_cart(
     db.add(order)
     db.flush()
 
-    for product_id in product_ids:
-        prod = by_id[product_id]
-        qty = quantities[product_id]
-        item_subtotal = Decimal(str(prod.price)) * qty
+    for vid, qty in variant_quantities.items():
+        v = by_variant_id[vid]
+        prod = v.product
+        price = v.price if v.price is not None else prod.price
+        item_subtotal = Decimal(str(price)) * qty
         item = OrderItem(
             order_id=order.id,
             product_id=prod.id,
             product_name=prod.name,
-            unit_price=prod.price,
+            unit_price=price,
             quantity=qty,
             subtotal=item_subtotal,
+            variant_id=v.id,
+            sku=v.sku,
+            size=v.size,
+            color_name=v.color_name,
         )
         db.add(item)
         order.items.append(item)
@@ -275,6 +345,7 @@ async def checkout_cart(
     if is_vietqr:
         response.vietqr = _vietqr_response([order])
     return response
+
 
 
 # Alias for centralized interface
@@ -305,6 +376,94 @@ def get_order_for_user(db: Session, order_id: int, user: User) -> OrderResponse:
     return order_to_response(order)
 
 
+def _lock_transition_variants(
+    db: Session, variant_ids: set[int]
+) -> dict[int, ProductVariant]:
+    locked: dict[int, ProductVariant] = {}
+    for vid in sorted(variant_ids):
+        locked[vid] = (
+            db.query(ProductVariant)
+            .filter(ProductVariant.id == vid)
+            .populate_existing()
+            .with_for_update()
+            .one()
+        )
+    return locked
+
+
+def _lock_transition_products(
+    db: Session, product_ids: set[int]
+) -> dict[int, Product]:
+    locked: dict[int, Product] = {}
+    for pid in sorted(product_ids):
+        locked[pid] = (
+            db.query(Product)
+            .filter(Product.id == pid)
+            .populate_existing()
+            .with_for_update()
+            .one()
+        )
+    return locked
+
+
+def _resolve_and_lock_order_inventory(
+    db: Session, order_ids: list[int] | set[int]
+) -> tuple[dict[int, ProductVariant], dict[int, Product]]:
+    items = (
+        db.query(OrderItem)
+        .filter(OrderItem.order_id.in_(order_ids))
+        .all()
+    )
+    variant_ids: set[int] = set()
+    legacy_product_ids: set[int] = set()
+
+    for item in items:
+        if item.variant_id is not None:
+            variant_ids.add(item.variant_id)
+        elif item.product_id is not None:
+            v_id = (
+                db.query(ProductVariant.id)
+                .filter(ProductVariant.product_id == item.product_id)
+                .scalar()
+            )
+            if v_id is not None:
+                item.variant_id = v_id
+                variant_ids.add(v_id)
+            else:
+                legacy_product_ids.add(item.product_id)
+
+    orders_with_variant_items = {
+        item.order_id for item in items if item.variant_id is not None
+    }
+    legacy_orders_query = (
+        db.query(Order.id, Order.product_id)
+        .filter(Order.id.in_(order_ids), Order.product_id.isnot(None))
+    )
+    if orders_with_variant_items:
+        legacy_orders_query = legacy_orders_query.filter(
+            ~Order.id.in_(orders_with_variant_items)
+        )
+    legacy_order_rows = legacy_orders_query.all()
+
+    for _oid, pid in legacy_order_rows:
+        v_id = (
+            db.query(ProductVariant.id)
+            .filter(ProductVariant.product_id == pid)
+            .scalar()
+        )
+        if v_id is not None:
+            variant_ids.add(v_id)
+        else:
+            legacy_product_ids.add(pid)
+
+    locked_variants = _lock_transition_variants(db, variant_ids)
+    locked_products = _lock_transition_products(db, legacy_product_ids)
+    return locked_variants, locked_products
+
+
+_resolve_and_lock_order_variants = _resolve_and_lock_order_inventory
+
+
 async def change_order_status(
     db: Session,
     order_id: int,
@@ -314,19 +473,9 @@ async def change_order_status(
     order_exists = db.query(Order.id).filter(Order.id == order_id).scalar()
     if order_exists is None:
         raise OrderNotFoundError("Order not found")
-    item_pids = {
-        pid
-        for (pid,) in db.query(OrderItem.product_id)
-        .filter(OrderItem.order_id == order_id)
-        .all()
-    }
-    if not item_pids:
-        legacy_pid = db.query(Order.product_id).filter(Order.id == order_id).scalar()
-        if legacy_pid:
-            item_pids.add(legacy_pid)
 
-    # 1. Lock products FIRST
-    locked_products = _lock_transition_products(db, item_pids)
+    # 1. Lock inventory FIRST
+    locked_variants, locked_products = _resolve_and_lock_order_inventory(db, [order_id])
 
     # 2. Lock order row NEXT
     order = (
@@ -340,9 +489,19 @@ async def change_order_status(
         raise OrderNotFoundError("Order not found")
 
     for item in order.items:
-        item.product = locked_products.get(item.product_id)
-    if order.product_id:
-        order.product = locked_products.get(order.product_id)
+        if item.variant_id:
+            item.variant = locked_variants.get(item.variant_id)
+        if item.product_id and item.product_id in locked_products:
+            item.product = locked_products[item.product_id]
+        elif item.variant and getattr(item.variant, "product", None):
+            item.product = item.variant.product
+        elif item.product_id:
+            item.product = db.get(Product, item.product_id)
+    if order.product_id and order.product_id in locked_products:
+        order.product = locked_products[order.product_id]
+    elif order.product_id and not getattr(order, "product", None):
+        order.product = db.get(Product, order.product_id)
+
 
     apply_order_transition(order, new_status)
     db.commit()
@@ -351,6 +510,7 @@ async def change_order_status(
     if new_status == OrderStatus.PAID:
         await _enqueue_best_effort(queue, "send_payment_received_email_task", order.id)
     return order_to_response(order)
+
 
 
 async def mark_paid(
@@ -468,17 +628,9 @@ def expire_pending_orders(
         return 0
 
     order_ids = [cid for cid, _ in candidates]
-    all_product_ids = {cpid for _, cpid in candidates if cpid is not None}
-    item_pids = {
-        pid
-        for (pid,) in db.query(OrderItem.product_id)
-        .filter(OrderItem.order_id.in_(order_ids))
-        .all()
-    }
-    all_product_ids.update(item_pids)
 
-    # 1. Lock products FIRST
-    locked_products = _lock_transition_products(db, all_product_ids)
+    # 1. Lock inventory FIRST
+    locked_variants, locked_products = _resolve_and_lock_order_inventory(db, order_ids)
 
     # 2. Lock exact order rows in loop (with skip_locked if supported by dialect)
     supports_skip_locked = bool(
@@ -507,9 +659,18 @@ def expire_pending_orders(
             continue
 
         for item in order.items:
-            item.product = locked_products.get(item.product_id)
-        if order.product_id:
-            order.product = locked_products.get(order.product_id)
+            if item.variant_id:
+                item.variant = locked_variants.get(item.variant_id)
+            if item.product_id and item.product_id in locked_products:
+                item.product = locked_products[item.product_id]
+            elif item.variant and getattr(item.variant, "product", None):
+                item.product = item.variant.product
+            elif item.product_id:
+                item.product = db.get(Product, item.product_id)
+        if order.product_id and order.product_id in locked_products:
+            order.product = locked_products[order.product_id]
+        elif order.product_id and not getattr(order, "product", None):
+            order.product = db.get(Product, order.product_id)
 
         apply_order_transition(order, OrderStatus.EXPIRED, current_time)
         expired_count += 1
@@ -518,20 +679,6 @@ def expire_pending_orders(
         invalidate_dashboard_cache()
     return expired_count
 
-
-def _lock_transition_products(db: Session, product_ids: set[int]) -> dict[int, Product]:
-    # Checkout, status changes, and expiration acquire product locks first by ID.
-    # populate_existing refreshes products already present in this session's identity map.
-    locked: dict[int, Product] = {}
-    for product_id in sorted(product_ids):
-        locked[product_id] = (
-            db.query(Product)
-            .filter(Product.id == product_id)
-            .populate_existing()
-            .with_for_update()
-            .one()
-        )
-    return locked
 
 
 def process_vietqr_webhook(
@@ -598,13 +745,7 @@ def process_vietqr_webhook(
             code="amount_mismatch",
         )
 
-    all_product_ids = set()
-    for order in orders:
-        all_product_ids.update(item.product_id for item in order.items)
-        if order.product_id:
-            all_product_ids.add(order.product_id)
-
-    locked_products = _lock_transition_products(db, all_product_ids)
+    locked_variants, locked_products = _resolve_and_lock_order_inventory(db, order_ids)
     current_time = datetime.now(timezone.utc)
     has_pending = False
     has_late = False
@@ -615,10 +756,21 @@ def process_vietqr_webhook(
             has_pending = True
             all_paid = False
             for item in order.items:
-                item.product = locked_products.get(item.product_id)
-            if order.product_id:
-                order.product = locked_products.get(order.product_id)
+                if item.variant_id:
+                    item.variant = locked_variants.get(item.variant_id)
+                if item.product_id and item.product_id in locked_products:
+                    item.product = locked_products[item.product_id]
+                elif item.variant and getattr(item.variant, "product", None):
+                    item.product = item.variant.product
+                elif item.product_id:
+                    item.product = db.get(Product, item.product_id)
+            if order.product_id and order.product_id in locked_products:
+                order.product = locked_products[order.product_id]
+            elif order.product_id and not getattr(order, "product", None):
+                order.product = db.get(Product, order.product_id)
             apply_order_transition(order, OrderStatus.PAID, current_time)
+
+
             payment = Payment(
                 order_id=order.id,
                 provider="vietqr",

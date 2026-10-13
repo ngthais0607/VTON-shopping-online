@@ -15,6 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.features.products.variant_model import ProductVariant  # noqa: F401
 
 
 class Product(Base):

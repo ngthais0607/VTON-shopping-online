@@ -1,13 +1,20 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 
 
 class CartItemRequest(BaseModel):
-    product_id: int = Field(gt=0)
+    variant_id: int | None = Field(default=None, gt=0)
+    product_id: int | None = Field(default=None, gt=0)
     quantity: int = 1
+
+    @model_validator(mode="after")
+    def check_variant_or_product(self) -> "CartItemRequest":
+        if self.variant_id is None and self.product_id is None:
+            raise ValueError("Either variant_id or product_id must be provided")
+        return self
 
 
 class CheckoutCommand(BaseModel):
@@ -75,6 +82,10 @@ class OrderItemResponse(BaseModel):
     unit_price: float
     quantity: int
     subtotal: float
+    variant_id: int | None = None
+    sku: str | None = None
+    size: str | None = None
+    color_name: str | None = None
 
 
 class OrderResponse(BaseModel):

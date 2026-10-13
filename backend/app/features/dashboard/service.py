@@ -13,14 +13,36 @@ from app.features.dashboard.schemas import (
 from app.features.orders.constants import OrderStatus
 from app.features.orders.model import Order, Payment
 from app.features.products.model import Product
+from app.features.products.variant_model import ProductVariant
 from app.features.products.schemas import CategorySummary
 
 
 def _available_stock():
-    return Product.stock_quantity - Product.reserved_quantity - Product.sold_quantity
+    fallback = (
+        Product.stock_quantity - Product.reserved_quantity - Product.sold_quantity
+        if hasattr(Product, "stock_quantity")
+        else 0
+    )
+    return func.coalesce(
+        select(
+            func.sum(
+                ProductVariant.stock_quantity
+                - ProductVariant.reserved_quantity
+                - ProductVariant.sold_quantity
+            )
+        )
+        .where(
+            ProductVariant.product_id == Product.id,
+            ProductVariant.is_active.is_(True),
+        )
+        .correlate(Product)
+        .scalar_subquery(),
+        fallback,
+    )
 
 
 def invalidate_dashboard_cache() -> None:
+
     get_cache().delete("dashboard:metrics")
 
 
@@ -124,13 +146,43 @@ def get_recent_orders(db: Session, limit: int) -> list[RecentOrderSummary]:
 
 def get_low_stock_products(db: Session, limit: int) -> list[LowStockProductSummary]:
     available = _available_stock()
+    variant_stock = func.coalesce(
+        select(func.sum(ProductVariant.stock_quantity))
+        .where(
+            ProductVariant.product_id == Product.id,
+            ProductVariant.is_active.is_(True),
+        )
+        .correlate(Product)
+        .scalar_subquery(),
+        Product.stock_quantity if hasattr(Product, "stock_quantity") else 0,
+    )
+    variant_reserved = func.coalesce(
+        select(func.sum(ProductVariant.reserved_quantity))
+        .where(
+            ProductVariant.product_id == Product.id,
+            ProductVariant.is_active.is_(True),
+        )
+        .correlate(Product)
+        .scalar_subquery(),
+        Product.reserved_quantity if hasattr(Product, "reserved_quantity") else 0,
+    )
+    variant_sold = func.coalesce(
+        select(func.sum(ProductVariant.sold_quantity))
+        .where(
+            ProductVariant.product_id == Product.id,
+            ProductVariant.is_active.is_(True),
+        )
+        .correlate(Product)
+        .scalar_subquery(),
+        Product.sold_quantity if hasattr(Product, "sold_quantity") else 0,
+    )
     rows = db.execute(
         select(
             Product.id,
             Product.name,
-            Product.stock_quantity,
-            Product.reserved_quantity,
-            Product.sold_quantity,
+            variant_stock.label("stock_quantity"),
+            variant_reserved.label("reserved_quantity"),
+            variant_sold.label("sold_quantity"),
             available.label("available_stock"),
             Category.id.label("category_id"),
             Category.name.label("category_name"),
@@ -144,6 +196,7 @@ def get_low_stock_products(db: Session, limit: int) -> list[LowStockProductSumma
         .order_by(available.asc(), Product.id.asc())
         .limit(limit)
     ).all()
+
     return [
         LowStockProductSummary(
             id=row.id,

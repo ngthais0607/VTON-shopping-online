@@ -10,6 +10,7 @@ from app.core.schemas import Page
 from app.features.categories import service as category_service
 from app.features.categories.model import Category
 from app.features.products.model import Product
+from app.features.products.variant_model import ProductVariant
 from app.features.products.schemas import (
     ProductCreate,
     ProductFilters,
@@ -25,16 +26,32 @@ def create_product(db: Session, command: ProductCreate) -> Product:
     if command.category_id is not None:
         category = category_service.get_category(db, command.category_id)
 
-    product = Product(**command.model_dump())
+    data = command.model_dump()
+    stock_qty = data.get("stock_quantity", 0)
+    product = Product(**data)
     if category is not None:
         product.category = category
     product.images = []
 
     db.add(product)
     db.flush()
+
+    default_variant = ProductVariant(
+        product_id=product.id,
+        sku=f"P{product.id}-DEFAULT",
+        size="ONE_SIZE",
+        color_name="Default",
+        stock_quantity=stock_qty,
+        reserved_quantity=0,
+        sold_quantity=0,
+        is_active=True,
+    )
+    db.add(default_variant)
+
     product_id = product.id
     db.commit()
     return _get_active_product(db, product_id)
+
 
 
 def list_products(db: Session, filters: ProductFilters) -> Page[Product]:
@@ -119,12 +136,19 @@ def update_product(
             else None
         )
 
-    stock_quantity = changes.get("stock_quantity", product.stock_quantity)
-    if product.reserved_quantity + product.sold_quantity > stock_quantity:
-        raise BusinessRuleError(
-            "Reserved and sold quantities cannot exceed total stock",
-            code="invalid_product_inventory",
-        )
+    stock_quantity = changes.get("stock_quantity")
+    if stock_quantity is not None:
+        if (
+            (product.reserved_quantity or 0) + (product.sold_quantity or 0)
+            > stock_quantity
+        ):
+            raise BusinessRuleError(
+                "Reserved and sold quantities cannot exceed total stock",
+                code="invalid_product_inventory",
+            )
+        if product.variants:
+            first_v = product.variants[0]
+            first_v.stock_quantity = stock_quantity
 
     for field, value in changes.items():
         setattr(product, field, value)
@@ -139,12 +163,16 @@ def adjust_product_stock(
     db: Session, product_id: int, command: ProductStockAdjustment
 ) -> Product:
     product = _get_active_product(db, product_id)
-    if product.reserved_quantity + product.sold_quantity > command.stock_quantity:
+    if (product.reserved_quantity or 0) + (product.sold_quantity or 0) > command.stock_quantity:
         raise BusinessRuleError(
             "Reserved and sold quantities cannot exceed total stock",
             code="invalid_product_inventory",
         )
-    product.stock_quantity = command.stock_quantity
+    if hasattr(product, "stock_quantity"):
+        product.stock_quantity = command.stock_quantity
+    if product.variants:
+        first_v = product.variants[0]
+        first_v.stock_quantity = command.stock_quantity
     db.commit()
     return _get_active_product(db, product_id)
 
@@ -165,6 +193,7 @@ def _active_products_query(db: Session) -> Query:
             selectinload(Product.images),
         )
         .filter(
+
             Product.is_deleted.is_(False),
             or_(
                 Product.category_id.is_(None),
@@ -172,6 +201,7 @@ def _active_products_query(db: Session) -> Query:
             ),
         )
     )
+
 
 
 def _get_active_product(db: Session, product_id: int) -> Product:
