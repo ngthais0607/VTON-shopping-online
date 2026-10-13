@@ -82,7 +82,7 @@ jobs:
       - name: Lint with Ruff
         working-directory: backend
         run: |
-          ruff check app/ tests/
+          ruff check .
 
       - name: Run Alembic Migrations
         working-directory: backend

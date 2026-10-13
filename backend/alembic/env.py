@@ -2,8 +2,7 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -11,13 +10,13 @@ from alembic import context
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import cấu hình và metadata từ dự án FastAPI
-from app.core.database import Base, DATABASE_URL
+from app.core.database import DATABASE_URL, Base
 
 # Import all models to ensure they register on Base.metadata for autogenerate
-from app.features.users.model import User
-from app.features.products.model import Product, ProductImage
-from app.features.categories.model import Category
-from app.features.orders.model import Order, Payment
+from app.features.categories.model import Category  # noqa: F401  # Alembic autogenerate registration
+from app.features.orders.model import Order, Payment  # noqa: F401  # Alembic autogenerate registration
+from app.features.products.model import Product, ProductImage, ProductReview  # noqa: F401  # Alembic autogenerate registration
+from app.features.users.model import User  # noqa: F401  # Alembic autogenerate registration
 
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config

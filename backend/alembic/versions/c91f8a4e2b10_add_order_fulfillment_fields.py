@@ -5,9 +5,9 @@ Revises: 6ea70e2e94f1
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "c91f8a4e2b10"
 down_revision: Union[str, None] = "6ea70e2e94f1"
