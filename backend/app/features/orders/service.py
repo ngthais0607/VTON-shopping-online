@@ -144,8 +144,19 @@ def _vietqr_response(orders: list[Order]) -> VietQRResponse:
 async def _enqueue_best_effort(queue: TaskQueue, task_name: str, order_id: int) -> None:
     try:
         await queue.enqueue(task_name, order_id)
-    except Exception:
-        logger.exception("Failed to enqueue %s for order %s", task_name, order_id)
+    except Exception as exc:
+        logger.error(
+            "Failed to enqueue email task %s for order %s: %s",
+            task_name,
+            order_id,
+            exc,
+            extra={
+                "order_id": order_id,
+                "task_name": task_name,
+                "error": str(exc),
+            },
+            exc_info=True,
+        )
 
 
 async def checkout_cart(

@@ -52,8 +52,18 @@ async def register_user(
     user = _create_user(db, command)
     try:
         await queue.enqueue("send_welcome_email_task", user.id)
-    except Exception:
-        logger.exception("Failed to enqueue welcome email for user %s", user.id)
+    except Exception as exc:
+        logger.error(
+            "Failed to enqueue welcome email for user %s: %s",
+            user.id,
+            exc,
+            extra={
+                "user_id": user.id,
+                "task_name": "send_welcome_email_task",
+                "error": str(exc),
+            },
+            exc_info=True,
+        )
     return user
 
 
