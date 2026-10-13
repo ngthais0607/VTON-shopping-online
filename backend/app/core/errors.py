@@ -14,7 +14,7 @@ class ErrorResponse(BaseModel):
     details: Any | None = None
 
 
-COMMON_ERROR_RESPONSES: dict[int, dict[str, Any]] = {
+COMMON_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": ErrorResponse, "description": "Invalid application request"},
     401: {"model": ErrorResponse, "description": "Authentication required"},
     403: {"model": ErrorResponse, "description": "Access forbidden"},

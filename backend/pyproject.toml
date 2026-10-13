@@ -1,5 +1,7 @@
 [tool.pyrefly]
+preset = "basic"
 python-interpreter-path = ".venv/Scripts/python.exe"
+search_path = ["."]
 
 [tool.ruff]
 target-version = "py313"
