@@ -208,6 +208,7 @@ function PurchaseModal({ product, currentUser, onClose, onOrderSuccess }: Purcha
     </motion.div>
   );
 }
+import Link from "next/link";
 import { Eye } from "lucide-react";
 
 interface ProductCardProps {
@@ -219,6 +220,19 @@ interface ProductCardProps {
 
 function ProductCard({ product, onBuy, onQuickView, index }: ProductCardProps) {
   const [liked, setLiked] = useState(false);
+  const pdpUrl = `/store/products/${product.source.slug || product.id}`;
+
+  const colors = Array.from(
+    new Map(
+      (product.source.variants || [])
+        .filter((v) => v.color_name)
+        .map((v) => [v.color_name, { name: v.color_name, hex: v.color_hex }]),
+    ).values(),
+  );
+
+  const priceMin = product.source.price_min;
+  const priceMax = product.source.price_max;
+  const isRange = priceMin && priceMax && priceMin < priceMax;
 
   return (
     <motion.div
@@ -229,12 +243,14 @@ function ProductCard({ product, onBuy, onQuickView, index }: ProductCardProps) {
       className="group bg-white rounded-2xl border border-border overflow-hidden hover:shadow-[0_8px_40px_rgba(0,0,0,0.1)] hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
     >
       <div className="relative aspect-square bg-slate-50 overflow-hidden">
-        <Image
-          src={product.img}
-          alt={product.name}
-          fill
-          className="object-cover group-hover:scale-105 transition-transform duration-500"
-        />
+        <Link href={pdpUrl} className="block w-full h-full">
+          <Image
+            src={product.img}
+            alt={product.name}
+            fill
+            className="object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        </Link>
         {product.badge && (
           <span className={`absolute top-3 left-3 text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-xl shadow-sm ${product.badgeColor}`}>
             {product.badge}
@@ -260,7 +276,25 @@ function ProductCard({ product, onBuy, onQuickView, index }: ProductCardProps) {
       <div className="p-4 flex-1 flex flex-col justify-between">
         <div>
           <p className="text-[10px] uppercase font-bold text-sky-600 tracking-wider mb-1">{product.category}</p>
-          <h3 className="text-foreground text-sm font-semibold mb-2 leading-snug line-clamp-1">{product.name}</h3>
+          <Link href={pdpUrl} className="block hover:text-sky-600 transition-colors">
+            <h3 className="text-foreground text-sm font-semibold mb-1.5 leading-snug line-clamp-1">{product.name}</h3>
+          </Link>
+
+          {colors.length > 0 && (
+            <div className="flex items-center gap-1.5 mb-2">
+              {colors.slice(0, 4).map((c) => (
+                <span
+                  key={c.name}
+                  title={c.name}
+                  className="w-2.5 h-2.5 rounded-full border border-black/10 shadow-2xs"
+                  style={{ backgroundColor: c.hex || "#94a3b8" }}
+                />
+              ))}
+              {colors.length > 4 && (
+                <span className="text-[10px] text-slate-400 font-bold">+{colors.length - 4}</span>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5 mb-3">
             <div className="flex items-center gap-0.5">
@@ -275,7 +309,9 @@ function ProductCard({ product, onBuy, onQuickView, index }: ProductCardProps) {
         <div>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <span className="text-slate-900 font-bold text-base">${product.price}</span>
+              <span className="text-slate-900 font-bold text-base">
+                {isRange ? `Từ $${priceMin}` : `$${product.price}`}
+              </span>
               {product.originalPrice && (
                 <span className="text-xs text-slate-400 line-through ml-1.5">${product.originalPrice}</span>
               )}

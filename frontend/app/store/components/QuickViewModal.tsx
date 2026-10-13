@@ -9,6 +9,8 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/api";
 import { getAvailableStock } from "@/lib/inventory";
+import { useVariantSelection } from "@/hooks/use-variant-selection";
+import Link from "next/link";
 
 interface QuickViewModalProps {
   product: Product;
@@ -37,6 +39,22 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   const [reviewMsg, setReviewMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const availableStock = getAvailableStock(product);
+  const {
+    selectedColor,
+    selectedSize,
+    selectedVariant,
+    availableColors,
+    availableSizes,
+    isOutOfStock,
+    price,
+    setColor,
+    setSize,
+  } = useVariantSelection({
+    variants: product.variants ?? [],
+    defaultPrice: product.price,
+  });
+
+  const effectiveStock = selectedVariant ? getAvailableStock(selectedVariant) : availableStock;
   const imageUrl = product.images && product.images.length > 0 ? product.images[0].url : undefined;
 
   const fetchReviews = useCallback(async () => {
@@ -184,22 +202,77 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                       {product.description || "High quality product crafted with precision and style. Perfect for everyday use."}
                     </p>
 
+                    {/* Color and Size Selectors */}
+                    {availableColors.length > 0 && (
+                      <div className="mt-3">
+                        <span className="text-xs font-bold text-slate-700 block mb-1.5">
+                          Màu sắc: <span className="font-semibold text-slate-500">{selectedColor}</span>
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {availableColors.map((c) => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => setColor(c.name)}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                                selectedColor === c.name
+                                  ? "border-sky-500 bg-sky-50 text-sky-800"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                              }`}
+                            >
+                              <span
+                                className="w-2.5 h-2.5 rounded-full border border-black/10 shrink-0"
+                                style={{ backgroundColor: c.hex || "#94a3b8" }}
+                              />
+                              <span>{c.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {availableSizes.length > 0 && (
+                      <div className="mt-3">
+                        <span className="text-xs font-bold text-slate-700 block mb-1.5">
+                          Kích cỡ: <span className="font-semibold text-slate-500">{selectedSize}</span>
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {availableSizes.map((s) => (
+                            <button
+                              key={s.size}
+                              type="button"
+                              onClick={() => setSize(s.size)}
+                              className={`min-w-8 h-8 px-2 rounded-lg text-xs font-bold border transition-all ${
+                                !s.inStock
+                                  ? "border-slate-200 bg-slate-100 text-slate-300 opacity-60 line-through"
+                                  : selectedSize === s.size
+                                  ? "border-sky-500 bg-sky-500 text-white shadow-xs"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                              }`}
+                            >
+                              {s.size}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Stock Badge */}
                     <div className="mt-4 flex items-center gap-2">
                       <span
                         className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          availableStock <= 0
+                          effectiveStock <= 0
                             ? "bg-rose-50 text-rose-600 border border-rose-100"
-                            : availableStock < 10
+                            : effectiveStock < 10
                             ? "bg-amber-50 text-amber-600 border border-amber-100"
                             : "bg-emerald-50 text-emerald-600 border border-emerald-100"
                         }`}
                       >
-                        {availableStock <= 0
+                        {effectiveStock <= 0
                           ? "Out of Stock"
-                          : availableStock < 10
-                          ? `Only ${availableStock} left in stock`
-                          : `In Stock (${availableStock} available)`}
+                          : effectiveStock < 10
+                          ? `Only ${effectiveStock} left in stock`
+                          : `In Stock (${effectiveStock} available)`}
                       </span>
                     </div>
                   </div>
@@ -239,7 +312,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                     </div>
 
                     <Button
-                      disabled={availableStock <= 0 || added}
+                      disabled={effectiveStock <= 0 || added || isOutOfStock}
                       onClick={handleAddToCart}
                       className="w-full h-11 bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white font-bold rounded-xl shadow-md shadow-sky-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
                     >
@@ -251,10 +324,19 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                       ) : (
                         <>
                           <ShoppingCart className="w-4 h-4" />
-                          <span>Add to Cart · ${(product.price * quantity).toLocaleString()}</span>
+                          <span>Add to Cart · ${(price * quantity).toLocaleString()}</span>
                         </>
                       )}
                     </Button>
+
+                    <div className="text-center pt-1">
+                      <Link
+                        href={`/store/products/${product.slug || product.id}`}
+                        className="text-xs font-semibold text-sky-600 hover:text-sky-700 hover:underline transition-colors"
+                      >
+                        Xem chi tiết & bảng thông số đầy đủ →
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { getAvailableStock, isVariantInStock } from "@/lib/inventory";
 import type { ProductVariant } from "@/lib/types";
@@ -57,6 +57,19 @@ export function useVariantSelection({
   const [selectedSize, setSelectedSize] = useState<string | null>(
     () => initialVariant?.size ?? null,
   );
+
+  useEffect(() => {
+    if (
+      variants.length > 0 &&
+      (!selectedColor || !variants.some((v) => v.color_name === selectedColor))
+    ) {
+      const target = initialVariant ?? variants[0];
+      if (target) {
+        setSelectedColor(target.color_name);
+        setSelectedSize(target.size);
+      }
+    }
+  }, [variants, selectedColor, initialVariant]);
 
   // Available unique colors
   const availableColors = useMemo<AvailableColor[]>(() => {
