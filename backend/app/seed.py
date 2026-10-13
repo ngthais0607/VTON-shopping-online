@@ -80,12 +80,16 @@ def seed_database(db=None, force: bool = False):
         legacy_cat_names = ["Electronics", "Home & Living", "Beauty & Care", "Sports & Outdoor"]
         legacy_cats = db.query(Category).filter(Category.name.in_(legacy_cat_names)).all()
         for lcat in legacy_cats:
-            # Delete related legacy products without variants or deactivate
             legacy_prods = db.query(Product).filter(Product.category_id == lcat.id).all()
             for lp in legacy_prods:
-                db.query(ProductImage).filter(ProductImage.product_id == lp.id).delete()
-                db.delete(lp)
-            db.delete(lcat)
+                has_orders = db.query(OrderItem).filter(OrderItem.product_id == lp.id).count() > 0
+                if has_orders:
+                    lp.is_active = False
+                    lp.category_id = None
+                else:
+                    db.query(ProductImage).filter(ProductImage.product_id == lp.id).delete()
+                    db.delete(lp)
+            lcat.is_deleted = True
         db.commit()
 
         # 4. Seed Fashion Categories & Subcategories
