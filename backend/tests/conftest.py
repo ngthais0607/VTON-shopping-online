@@ -12,6 +12,8 @@ os.environ["DATABASE_URL"] = "sqlite:///./test.db"
 # Keep DTO URL expectations independent of a developer's local object-store settings.
 os.environ["MINIO_BUCKET"] = "product-images"
 os.environ["MINIO_ENDPOINT"] = "localhost:9000"
+os.environ["MINIO_ACCESS_KEY"] = "test-minio-access-key"
+os.environ["MINIO_SECRET_KEY"] = "test-minio-secret-key"
 os.environ["MINIO_EXTERNAL_URL"] = ""
 os.environ["VIETQR_BANK_ID"] = "MB"
 os.environ["VIETQR_BANK_NAME"] = "MB Bank (Ngan hang Quan doi)"

@@ -39,6 +39,8 @@ jobs:
       VIETQR_ACCOUNT_NO: "0382912048"
       VIETQR_ACCOUNT_NAME: TRUELOOK
       VIETQR_WEBHOOK_SECRET: ci-test-webhook-secret-32-chars-min
+      MINIO_ACCESS_KEY: ci-test-minio-access-key
+      MINIO_SECRET_KEY: ci-test-minio-secret-key
 
     steps:
       - name: Checkout Code

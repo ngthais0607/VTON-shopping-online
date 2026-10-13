@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     ] = ("http://localhost:3000",)
 
     minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "admin"
-    minio_secret_key: str = "password123"
+    minio_access_key: str = Field(min_length=1)
+    minio_secret_key: str = Field(min_length=1)
     minio_bucket: str = "product-images"
     minio_external_url: str = ""
 
