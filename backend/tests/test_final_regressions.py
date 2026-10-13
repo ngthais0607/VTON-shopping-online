@@ -13,20 +13,36 @@ from app.core.rate_limiter import limiter
 from app.core.security import hash_password
 from app.features.categories.model import Category
 from app.features.orders.constants import OrderStatus
-from app.features.orders.model import Order
+from app.features.orders.model import Order, OrderItem
 from app.features.orders.service import change_order_status, expire_pending_orders
 from app.features.products.model import Product
 from app.features.products.schemas import ProductPatch
 from app.features.products.service import update_product
+from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
 from app.integrations.queue import get_task_queue
 
 
 def product_row(db, **kwargs):
+    stock_qty = kwargs.pop("stock_quantity", 10)
+    reserved_qty = kwargs.pop("reserved_quantity", 0)
+    sold_qty = kwargs.pop("sold_quantity", 0)
     product = Product(
-        name="Final regression", price=10.5, currency="VND", stock_quantity=10, **kwargs
+        name="Final regression", price=10.5, currency="VND", **kwargs
     )
     db.add(product)
+    db.flush()
+    variant = ProductVariant(
+        product_id=product.id,
+        sku=f"REG-{product.id}-DEF",
+        size="ONE_SIZE",
+        color_name="Default",
+        stock_quantity=stock_qty,
+        reserved_quantity=reserved_qty,
+        sold_quantity=sold_qty,
+        is_active=True,
+    )
+    db.add(variant)
     db.commit()
     db.refresh(product)
     return product
@@ -46,9 +62,10 @@ def checkout_payload(product_id, **kwargs):
 def test_product_patch_locks_and_refreshes_before_inventory_merge(db_session):
     product = product_row(db_session, reserved_quantity=1)
     product_id = product.id
+    assert product.reserved_quantity == 1
     db_session.execute(
-        update(Product)
-        .where(Product.id == product_id)
+        update(ProductVariant)
+        .where(ProductVariant.product_id == product_id)
         .values(reserved_quantity=8)
         .execution_options(synchronize_session=False)
     )
@@ -56,7 +73,7 @@ def test_product_patch_locks_and_refreshes_before_inventory_merge(db_session):
     reads = []
 
     def require_lock(state):
-        if state.is_select and state.bind_mapper.class_ is Product:
+        if state.is_select and state.bind_mapper.class_ in (Product, ProductVariant):
             reads.append(state.statement)
             assert state.statement._for_update_arg is not None, (
                 "inventory merge read must lock"
@@ -79,6 +96,7 @@ def test_transition_retains_locked_product_without_nonlocking_reload(
 ):
     product = product_row(db_session, reserved_quantity=3, sold_quantity=2)
     product_id = product.id
+    variant = product.variants[0]
     order = Order(
         product_id=product_id,
         product_name=product.name,
@@ -93,6 +111,19 @@ def test_transition_retains_locked_product_without_nonlocking_reload(
         payment_method="vietqr",
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
+    item = OrderItem(
+        order=order,
+        product_id=product.id,
+        product_name=product.name,
+        variant_id=variant.id,
+        sku=variant.sku,
+        size=variant.size,
+        color_name=variant.color_name,
+        unit_price=10,
+        quantity=1,
+        subtotal=10,
+    )
+    order.items = [item]
     db_session.add(order)
     db_session.commit()
     order_id = order.id
@@ -104,7 +135,7 @@ def test_transition_retains_locked_product_without_nonlocking_reload(
 
         def require_lock(state):
             gc.collect()
-            if state.is_select and state.bind_mapper.class_ is Product:
+            if state.is_select and state.bind_mapper.class_ in (Product, ProductVariant):
                 reads.append(state.statement)
                 assert state.statement._for_update_arg is not None, (
                     "locked Product was discarded and lazily reloaded"

@@ -123,6 +123,10 @@ class ProductImageResponse(BaseModel):
 
     id: str
     url: str = Field(validation_alias=AliasChoices("url", "object_name"))
+    color_name: str | None = None
+    kind: str = "model_photo"
+    is_primary: bool = False
+    sort_order: int = 0
 
     @field_validator("url", mode="before")
     @classmethod
@@ -212,6 +216,13 @@ class ProductFacetsResponse(BaseModel):
     price_max: float
 
 
+class FitFeedbackSummary(BaseModel):
+    small: float = 0.0
+    true_to_size: float = 0.0
+    large: float = 0.0
+    total_responses: int = 0
+
+
 class ProductDetailResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -238,6 +249,7 @@ class ProductDetailResponse(BaseModel):
     variants: list[ProductVariantResponse] = []
     available_sizes: list[str] = []
     available_colors: list[FacetColor] = []
+    fit_feedback: FitFeedbackSummary | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -246,6 +258,7 @@ class ReviewCreate(BaseModel):
     rating: int = Field(ge=1, le=5)
     title: str | None = Field(default=None, max_length=255)
     comment: str | None = Field(default=None, max_length=1000)
+    fit_feedback: str | None = Field(default=None, pattern="^(small|true_to_size|large)$")
 
 
 class ReviewResponse(BaseModel):
@@ -258,6 +271,7 @@ class ReviewResponse(BaseModel):
     rating: int
     title: str | None = None
     comment: str | None = None
+    fit_feedback: str | None = None
     is_verified_purchase: bool
     created_at: datetime | None = None
 
@@ -266,3 +280,4 @@ class ReviewSummary(BaseModel):
     average_rating: float | None
     total_reviews: int
     reviews: list[ReviewResponse]
+    fit_feedback: FitFeedbackSummary | None = None

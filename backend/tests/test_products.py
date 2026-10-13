@@ -304,12 +304,12 @@ def test_get_product_returns_category_and_public_image_url(client, db_session):
         "id": category.id,
         "name": "Electronics",
     }
-    assert response.json()["images"] == [
-        {
-            "id": "camera-front",
-            "url": "http://localhost:9000/product-images/products/camera-front.png",
-        }
-    ]
+    assert len(response.json()["images"]) == 1
+    assert response.json()["images"][0]["id"] == "camera-front"
+    assert (
+        response.json()["images"][0]["url"]
+        == "http://localhost:9000/product-images/products/camera-front.png"
+    )
 
 
 def test_list_products_eager_loads_category_and_images_without_n_plus_one(

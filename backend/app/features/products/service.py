@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Query, Session, joinedload, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.errors import BusinessRuleError, ConflictError, ResourceNotFoundError
 from app.core.schemas import Page
@@ -312,6 +313,7 @@ def update_product(
         raise ResourceNotFoundError(
             f"Product {product_id} was not found", code="product_not_found"
         )
+    set_committed_value(product, "variants", variants)
     changes = command.model_dump(exclude_unset=True)
 
     if changes.get("is_active") is True:

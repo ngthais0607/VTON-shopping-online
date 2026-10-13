@@ -90,10 +90,9 @@ def apply_order_transition(
     items = getattr(order, "items", None)
     if items:
         for item in items:
-            target = getattr(item, "variant", None) or getattr(item, "product", None)
-            prod = getattr(item, "product", None) or (
-                getattr(target, "product", None) if target is not None else None
-            )
+            target = getattr(item, "variant", None)
+            if target is None:
+                target = getattr(item, "product", None)
             qty = item.quantity or 0
             if target is not None and getattr(target, "reserved_quantity", None) is not None:
                 if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
@@ -105,22 +104,6 @@ def apply_order_transition(
                     and new_status == OrderStatus.CANCELLED
                 ):
                     target.sold_quantity = max(0, (getattr(target, "sold_quantity", 0) or 0) - qty)
-
-            if (
-                prod is not None
-                and prod is not target
-                and getattr(prod, "reserved_quantity", None) is not None
-            ):
-                if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
-                    prod.reserved_quantity = max(0, prod.reserved_quantity - qty)
-                    if new_status == OrderStatus.PAID and getattr(prod, "sold_quantity", None) is not None:
-                        prod.sold_quantity = (getattr(prod, "sold_quantity", 0) or 0) + qty
-                elif (
-                    current_status == OrderStatus.PAID
-                    and new_status == OrderStatus.CANCELLED
-                ):
-                    if getattr(prod, "sold_quantity", None) is not None:
-                        prod.sold_quantity = max(0, (getattr(prod, "sold_quantity", 0) or 0) - qty)
     elif getattr(order, "product", None) is not None:
         prod = order.product
         qty = order.quantity or 0

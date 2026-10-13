@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -141,6 +141,12 @@ def delete_product(
 
 
 @router.post(
+    "/{product_id}/upload-image",
+    response_model=ProductImageResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload product image (legacy endpoint)",
+)
+@router.post(
     "/{product_id}/images",
     response_model=ProductImageResponse,
     status_code=status.HTTP_201_CREATED,
@@ -149,11 +155,26 @@ def delete_product(
 def upload_image(
     product_id: int,
     file: UploadFile = File(...),
+    color_name: str | None = Form(default=None),
+    kind: str = Form(default="model_photo"),
+    is_primary: bool = Form(default=False),
+    sort_order: int = Form(default=0),
     db: Session = Depends(get_db),
     storage: ProductStorage = Depends(get_product_storage),
     _current_admin: User = Depends(get_current_admin),
 ):
-    return images.upload_product_image(db, storage, product_id, file)
+    return images.upload_product_image(
+        db,
+        storage,
+        product_id,
+        file.file,
+        file.filename or "",
+        file.content_type or "",
+        color_name=color_name,
+        kind=kind,
+        is_primary=is_primary,
+        sort_order=sort_order,
+    )
 
 
 @router.delete(

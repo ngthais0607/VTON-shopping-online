@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
-from app.core.errors import BusinessRuleError
+from app.core.errors import BusinessRuleError, ResourceNotFoundError
 from app.features.products import service
 from app.features.products.model import ProductImage
 from app.integrations.storage import ProductStorage
@@ -56,6 +56,10 @@ def store_product_image(
     filename: str,
     content_type: str,
     size: int | None = None,
+    color_name: str | None = None,
+    kind: str = "model_photo",
+    is_primary: bool = False,
+    sort_order: int = 0,
 ) -> ProductImage:
     product = service.get_product(db, product_id)
 
@@ -105,10 +109,19 @@ def store_product_image(
     public_url = storage.public_url(object_name)
     storage.put(object_name, BytesIO(payload), content_type)
 
+    if is_primary:
+        db.query(ProductImage).filter(ProductImage.product_id == product.id).update(
+            {ProductImage.is_primary: False}
+        )
+
     image = ProductImage(
         id=image_id,
         product_id=product.id,
         object_name=object_name,
+        color_name=color_name,
+        kind=kind or "model_photo",
+        is_primary=is_primary,
+        sort_order=sort_order,
     )
     image.url = public_url
     try:
@@ -132,3 +145,54 @@ def store_product_image(
         raise
 
     return image
+
+
+def upload_product_image(
+    db: Session,
+    storage: ProductStorage,
+    product_id: int,
+    stream: BinaryIO,
+    filename: str,
+    content_type: str,
+    color_name: str | None = None,
+    kind: str = "model_photo",
+    is_primary: bool = False,
+    sort_order: int = 0,
+) -> ProductImage:
+    return store_product_image(
+        db,
+        storage,
+        product_id,
+        stream,
+        filename,
+        content_type,
+        color_name=color_name,
+        kind=kind,
+        is_primary=is_primary,
+        sort_order=sort_order,
+    )
+
+
+def delete_product_image(
+    db: Session,
+    storage: ProductStorage,
+    product_id: int,
+    image_id: str,
+) -> None:
+    service.get_product(db, product_id)
+    image = (
+        db.query(ProductImage)
+        .filter(
+            ProductImage.id == image_id,
+            ProductImage.product_id == product_id,
+        )
+        .first()
+    )
+    if image is None:
+        raise ResourceNotFoundError(
+            f"Image {image_id} was not found",
+            code="image_not_found",
+        )
+    storage.delete(image.object_name)
+    db.delete(image)
+    db.commit()

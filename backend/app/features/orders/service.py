@@ -491,13 +491,11 @@ async def change_order_status(
             item.variant = locked_variants.get(item.variant_id)
         if item.product_id and item.product_id in locked_products:
             item.product = locked_products[item.product_id]
-        elif item.variant and getattr(item.variant, "product", None):
-            item.product = item.variant.product
-        elif item.product_id:
+        elif not item.variant and item.product_id:
             item.product = db.get(Product, item.product_id)
     if order.product_id and order.product_id in locked_products:
         order.product = locked_products[order.product_id]
-    elif order.product_id and not getattr(order, "product", None):
+    elif not order.items and order.product_id and "product" not in order.__dict__:
         order.product = db.get(Product, order.product_id)
 
 
@@ -661,13 +659,11 @@ def expire_pending_orders(
                 item.variant = locked_variants.get(item.variant_id)
             if item.product_id and item.product_id in locked_products:
                 item.product = locked_products[item.product_id]
-            elif item.variant and getattr(item.variant, "product", None):
-                item.product = item.variant.product
-            elif item.product_id:
+            elif not item.variant and item.product_id:
                 item.product = db.get(Product, item.product_id)
         if order.product_id and order.product_id in locked_products:
             order.product = locked_products[order.product_id]
-        elif order.product_id and not getattr(order, "product", None):
+        elif not order.items and order.product_id and "product" not in order.__dict__:
             order.product = db.get(Product, order.product_id)
 
         apply_order_transition(order, OrderStatus.EXPIRED, current_time)
@@ -758,13 +754,11 @@ def process_vietqr_webhook(
                     item.variant = locked_variants.get(item.variant_id)
                 if item.product_id and item.product_id in locked_products:
                     item.product = locked_products[item.product_id]
-                elif item.variant and getattr(item.variant, "product", None):
-                    item.product = item.variant.product
-                elif item.product_id:
+                elif not item.variant and item.product_id:
                     item.product = db.get(Product, item.product_id)
             if order.product_id and order.product_id in locked_products:
                 order.product = locked_products[order.product_id]
-            elif order.product_id and not getattr(order, "product", None):
+            elif not order.items and order.product_id and "product" not in order.__dict__:
                 order.product = db.get(Product, order.product_id)
             apply_order_transition(order, OrderStatus.PAID, current_time)
 

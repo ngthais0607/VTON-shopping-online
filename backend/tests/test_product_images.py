@@ -72,8 +72,27 @@ def persist_product(db_session, **overrides) -> Product:
         "price": 59.99,
         "stock_quantity": 10,
     }
-    product = Product(**(values | overrides))
+    merged = values | overrides
+    if "slug" not in merged:
+        from app.core.slug import generate_unique_slug
+        existing_slugs = set(s[0] for s in db_session.query(Product.slug).all())
+        merged["slug"] = generate_unique_slug(merged["name"], existing_slugs)
+    product = Product(**merged)
     db_session.add(product)
+    db_session.flush()
+
+    if not product.variants:
+        from app.features.products.variant_model import ProductVariant
+        variant = ProductVariant(
+            product_id=product.id,
+            sku=f"P{product.id}-DEFAULT",
+            size="ONE_SIZE",
+            color_name="Default",
+            stock_quantity=merged.get("stock_quantity", 10),
+            is_active=True,
+        )
+        db_session.add(variant)
+
     db_session.commit()
     db_session.refresh(product)
     return product
@@ -390,10 +409,46 @@ def test_upload_route_returns_public_contract_without_object_name(
     )
 
     assert response.status_code == 201
-    assert response.json().keys() == {"id", "url"}
+    assert response.json().keys() == {"id", "url", "color_name", "kind", "is_primary", "sort_order"}
     assert response.json()["url"].startswith("https://images.example.test/products/")
     assert "object_name" not in response.text
     assert product_storage.put_payloads == [VALID_WEBP_BYTES]
+
+
+def test_upload_image_with_color_kind_and_primary_flag(
+    client,
+    db_session,
+    mock_admin_auth,
+    product_storage,
+):
+    product = persist_product(db_session)
+
+    res1 = client.post(
+        f"/api/v1/products/{product.id}/upload-image",
+        data={"color_name": "Navy", "kind": "model_photo", "is_primary": "true"},
+        files={"file": ("model.png", VALID_PNG_BYTES, "image/png")},
+    )
+    assert res1.status_code == 201
+    img1 = res1.json()
+    assert img1["color_name"] == "Navy"
+    assert img1["kind"] == "model_photo"
+    assert img1["is_primary"] is True
+
+    # Upload second image as primary, ensuring first becomes non-primary
+    res2 = client.post(
+        f"/api/v1/products/{product.id}/upload-image",
+        data={"color_name": "White", "kind": "flat_lay", "is_primary": "true"},
+        files={"file": ("flat.png", VALID_PNG_BYTES, "image/png")},
+    )
+    assert res2.status_code == 201
+    img2 = res2.json()
+    assert img2["color_name"] == "White"
+    assert img2["kind"] == "flat_lay"
+    assert img2["is_primary"] is True
+
+    db_session.expire_all()
+    first_db = db_session.get(ProductImage, img1["id"])
+    assert first_db.is_primary is False
 
 
 def test_minio_storage_adapter_uses_settings_and_sdk_primitives():
