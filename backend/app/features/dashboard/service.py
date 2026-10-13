@@ -18,11 +18,6 @@ from app.features.products.schemas import CategorySummary
 
 
 def _available_stock():
-    fallback = (
-        Product.stock_quantity - Product.reserved_quantity - Product.sold_quantity
-        if hasattr(Product, "stock_quantity")
-        else 0
-    )
     return func.coalesce(
         select(
             func.sum(
@@ -37,7 +32,7 @@ def _available_stock():
         )
         .correlate(Product)
         .scalar_subquery(),
-        fallback,
+        0,
     )
 
 
@@ -154,7 +149,7 @@ def get_low_stock_products(db: Session, limit: int) -> list[LowStockProductSumma
         )
         .correlate(Product)
         .scalar_subquery(),
-        Product.stock_quantity if hasattr(Product, "stock_quantity") else 0,
+        0,
     )
     variant_reserved = func.coalesce(
         select(func.sum(ProductVariant.reserved_quantity))
@@ -164,7 +159,7 @@ def get_low_stock_products(db: Session, limit: int) -> list[LowStockProductSumma
         )
         .correlate(Product)
         .scalar_subquery(),
-        Product.reserved_quantity if hasattr(Product, "reserved_quantity") else 0,
+        0,
     )
     variant_sold = func.coalesce(
         select(func.sum(ProductVariant.sold_quantity))
@@ -174,7 +169,7 @@ def get_low_stock_products(db: Session, limit: int) -> list[LowStockProductSumma
         )
         .correlate(Product)
         .scalar_subquery(),
-        Product.sold_quantity if hasattr(Product, "sold_quantity") else 0,
+        0,
     )
     rows = db.execute(
         select(

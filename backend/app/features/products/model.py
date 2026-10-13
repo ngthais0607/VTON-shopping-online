@@ -64,6 +64,26 @@ class Product(Base):
     currency = Column(String(10), nullable=False, default="VND")
     is_active = Column(Boolean, default=True, index=True)
 
+    def __init__(self, **kwargs):
+        stock = kwargs.pop("stock_quantity", None)
+        reserved = kwargs.pop("reserved_quantity", None)
+        sold = kwargs.pop("sold_quantity", None)
+        super().__init__(**kwargs)
+        if stock is not None or reserved is not None or sold is not None:
+            if not getattr(self, "variants", None):
+                base_slug = getattr(self, "slug", None) or f"p-{uuid.uuid4().hex[:6]}"
+                self.variants = [
+                    ProductVariant(
+                        sku=f"{base_slug}-DEF".upper()[:64],
+                        size="ONE_SIZE",
+                        color_name="Default",
+                        stock_quantity=stock or 0,
+                        reserved_quantity=reserved or 0,
+                        sold_quantity=sold or 0,
+                        is_active=True,
+                    )
+                ]
+
     @property
     def stock_quantity(self) -> int:
         if getattr(self, "variants", None):
@@ -72,7 +92,10 @@ class Product(Base):
 
     @stock_quantity.setter
     def stock_quantity(self, value: int):
-        self._stock_quantity = value
+        if getattr(self, "variants", None) and len(self.variants) > 0:
+            self.variants[0].stock_quantity = value
+        else:
+            self._stock_quantity = value
 
     @property
     def reserved_quantity(self) -> int:
@@ -82,7 +105,10 @@ class Product(Base):
 
     @reserved_quantity.setter
     def reserved_quantity(self, value: int):
-        self._reserved_quantity = value
+        if getattr(self, "variants", None) and len(self.variants) > 0:
+            self.variants[0].reserved_quantity = value
+        else:
+            self._reserved_quantity = value
 
     @property
     def sold_quantity(self) -> int:
@@ -92,7 +118,10 @@ class Product(Base):
 
     @sold_quantity.setter
     def sold_quantity(self, value: int):
-        self._sold_quantity = value
+        if getattr(self, "variants", None) and len(self.variants) > 0:
+            self.variants[0].sold_quantity = value
+        else:
+            self._sold_quantity = value
 
     @property
     def price_min(self) -> float:

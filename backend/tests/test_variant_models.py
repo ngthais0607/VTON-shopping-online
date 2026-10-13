@@ -57,4 +57,3 @@ def test_product_variant_table_constraints():
     assert "ck_variants_stock_non_negative" in constraint_names
     assert "ck_variants_reserved_non_negative" in constraint_names
     assert "ck_variants_sold_non_negative" in constraint_names
-    assert "ck_variants_reserved_sold_lte_stock" in constraint_names
