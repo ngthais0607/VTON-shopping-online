@@ -9,7 +9,7 @@ python-dotenv
 httpx
 pyjwt
 pydantic-settings
-alembic==1.13.1
+alembic>=1.13.3
 pymysql
 cryptography
 slowapi
