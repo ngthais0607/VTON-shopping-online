@@ -674,3 +674,47 @@ def test_payment_email_failure_does_not_fail_committed_status_update(
 
     assert response.status_code == 200
     assert db_session.get(Order, order_id).status == "paid"
+
+
+def test_orders_created_with_unique_public_code_and_trackable(client, db_session, mock_user_auth):
+    product = Product(name="Trackable Item", price=50, currency="VND", stock_quantity=5)
+    persist(db_session, product)
+    res = client.post(
+        "/api/v1/orders/checkout-cart",
+        json={
+            "items": [{"product_id": product.id, "quantity": 1}],
+            "customer_name": "Buyer",
+            "customer_phone": "0987654321",
+            "shipping_address": "Test Address",
+        },
+    )
+    assert res.status_code == 201
+    order_data = res.json()["orders"][0]
+    public_code = order_data["public_code"]
+    assert public_code is not None
+    assert len(public_code) > 0
+
+    # Tracking by public_code returns the order
+    track_res = client.get(f"/api/v1/orders/track/{public_code}")
+    assert track_res.status_code == 200
+    assert track_res.json()["id"] == order_data["id"]
+    assert track_res.json()["public_code"] == public_code
+
+
+def test_order_response_raises_when_public_code_is_missing(db_session):
+    from app.core.errors import BusinessRuleError
+    from app.features.orders.service import order_to_response
+
+    order = Order(
+        customer_name="Test",
+        customer_phone="123",
+        shipping_address="Address",
+        payment_method="vietqr",
+        total_amount=100.0,
+    )
+    # Explicitly clear public_code
+    order.public_code = None
+
+    with pytest.raises(BusinessRuleError) as exc_info:
+        order_to_response(order)
+    assert exc_info.value.code == "order_missing_public_code"

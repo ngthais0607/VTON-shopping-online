@@ -3,7 +3,6 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -103,9 +102,16 @@ def order_to_response(order: Order) -> OrderResponse:
         else (sum(i.quantity for i in order_items) if order_items else 0)
     )
 
+    public_code = getattr(order, "public_code", None)
+    if not public_code:
+        raise BusinessRuleError(
+            f"Order {order.id} is missing a required public_code",
+            code="order_missing_public_code",
+        )
+
     return OrderResponse(
         id=order.id,
-        public_code=getattr(order, "public_code", None) or uuid4().hex,
+        public_code=public_code,
         user_id=order.user_id,
         product_id=product_id,
         product_name=product_name,
