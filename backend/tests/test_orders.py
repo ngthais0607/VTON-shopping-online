@@ -6,7 +6,7 @@ import pytest
 from app.core.security import get_current_user
 from app.features.orders.constants import OrderStatus
 from app.features.orders.domain import InvalidOrderTransition, apply_order_transition
-from app.features.orders.model import Order
+from app.features.orders.model import Order, OrderItem
 from app.features.orders.schemas import CheckoutCommand
 from app.features.orders.service import (
     ProductNotFoundError,
@@ -433,7 +433,15 @@ def test_enqueue_failure_does_not_rollback_committed_order(
     response = _checkout(client, product.id)
 
     assert response.status_code == 201
-    assert db_session.query(Order).filter(Order.product_id == product.id).count() == 1
+    # Under F0.4, legacy Order.product_id is NULL; verify committed order via OrderItem
+    order_id = response.json()["orders"][0]["id"]
+    assert db_session.query(Order).filter(Order.id == order_id).count() == 1
+    assert (
+        db_session.query(OrderItem)
+        .filter(OrderItem.order_id == order_id, OrderItem.product_id == product.id)
+        .count()
+        == 1
+    )
 
 
 @pytest.mark.parametrize(
@@ -718,3 +726,34 @@ def test_order_response_raises_when_public_code_is_missing(db_session):
     with pytest.raises(BusinessRuleError) as exc_info:
         order_to_response(order)
     assert exc_info.value.code == "order_missing_public_code"
+
+
+def test_new_order_leaves_legacy_product_columns_null(client, db_session, mock_user_auth):
+    product1 = Product(name="Item A", price=50, currency="VND", stock_quantity=5)
+    product2 = Product(name="Item B", price=30, currency="VND", stock_quantity=5)
+    persist(db_session, product1)
+    persist(db_session, product2)
+    res = client.post(
+        "/api/v1/orders/checkout-cart",
+        json={
+            "items": [
+                {"product_id": product1.id, "quantity": 1},
+                {"product_id": product2.id, "quantity": 2},
+            ],
+            "customer_name": "Buyer",
+            "customer_phone": "0987654321",
+            "shipping_address": "Test Address",
+            "payment_method": "vietqr",
+        },
+    )
+    assert res.status_code == 201
+    order_data = res.json()["orders"][0]
+    assert order_data["product_name"] == "Item A và 1 sản phẩm khác"
+    assert order_data["quantity"] == 3
+    assert order_data["unit_price"] == 50.0
+
+    order_db = db_session.query(Order).filter(Order.id == order_data["id"]).first()
+    assert order_db.product_id is None
+    assert order_db.product_name is None
+    assert order_db.unit_price is None
+    assert order_db.quantity is None

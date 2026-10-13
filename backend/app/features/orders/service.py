@@ -82,25 +82,22 @@ def order_to_response(order: Order) -> OrderResponse:
         for item in order_items
     ]
 
-    first_item = order_items[0] if order_items else None
-    product_id = (
-        order.product_id
-        if order.product_id is not None
-        else (first_item.product_id if first_item else 0)
-    )
-    product_name = (
-        order.product_name or (first_item.product_name if first_item else "")
-    )
-    unit_price = (
-        order.unit_price
-        if order.unit_price is not None
-        else (first_item.unit_price if first_item else Decimal(0))
-    )
-    quantity = (
-        order.quantity
-        if order.quantity is not None
-        else (sum(i.quantity for i in order_items) if order_items else 0)
-    )
+    if order_items:
+        first_item = order_items[0]
+        product_id = first_item.product_id
+        if len(order_items) == 1:
+            product_name = first_item.product_name
+        else:
+            product_name = f"{first_item.product_name} và {len(order_items) - 1} sản phẩm khác"
+        unit_price = first_item.unit_price
+        quantity = sum(i.quantity for i in order_items)
+    else:
+        product_id = order.product_id if order.product_id is not None else 0
+        product_name = order.product_name or ""
+        unit_price = (
+            order.unit_price if order.unit_price is not None else Decimal(0)
+        )
+        quantity = order.quantity if order.quantity is not None else 0
 
     public_code = getattr(order, "public_code", None)
     if not public_code:
@@ -222,19 +219,12 @@ async def checkout_cart(
         Decimal(str(by_id[pid].price)) * qty for pid, qty in quantities.items()
     )
 
-    first_prod = by_id[product_ids[0]]
-    summary_name = (
-        first_prod.name
-        if len(product_ids) == 1
-        else f"{first_prod.name} and {len(product_ids) - 1} other item(s)"
-    )
-
     order = Order(
         user_id=user.id,
-        product_id=first_prod.id,
-        product_name=summary_name,
-        unit_price=first_prod.price,
-        quantity=sum(quantities.values()),
+        product_id=None,
+        product_name=None,
+        unit_price=None,
+        quantity=None,
         total_amount=total_amount,
         currency=currency,
         status=OrderStatus.PENDING.value
@@ -324,15 +314,16 @@ async def change_order_status(
     order_exists = db.query(Order.id).filter(Order.id == order_id).scalar()
     if order_exists is None:
         raise OrderNotFoundError("Order not found")
-    legacy_pid = db.query(Order.product_id).filter(Order.id == order_id).scalar()
     item_pids = {
         pid
         for (pid,) in db.query(OrderItem.product_id)
         .filter(OrderItem.order_id == order_id)
         .all()
     }
-    if legacy_pid:
-        item_pids.add(legacy_pid)
+    if not item_pids:
+        legacy_pid = db.query(Order.product_id).filter(Order.id == order_id).scalar()
+        if legacy_pid:
+            item_pids.add(legacy_pid)
 
     # 1. Lock products FIRST
     locked_products = _lock_transition_products(db, item_pids)
@@ -347,8 +338,6 @@ async def change_order_status(
     )
     if order is None:
         raise OrderNotFoundError("Order not found")
-    if legacy_pid and order.product_id != legacy_pid:
-        raise ConflictError("Order product changed during transition")
 
     for item in order.items:
         item.product = locked_products.get(item.product_id)
