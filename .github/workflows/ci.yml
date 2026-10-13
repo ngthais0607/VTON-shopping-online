@@ -81,12 +81,24 @@ jobs:
       - name: Run Alembic Migrations
         working-directory: backend
         run: |
-          alembic upgrade head
+          python -m alembic upgrade head 2>&1 | tee /tmp/alembic.log || {
+            echo "### Alembic Migration Failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat /tmp/alembic.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
 
       - name: Run Tests (Unit & Concurrency Integration)
         working-directory: backend
         run: |
-          pytest -v
+          pytest -v 2>&1 | tee /tmp/pytest.log || {
+            echo "### Pytest Failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -n 100 /tmp/pytest.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
 
   frontend:
     name: Frontend Quality & Build

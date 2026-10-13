@@ -9,8 +9,6 @@ Create Date: 2026-10-12 22:15:00.000000
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
 revision: str = 'e5b8c9d0f1a2'
@@ -62,9 +60,17 @@ def upgrade() -> None:
 
     # 4. FULLTEXT index for MariaDB/MySQL text search
     if bind.dialect.name in ('mysql', 'mariadb'):
-        op.execute(
-            'ALTER TABLE products ADD FULLTEXT INDEX IF NOT EXISTS ix_products_name_desc_ft (name, description)'
-        )
+        try:
+            op.execute(
+                'ALTER TABLE products ADD FULLTEXT INDEX IF NOT EXISTS ix_products_name_desc_ft (name, description)'
+            )
+        except Exception:
+            try:
+                op.execute(
+                    'ALTER TABLE products ADD FULLTEXT INDEX ix_products_name_desc_ft (name, description)'
+                )
+            except Exception:
+                pass
 
 
 def downgrade() -> None:
