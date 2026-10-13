@@ -16,14 +16,19 @@ from app.features.products.model import Product, ProductImage
 from app.features.users.model import User
 
 
-def seed_database(db=None):
-    print("[SEED] Starting rich database seeding...")
+def seed_database(db=None, force: bool = False):
+    app_env = os.getenv("APP_ENV", "development").lower()
+    if app_env == "production" and not force:
+        raise RuntimeError("Refusing to seed in production without --force")
+
+    print(f"[SEED] Starting rich database seeding (env: {app_env})...")
     should_close = False
     if db is None:
         db = SessionLocal()
         should_close = True
 
     try:
+        is_production = app_env == "production"
         # 1. Seed Admin User
         admin_user = (
             db.query(User)
@@ -43,7 +48,8 @@ def seed_database(db=None):
             db.add(admin_user)
             db.commit()
             db.refresh(admin_user)
-            print("[OK] Created Admin User: admin@example.com / Admin@123456")
+            admin_pwd = "[REDACTED]" if is_production else "Admin@123456"
+            print(f"[OK] Created Admin User: admin@example.com / {admin_pwd}")
 
         # 2. Seed Customer Users
         customer = (
@@ -64,7 +70,8 @@ def seed_database(db=None):
             db.add(customer)
             db.commit()
             db.refresh(customer)
-            print("[OK] Created Customer User: user@example.com / User@123456")
+            cust_pwd = "[REDACTED]" if is_production else "User@123456"
+            print(f"[OK] Created Customer User: user@example.com / {cust_pwd}")
 
         # 3. Seed Categories
         categories_data = [
@@ -318,4 +325,5 @@ def seed_database(db=None):
 
 
 if __name__ == "__main__":
-    seed_database()
+    force_run = "--force" in sys.argv
+    seed_database(force=force_run)

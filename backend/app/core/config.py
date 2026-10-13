@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "sqlite:///./app.db"
+    app_env: str = "development"
 
     secret_key: str = Field(min_length=32)
     jwt_algorithm: str = "HS256"
