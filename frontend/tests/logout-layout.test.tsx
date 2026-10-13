@@ -8,7 +8,8 @@ vi.mock('next/navigation',()=>({usePathname:()=>'/dashboard',useRouter:()=>({rep
 vi.mock('@/components/sidebar',()=>({Sidebar:()=>null}));
 it('retains logout failure after the protected header unmounts',async()=>{
   const original=axios.defaults.adapter;let rejectLogout!:()=>void;
-  localStorage.setItem('token','admin');
+  const {setAccessToken, clearAccessToken}=await import('../lib/session');
+  setAccessToken('admin');
   axios.defaults.adapter=async config=>{
     const response={config,data:{id:1,role:'admin'},status:200,statusText:'',headers:{}} as AxiosResponse;
     if(config.url==='/users/logout') await new Promise<void>((_,reject)=>{rejectLogout=()=>reject(new AxiosError('failed',undefined,config,undefined,{...response,status:503,data:{message:'Server logout unavailable'}}));});
@@ -24,5 +25,5 @@ it('retains logout failure after the protected header unmounts',async()=>{
     await waitFor(()=>expect(rejectLogout).toBeTypeOf('function'));
     rejectLogout();
     expect(await screen.findByText(/Server logout unavailable/)).toBeInTheDocument();
-  }finally{axios.defaults.adapter=original;localStorage.clear();}
+  }finally{axios.defaults.adapter=original;clearAccessToken();}
 });

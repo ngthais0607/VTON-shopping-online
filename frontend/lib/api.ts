@@ -40,6 +40,30 @@ apiClient.interceptors.request.use((config: SessionRequest) => {
     else config.headers.delete('Authorization');
     return config;
 });
+export async function refreshSession(): Promise<string> {
+    const version = getSessionGeneration();
+    if (!refreshWork || refreshWork.generation !== version) {
+        const work = { generation: version, promise: Promise.resolve('') };
+        work.promise = axios.post(`${API_BASE_URL}/users/refresh`, {}, { withCredentials: true }).then(response => {
+            if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+            const token = response.data?.access_token;
+            if (typeof token !== 'string' || !token) throw new ApiError('Invalid session response', 401);
+            renewAccessToken(token);
+            return token;
+        }).finally(() => { if (refreshWork === work) refreshWork = null; });
+        refreshWork = work;
+    }
+    return refreshWork.promise;
+}
+
+export async function silentRefresh(): Promise<string | null> {
+    try {
+        return await refreshSession();
+    } catch {
+        return null;
+    }
+}
+
 apiClient.interceptors.response.use(
     response => {
         const config = response.config as SessionRequest;
@@ -54,18 +78,7 @@ apiClient.interceptors.response.use(
         request._retry = true;
         const version = getSessionGeneration();
         try {
-            if (!refreshWork || refreshWork.generation !== version) {
-                const work = { generation: version, promise: Promise.resolve('') };
-                work.promise = axios.post(`${API_BASE_URL}/users/refresh`, {}, { withCredentials: true }).then(response => {
-                    if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
-                    const token = response.data.access_token;
-                    if (typeof token !== 'string' || !token) throw new ApiError('Invalid session response', 401);
-                    renewAccessToken(token);
-                    return token;
-                }).finally(() => { if (refreshWork === work) refreshWork = null; });
-                refreshWork = work;
-            }
-            const token = await refreshWork.promise;
+            const token = await refreshSession();
             if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
             request.headers.set('Authorization', `Bearer ${token}`);
             return await apiClient(request);
