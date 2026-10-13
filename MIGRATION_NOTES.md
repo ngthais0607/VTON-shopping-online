@@ -4,9 +4,9 @@
 
 This document summarizes the architectural hardening, data integrity improvements, and operational optimizations delivered across the system:
 
-- **Security & Payments:** Constant-time HMAC-SHA256 webhook verification, strict memo pattern matching, secure HTTP-only cookies, magic-byte image validation, and unguessable public order tracking tokens.
+- **Security & Payments:** Timing-safe static secret comparison (`hmac.compare_digest`) via `X-Webhook-Secret` header, strict memo pattern matching, secure HTTP-only cookies, bounded stream reading & magic-byte image validation (JPEG, PNG, WebP up to 5MB), and unguessable public order tracking tokens.
 - **Data Model & Integrity:** Transitioned from single-product order records to a normalized `Order` + `OrderItem` (`1:N`) architecture, `Numeric(12, 2)` monetary columns in MariaDB, atomic inventory reservation, deadlock-free row locking ordering (`Product` before `Order`), and centralized state machine transitions.
-- **Frontend & Rebranding:** Rebranded from `LuxeStore` to `TrueLook`, full TypeScript 5.8 alignment, multi-item order breakdown in admin and customer views, and clean Next.js 16 production builds.
+- **Frontend & Rebranding:** Rebranded from `LuxeStore` to `TrueLook`, full TypeScript 5.7.3 alignment, multi-item order breakdown in admin and customer views, and clean Next.js 16 production builds.
 - **Reliability & CI:** GitHub Actions CI with MariaDB 11.2 and Redis 7 service containers running unit and concurrency tests, modernized Docker Compose without obsolete `version` tags and externalized `.env` credentials.
 - **Performance & Observability:** Composite and MariaDB `FULLTEXT` indexes, Redis caching for dashboard metrics with automatic invalidation, batch order expiration using `SKIP LOCKED`, request ID correlation middleware (`X-Request-ID`), and health check endpoint (`/api/v1/health`).
 
@@ -122,3 +122,11 @@ To prevent database deadlocks under high-concurrency checkouts and expiration sw
   npm test
   npm run build
   ```
+
+---
+
+## 8. Known Limitations & Operational Considerations
+
+- **VietQR Webhook Verification:** Merchant payment notification authentication uses timing-safe static secret verification (`hmac.compare_digest`) provided in the `X-Webhook-Secret` HTTP header. The webhook payload body is not cryptographically signed with HMAC-SHA256 and does not include timestamp replay defense. This aligns with standard Vietnamese banking webhook aggregators which push static shared secrets.
+- **Asynchronous Email Queue Reliability:** Outbound order confirmation emails are dispatched using ARQ over Redis via best-effort enqueue. While enqueue failures log structured errors with associated `order_id` and metadata, there is currently no persistent database dead-letter queue table for automated resending.
+- **Irreversible Migration Rollback:** Downgrading past migration `d4a7c8e91f23` drops the `order_items` and `product_reviews` tables. Order-item line records and review content will be permanently lost unless restored from a pre-downgrade database snapshot.
