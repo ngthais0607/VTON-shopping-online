@@ -75,6 +75,44 @@ class Product(Base):
     def sold_quantity(self, value: int):
         self._sold_quantity = value
 
+    @property
+    def price_min(self) -> float:
+        if getattr(self, "variants", None):
+            active_variants = [v for v in self.variants if v.is_active]
+            if active_variants:
+                return float(min(v.price if v.price is not None else self.price for v in active_variants))
+        return float(self.price or 0.0)
+
+    @property
+    def price_max(self) -> float:
+        if getattr(self, "variants", None):
+            active_variants = [v for v in self.variants if v.is_active]
+            if active_variants:
+                return float(max(v.price if v.price is not None else self.price for v in active_variants))
+        return float(self.price or 0.0)
+
+    @property
+    def available_sizes(self) -> list[str]:
+        if getattr(self, "variants", None):
+            sizes = []
+            for v in self.variants:
+                if v.is_active and v.size not in sizes:
+                    sizes.append(v.size)
+            return sizes
+        return []
+
+    @property
+    def available_colors(self) -> list[dict[str, str | None]]:
+        if getattr(self, "variants", None):
+            colors = []
+            seen = set()
+            for v in self.variants:
+                if v.is_active and v.color_name not in seen:
+                    seen.add(v.color_name)
+                    colors.append({"name": v.color_name, "hex": v.color_hex})
+            return colors
+        return []
+
     variants = relationship(
         "ProductVariant", back_populates="product", cascade="all, delete-orphan"
     )

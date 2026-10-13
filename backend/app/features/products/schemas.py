@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -38,6 +40,10 @@ class ProductFilters(BaseModel):
     max_price: float | None = Field(default=None, ge=0)
     is_active: bool | None = None
     stock_status: StockStatus | None = None
+    gender: str | None = None
+    brand: str | None = None
+    size: str | None = None
+    color: str | None = None
     sort: ProductSort = ProductSort.LATEST
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
@@ -47,31 +53,53 @@ class ProductCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=255)
+    slug: str | None = Field(default=None, max_length=255)
     price: float = Field(ge=0)
     description: str | None = Field(default=None, max_length=1000)
     category_id: int | None = None
     stock_quantity: int = Field(default=0, ge=0)
     currency: str = Field(default="VND", min_length=1, max_length=10)
     is_active: bool = True
+    brand: str | None = Field(default=None, max_length=100)
+    gender: str = Field(default="unisex", max_length=20)
+    material: str | None = Field(default=None, max_length=255)
+    fit: str | None = Field(default=None, max_length=50)
+    care_instructions: str | None = Field(default=None, max_length=500)
+    size_chart: dict[str, Any] | None = None
 
 
 class ProductPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    slug: str | None = Field(default=None, max_length=255)
     price: float | None = Field(default=None, ge=0)
     description: str | None = Field(default=None, max_length=1000)
     category_id: int | None = None
     stock_quantity: int | None = Field(default=None, ge=0)
     currency: str | None = Field(default=None, min_length=1, max_length=10)
     is_active: bool | None = None
+    brand: str | None = Field(default=None, max_length=100)
+    gender: str | None = Field(default=None, max_length=20)
+    material: str | None = Field(default=None, max_length=255)
+    fit: str | None = Field(default=None, max_length=50)
+    care_instructions: str | None = Field(default=None, max_length=500)
+    size_chart: dict[str, Any] | None = None
 
     @model_validator(mode="before")
     @classmethod
     def reject_null_required_fields(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
-        nullable_fields = {"description", "category_id"}
+        nullable_fields = {
+            "description",
+            "category_id",
+            "brand",
+            "material",
+            "fit",
+            "care_instructions",
+            "size_chart",
+        }
         for field_name, field_value in value.items():
             if field_name not in nullable_fields and field_value is None:
                 raise ValueError(f"{field_name} cannot be null")
@@ -111,17 +139,107 @@ class ProductResponse(BaseModel):
 
     id: int
     name: str
+    slug: str
     price: float
-    description: str | None
+    description: str | None = None
     stock_quantity: int
     reserved_quantity: int
     sold_quantity: int
     currency: str
     is_active: bool
-    category: CategorySummary | None
-    images: list[ProductImageResponse]
-    created_at: datetime | None
-    updated_at: datetime | None
+    brand: str | None = None
+    gender: str = "unisex"
+    material: str | None = None
+    fit: str | None = None
+    care_instructions: str | None = None
+    size_chart: dict[str, Any] | None = None
+    price_min: float | None = None
+    price_max: float | None = None
+    category: CategorySummary | None = None
+    images: list[ProductImageResponse] = []
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ProductVariantResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: int
+    sku: str
+    size: str
+    color_name: str
+    color_hex: str | None = None
+    price: float | None = None
+    stock_quantity: int
+    reserved_quantity: int
+    sold_quantity: int
+    available_stock: int
+    is_active: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class VariantLookupItem(BaseModel):
+    id: int
+    product_id: int
+    product_name: str
+    product_slug: str
+    sku: str
+    size: str
+    color_name: str
+    color_hex: str | None = None
+    price: float
+    stock_quantity: int
+    reserved_quantity: int
+    sold_quantity: int
+    available_stock: int
+    is_active: bool
+    image_url: str | None = None
+
+
+class FacetColor(BaseModel):
+    name: str
+    hex: str | None = None
+
+
+class ProductFacetsResponse(BaseModel):
+    genders: list[str]
+    brands: list[str]
+    sizes: list[str]
+    colors: list[FacetColor]
+    price_min: float
+    price_max: float
+
+
+class ProductDetailResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    price: float
+    price_min: float
+    price_max: float
+    description: str | None = None
+    brand: str | None = None
+    gender: str = "unisex"
+    material: str | None = None
+    fit: str | None = None
+    care_instructions: str | None = None
+    size_chart: dict[str, Any] | None = None
+    stock_quantity: int
+    reserved_quantity: int
+    sold_quantity: int
+    currency: str
+    is_active: bool
+    category: CategorySummary | None = None
+    images: list[ProductImageResponse] = []
+    variants: list[ProductVariantResponse] = []
+    available_sizes: list[str] = []
+    available_colors: list[FacetColor] = []
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class ReviewCreate(BaseModel):

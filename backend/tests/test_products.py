@@ -23,6 +23,10 @@ def valid_product_payload(**overrides):
 
 
 def persist_category(db_session, **values) -> Category:
+    if "slug" not in values:
+        from app.core.slug import generate_unique_slug
+        existing_slugs = set(s[0] for s in db_session.query(Category.slug).all())
+        values["slug"] = generate_unique_slug(values.get("name", "category"), existing_slugs)
     category = Category(**values)
     db_session.add(category)
     db_session.commit()
@@ -40,8 +44,29 @@ def persist_product(db_session, **values) -> Product:
         "currency": "USD",
         "is_active": True,
     }
-    product = Product(**(defaults | values))
+    merged = defaults | values
+    if "slug" not in merged:
+        from app.core.slug import generate_unique_slug
+        existing_slugs = set(s[0] for s in db_session.query(Product.slug).all())
+        merged["slug"] = generate_unique_slug(merged["name"], existing_slugs)
+    product = Product(**merged)
     db_session.add(product)
+    db_session.flush()
+
+    if not product.variants:
+        from app.features.products.variant_model import ProductVariant
+        variant = ProductVariant(
+            product_id=product.id,
+            sku=f"P{product.id}-DEFAULT",
+            size="ONE_SIZE",
+            color_name="Default",
+            stock_quantity=merged.get("stock_quantity", 10),
+            reserved_quantity=merged.get("reserved_quantity", 0),
+            sold_quantity=merged.get("sold_quantity", 0),
+            is_active=merged.get("is_active", True),
+        )
+        db_session.add(variant)
+
     db_session.commit()
     db_session.refresh(product)
     return product
@@ -82,6 +107,7 @@ def test_create_product_returns_typed_response(client, mock_admin_auth):
     assert response.json().keys() == {
         "id",
         "name",
+        "slug",
         "price",
         "description",
         "stock_quantity",
@@ -89,6 +115,14 @@ def test_create_product_returns_typed_response(client, mock_admin_auth):
         "sold_quantity",
         "currency",
         "is_active",
+        "brand",
+        "gender",
+        "material",
+        "fit",
+        "care_instructions",
+        "size_chart",
+        "price_min",
+        "price_max",
         "category",
         "images",
         "created_at",
@@ -317,7 +351,7 @@ def test_list_products_eager_loads_category_and_images_without_n_plus_one(
         item["category"]["name"] == "Electronics" for item in response.json()["items"]
     )
     assert all(len(item["images"]) == 1 for item in response.json()["items"])
-    assert len(select_statements) == 3
+    assert len(select_statements) == 4
 
 
 def test_patch_product_is_partial(client, db_session, mock_admin_auth):
@@ -487,3 +521,114 @@ def test_delete_product_returns_no_content(client, db_session, mock_admin_auth):
     db_session.refresh(product)
     assert product.is_deleted is True
     assert product.deleted_at is not None
+
+
+def test_get_product_by_slug_returns_detail(client, db_session):
+    from app.features.products.variant_model import ProductVariant
+
+    p = persist_product(
+        db_session,
+        name="Linen Blazer",
+        slug="linen-blazer",
+        price=500000,
+        brand="Zara",
+        gender="women",
+    )
+    v1 = ProductVariant(
+        product_id=p.id,
+        sku="linen-blazer-BEI-S",
+        size="S",
+        color_name="Beige",
+        color_hex="#F5F5DC",
+        price=550000,
+        stock_quantity=10,
+        is_active=True,
+    )
+    db_session.add(v1)
+    db_session.commit()
+
+    response = client.get(f"{PRODUCTS_PATH}/by-slug/linen-blazer")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Linen Blazer"
+    assert data["slug"] == "linen-blazer"
+    assert data["brand"] == "Zara"
+    assert data["gender"] == "women"
+    assert data["price_min"] == 500000.0
+    assert data["price_max"] == 550000.0
+    assert "S" in data["available_sizes"]
+    assert any(c["name"] == "Beige" for c in data["available_colors"])
+
+
+def test_get_product_by_slug_not_found(client):
+    response = client.get(f"{PRODUCTS_PATH}/by-slug/non-existent-slug")
+    assert response.status_code == 404
+    assert response.json()["code"] == "product_not_found"
+
+
+def test_get_product_facets(client, db_session):
+    persist_product(db_session, name="Men Shirt", brand="Nike", gender="men", price=100)
+    persist_product(db_session, name="Women Dress", brand="Adidas", gender="women", price=200)
+
+    response = client.get(f"{PRODUCTS_PATH}/facets")
+    assert response.status_code == 200
+    facets = response.json()
+    assert "men" in facets["genders"]
+    assert "women" in facets["genders"]
+    assert "Nike" in facets["brands"]
+    assert "Adidas" in facets["brands"]
+    assert facets["price_min"] == 100.0
+    assert facets["price_max"] == 200.0
+
+
+def test_list_products_fashion_filters(client, db_session):
+    root_cat = persist_category(db_session, name="Fashion")
+    sub_cat = persist_category(db_session, name="Shoes", parent_id=root_cat.id)
+
+    p1 = persist_product(
+        db_session,
+        name="Running Shoes",
+        brand="Nike",
+        gender="men",
+        category_id=sub_cat.id,
+    )
+    p2 = persist_product(
+        db_session,
+        name="Fashion Scarf",
+        brand="Gucci",
+        gender="women",
+        category_id=root_cat.id,
+    )
+
+    # Filter by brand
+    res_brand = client.get(PRODUCTS_PATH, params={"brand": "Nike"})
+    assert res_brand.status_code == 200
+    assert [item["id"] for item in res_brand.json()["items"]] == [p1.id]
+
+    # Filter by gender
+    res_gender = client.get(PRODUCTS_PATH, params={"gender": "women"})
+    assert res_gender.status_code == 200
+    assert [item["id"] for item in res_gender.json()["items"]] == [p2.id]
+
+    # Recursive category filter: filtering by root_cat returns both root product and subcategory product!
+    res_cat = client.get(PRODUCTS_PATH, params={"category_id": root_cat.id})
+    assert res_cat.status_code == 200
+    ret_ids = {item["id"] for item in res_cat.json()["items"]}
+    assert p1.id in ret_ids
+    assert p2.id in ret_ids
+
+
+def test_update_product_activation_requires_active_variant(client, db_session, mock_admin_auth):
+    p = persist_product(db_session, name="Inactive Item", is_active=False)
+    # Mark all variants inactive
+    for v in p.variants:
+        v.is_active = False
+    db_session.commit()
+
+    response = client.patch(
+        f"{PRODUCTS_PATH}/{p.id}",
+        json={"is_active": True},
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "no_active_variants"
+

@@ -1,14 +1,17 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.errors import BusinessRuleError
 from app.core.schemas import Page
 from app.core.security import get_current_admin, get_current_user
 from app.features.products import images, reviews, service
 from app.features.products.schemas import (
     ProductCreate,
+    ProductDetailResponse,
+    ProductFacetsResponse,
     ProductFilters,
     ProductImageResponse,
     ProductPatch,
@@ -17,6 +20,7 @@ from app.features.products.schemas import (
     ReviewCreate,
     ReviewResponse,
     ReviewSummary,
+    VariantLookupItem,
 )
 from app.features.users.model import User
 from app.integrations.storage import ProductStorage, get_product_storage
@@ -48,6 +52,42 @@ def list_products(
     db: Session = Depends(get_db),
 ):
     return service.list_products(db, filters)
+
+
+@router.get(
+    "/variants/lookup",
+    response_model=list[VariantLookupItem],
+    summary="Batch lookup product variants for cart validation",
+)
+def lookup_variants(
+    ids: str = Query(default="", description="Comma-separated variant IDs"),
+    db: Session = Depends(get_db),
+):
+    id_list: list[int] = []
+    if ids and ids.strip():
+        try:
+            id_list = [int(i.strip()) for i in ids.split(",") if i.strip()]
+        except ValueError:
+            raise BusinessRuleError("Invalid variant ID in query list", code="invalid_variant_id")
+    return service.lookup_variants(db, id_list)
+
+
+@router.get(
+    "/facets",
+    response_model=ProductFacetsResponse,
+    summary="Get product facets (brands, genders, sizes, colors, price range)",
+)
+def get_product_facets(db: Session = Depends(get_db)):
+    return service.get_product_facets(db)
+
+
+@router.get(
+    "/by-slug/{slug}",
+    response_model=ProductDetailResponse,
+    summary="Get product detail by slug",
+)
+def get_product_by_slug(slug: str, db: Session = Depends(get_db)):
+    return service.get_product_by_slug(db, slug)
 
 
 @router.get(
@@ -101,48 +141,55 @@ def delete_product(
 
 
 @router.post(
-    "/{product_id}/upload-image",
+    "/{product_id}/images",
     response_model=ProductImageResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Upload product image",
 )
-def upload_product_image(
+def upload_image(
     product_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     storage: ProductStorage = Depends(get_product_storage),
     _current_admin: User = Depends(get_current_admin),
 ):
-    return images.store_product_image(
-        db,
-        storage,
-        product_id,
-        file.file,
-        file.filename or "",
-        file.content_type or "",
-        size=file.size,
-    )
+    return images.upload_product_image(db, storage, product_id, file)
 
 
-@router.get(
-    "/{product_id}/reviews",
-    response_model=ReviewSummary,
-    summary="Get product reviews and average rating",
+@router.delete(
+    "/{product_id}/images/{image_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete product image",
 )
-def get_product_reviews(product_id: int, db: Session = Depends(get_db)):
-    return reviews.list_product_reviews(db, product_id)
+def delete_image(
+    product_id: int,
+    image_id: str,
+    db: Session = Depends(get_db),
+    storage: ProductStorage = Depends(get_product_storage),
+    _current_admin: User = Depends(get_current_admin),
+) -> None:
+    images.delete_product_image(db, storage, product_id, image_id)
 
 
 @router.post(
     "/{product_id}/reviews",
     response_model=ReviewResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Submit product review",
+    summary="Create product review",
 )
-def create_product_review(
+def create_review(
     product_id: int,
     command: ReviewCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return reviews.create_product_review(db, product_id, current_user, command)
+    return reviews.create_review(db, product_id, current_user.id, command)
+
+
+@router.get(
+    "/{product_id}/reviews",
+    response_model=ReviewSummary,
+    summary="Get product reviews",
+)
+def get_reviews(product_id: int, db: Session = Depends(get_db)):
+    return reviews.get_product_reviews(db, product_id)

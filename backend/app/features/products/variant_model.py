@@ -54,6 +54,10 @@ class ProductVariant(Base):
     reserved_quantity = Column(Integer, nullable=False, default=0)
     sold_quantity = Column(Integer, nullable=False, default=0)
 
+    @property
+    def available_stock(self) -> int:
+        return max(0, (self.stock_quantity or 0) - (self.reserved_quantity or 0) - (self.sold_quantity or 0))
+
     is_active = Column(Boolean, default=True, index=True)
 
     created_at = Column(
