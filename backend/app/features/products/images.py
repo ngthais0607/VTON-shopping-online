@@ -15,12 +15,37 @@ logger = logging.getLogger(__name__)
 
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 
-SUPPORTED_IMAGE_TYPES = {
-    ".jpeg": "image/jpeg",
-    ".jpg": "image/jpeg",
-    ".png": "image/png",
-    ".webp": "image/webp",
+SUPPORTED_IMAGE_FORMATS = {
+    "jpeg": {
+        "extensions": {".jpeg", ".jpg"},
+        "content_types": {"image/jpeg"},
+        "canonical_ext": ".jpg",
+    },
+    "png": {
+        "extensions": {".png"},
+        "content_types": {"image/png"},
+        "canonical_ext": ".png",
+    },
+    "webp": {
+        "extensions": {".webp"},
+        "content_types": {"image/webp"},
+        "canonical_ext": ".webp",
+    },
 }
+
+
+def sniff_image_type(data: bytes) -> str | None:
+    """Detect image type from leading magic bytes.
+
+    Returns 'jpeg', 'png', 'webp', or None.
+    """
+    if len(data) >= 3 and data[:3] == b"\xff\xd8\xff":
+        return "jpeg"
+    if len(data) >= 8 and data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
 
 
 def store_product_image(
@@ -30,24 +55,53 @@ def store_product_image(
     stream: BinaryIO,
     filename: str,
     content_type: str,
+    size: int | None = None,
 ) -> ProductImage:
     product = service.get_product(db, product_id)
-    extension = PurePosixPath(filename.replace("\\", "/")).suffix.lower()
-    if SUPPORTED_IMAGE_TYPES.get(extension) != content_type.lower():
+
+    if size is not None and size > MAX_IMAGE_SIZE_BYTES:
         raise BusinessRuleError(
-            "Product image must be a PNG, JPEG, or WebP file",
+            "Product image must not exceed 5MB",
+            code="image_too_large",
+        )
+
+    extension = PurePosixPath(filename.replace("\\", "/")).suffix.lower()
+
+    # Bounded read to prevent reading excessive data into RAM
+    payload = stream.read(MAX_IMAGE_SIZE_BYTES + 1)
+
+    if len(payload) == 0:
+        raise BusinessRuleError(
+            "Product image file cannot be empty",
             code="invalid_product_image",
         )
 
-    payload = stream.read()
     if len(payload) > MAX_IMAGE_SIZE_BYTES:
         raise BusinessRuleError(
             "Product image must not exceed 5MB",
             code="image_too_large",
         )
 
+    sniffed_type = sniff_image_type(payload[:16])
+    if not sniffed_type or sniffed_type not in SUPPORTED_IMAGE_FORMATS:
+        raise BusinessRuleError(
+            "Product image must be a PNG, JPEG, or WebP file",
+            code="invalid_product_image",
+        )
+
+    spec = SUPPORTED_IMAGE_FORMATS[sniffed_type]
+    if (
+        extension not in spec["extensions"]
+        or content_type.lower() not in spec["content_types"]
+    ):
+        raise BusinessRuleError(
+            "Product image must be a PNG, JPEG, or WebP file",
+            code="invalid_product_image",
+        )
+
+    canonical_ext = spec["canonical_ext"]
     image_id = str(uuid4())
-    object_name = f"products/{image_id}{extension}"
+    object_name = f"products/{image_id}{canonical_ext}"
     public_url = storage.public_url(object_name)
     storage.put(object_name, BytesIO(payload), content_type)
 

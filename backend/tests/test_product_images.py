@@ -8,10 +8,29 @@ from sqlalchemy.exc import DatabaseError
 
 from app.core.config import Settings
 from app.core.errors import BusinessRuleError, ResourceNotFoundError
-from app.features.products.images import store_product_image
+from app.features.products.images import (
+    MAX_IMAGE_SIZE_BYTES,
+    sniff_image_type,
+    store_product_image,
+)
 from app.features.products.model import Product, ProductImage
 from app.integrations.storage import MinioProductStorage, get_product_storage
 from app.main import create_app
+
+VALID_PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+VALID_JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 32
+VALID_WEBP_BYTES = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 20
+
+
+class CountingStream(BytesIO):
+    def __init__(self, data: bytes):
+        super().__init__(data)
+        self.bytes_read = 0
+
+    def read(self, size=-1):
+        chunk = super().read(size)
+        self.bytes_read += len(chunk)
+        return chunk
 
 
 class FakeProductStorage:
@@ -60,6 +79,49 @@ def persist_product(db_session, **overrides) -> Product:
     return product
 
 
+def test_sniff_image_type_pure_function():
+    assert sniff_image_type(VALID_JPEG_BYTES) == "jpeg"
+    assert sniff_image_type(VALID_PNG_BYTES) == "png"
+    assert sniff_image_type(VALID_WEBP_BYTES) == "webp"
+    assert sniff_image_type(b"NOT_AN_IMAGE_PAYLOAD") is None
+    assert sniff_image_type(b"") is None
+    assert sniff_image_type(b"\xff\xd8") is None  # Too short for JPEG
+
+
+@pytest.mark.parametrize(
+    ("payload", "filename", "content_type", "expected_ext"),
+    [
+        (VALID_PNG_BYTES, "catalog.png", "image/png", ".png"),
+        (VALID_JPEG_BYTES, "photo.jpg", "image/jpeg", ".jpg"),
+        (VALID_JPEG_BYTES, "photo.jpeg", "image/jpeg", ".jpg"),
+        (VALID_WEBP_BYTES, "banner.webp", "image/webp", ".webp"),
+    ],
+)
+def test_store_product_image_accepts_valid_formats(
+    db_session,
+    payload,
+    filename,
+    content_type,
+    expected_ext,
+):
+    product = persist_product(db_session)
+    storage = FakeProductStorage()
+
+    image = store_product_image(
+        db_session,
+        storage,
+        product.id,
+        BytesIO(payload),
+        filename,
+        content_type,
+    )
+
+    assert image.object_name.startswith("products/")
+    assert image.object_name.endswith(expected_ext)
+    assert storage.put_payloads == [payload]
+    assert storage.content_types == [content_type]
+
+
 def test_store_product_image_uploads_then_commits_metadata(db_session):
     product = persist_product(db_session)
     events = []
@@ -75,7 +137,7 @@ def test_store_product_image_uploads_then_commits_metadata(db_session):
             db_session,
             storage,
             product.id,
-            BytesIO(b"png-image"),
+            BytesIO(VALID_PNG_BYTES),
             "catalog.PNG",
             "image/png",
         )
@@ -83,7 +145,7 @@ def test_store_product_image_uploads_then_commits_metadata(db_session):
     assert commit.call_count == 1
     assert events == ["put", "commit"]
     assert storage.put_objects == [image.object_name]
-    assert storage.put_payloads == [b"png-image"]
+    assert storage.put_payloads == [VALID_PNG_BYTES]
     assert storage.content_types == ["image/png"]
     assert image.object_name.startswith("products/")
     assert image.object_name.endswith(".png")
@@ -100,7 +162,7 @@ def test_store_product_image_does_not_upload_when_product_is_missing(db_session)
             db_session,
             storage,
             999999,
-            BytesIO(b"png-image"),
+            BytesIO(VALID_PNG_BYTES),
             "catalog.png",
             "image/png",
         )
@@ -140,22 +202,98 @@ def test_store_product_image_rejects_unsafe_or_mismatched_file_types(
     assert db_session.query(ProductImage).count() == 0
 
 
-def test_store_product_image_rejects_files_over_5mb(db_session):
+def test_store_product_image_rejects_empty_file(db_session):
     product = persist_product(db_session)
     storage = FakeProductStorage()
-    large_payload = b"x" * (5 * 1024 * 1024 + 1)
 
     with pytest.raises(BusinessRuleError) as error:
         store_product_image(
             db_session,
             storage,
             product.id,
-            BytesIO(large_payload),
+            BytesIO(b""),
+            "catalog.png",
+            "image/png",
+        )
+
+    assert error.value.code == "invalid_product_image"
+    assert storage.put_objects == []
+
+
+def test_store_product_image_rejects_png_bytes_with_jpg_extension(db_session):
+    product = persist_product(db_session)
+    storage = FakeProductStorage()
+
+    with pytest.raises(BusinessRuleError) as error:
+        store_product_image(
+            db_session,
+            storage,
+            product.id,
+            BytesIO(VALID_PNG_BYTES),
+            "catalog.jpg",
+            "image/jpeg",
+        )
+
+    assert error.value.code == "invalid_product_image"
+    assert storage.put_objects == []
+
+
+def test_store_product_image_rejects_fake_png_content(db_session):
+    product = persist_product(db_session)
+    storage = FakeProductStorage()
+
+    with pytest.raises(BusinessRuleError) as error:
+        store_product_image(
+            db_session,
+            storage,
+            product.id,
+            BytesIO(b"plain text that claims to be png"),
+            "catalog.png",
+            "image/png",
+        )
+
+    assert error.value.code == "invalid_product_image"
+    assert storage.put_objects == []
+
+
+def test_store_product_image_rejects_early_when_size_exceeds_max(db_session):
+    product = persist_product(db_session)
+    storage = FakeProductStorage()
+
+    with pytest.raises(BusinessRuleError) as error:
+        store_product_image(
+            db_session,
+            storage,
+            product.id,
+            BytesIO(VALID_PNG_BYTES),
+            "catalog.png",
+            "image/png",
+            size=MAX_IMAGE_SIZE_BYTES + 10,
+        )
+
+    assert error.value.code == "image_too_large"
+    assert storage.put_objects == []
+
+
+def test_store_product_image_bounded_read_does_not_exceed_max_plus_one(db_session):
+    product = persist_product(db_session)
+    storage = FakeProductStorage()
+    # 10MB of PNG-prefixed payload
+    large_payload = VALID_PNG_BYTES + b"x" * (10 * 1024 * 1024)
+    stream = CountingStream(large_payload)
+
+    with pytest.raises(BusinessRuleError) as error:
+        store_product_image(
+            db_session,
+            storage,
+            product.id,
+            stream,
             "catalog.png",
             "image/png",
         )
 
     assert error.value.code == "image_too_large"
+    assert stream.bytes_read == MAX_IMAGE_SIZE_BYTES + 1
     assert storage.put_objects == []
     assert db_session.query(ProductImage).count() == 0
 
@@ -174,7 +312,7 @@ def test_store_product_image_compensates_when_database_commit_fails(db_session):
             db_session,
             storage,
             product.id,
-            BytesIO(b"png-image"),
+            BytesIO(VALID_PNG_BYTES),
             "catalog.png",
             "image/png",
         )
@@ -203,7 +341,7 @@ def test_store_product_image_still_deletes_when_rollback_fails(db_session):
             db_session,
             storage,
             product.id,
-            BytesIO(b"png-image"),
+            BytesIO(VALID_PNG_BYTES),
             "catalog.png",
             "image/png",
         )
@@ -228,7 +366,7 @@ def test_store_product_image_preserves_database_error_when_delete_fails(db_sessi
             db_session,
             storage,
             product.id,
-            BytesIO(b"png-image"),
+            BytesIO(VALID_PNG_BYTES),
             "catalog.png",
             "image/png",
         )
@@ -248,14 +386,14 @@ def test_upload_route_returns_public_contract_without_object_name(
 
     response = client.post(
         f"/api/v1/products/{product.id}/upload-image",
-        files={"file": ("catalog.webp", b"webp-image", "image/webp")},
+        files={"file": ("catalog.webp", VALID_WEBP_BYTES, "image/webp")},
     )
 
     assert response.status_code == 201
     assert response.json().keys() == {"id", "url"}
     assert response.json()["url"].startswith("https://images.example.test/products/")
     assert "object_name" not in response.text
-    assert product_storage.put_payloads == [b"webp-image"]
+    assert product_storage.put_payloads == [VALID_WEBP_BYTES]
 
 
 def test_minio_storage_adapter_uses_settings_and_sdk_primitives():

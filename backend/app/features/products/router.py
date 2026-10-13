@@ -120,6 +120,7 @@ def upload_product_image(
         file.file,
         file.filename or "",
         file.content_type or "",
+        size=file.size,
     )
 
 
