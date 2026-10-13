@@ -21,6 +21,9 @@ This document summarizes the architectural hardening, data integrity improvement
 4. `d4a7c8e91f23_order_items_and_reviews_integrity.py`: Created `order_items` and `product_reviews`, backfilled legacy orders into `order_items`, added quantity constraints (`stock_quantity >= 0`, `reserved_quantity >= 0`, `sold_quantity >= 0`).
    > **CẢNH BÁO MẤT DỮ LIỆU (DATA LOSS WARNING):** Chạy `alembic downgrade` qua revision này sẽ DROP hoàn toàn hai bảng `order_items` và `product_reviews`, làm mất toàn bộ chi tiết sản phẩm của các đơn hàng và toàn bộ đánh giá của khách hàng mà không thể khôi phục nếu không có bản sao lưu trước đó.
 5. `e5b8c9d0f1a2_performance_indexes.py`: Added composite indexes (`ix_orders_user_status`, `ix_orders_status_created_at`, `ix_orders_status_expires_at`, `ix_products_cat_active_price`) and MariaDB `FULLTEXT` index (`ix_products_name_desc_ft`).
+6. `f7c2a1b9e8d3_enforce_orders_public_code_not_null.py`: Enforced non-null constraint on orders public_code.
+7. `a1b2c3d4e5f6_expand_product_variants_and_fashion.py`: Expand migration introducing `product_variants` (size, color, SKU, price override, variant inventory), fashion attributes (`brand`, `gender`, `material`, `fit`, `care_instructions`, `size_chart`), category hierarchy (`parent_id`, `slug`), and backfilling existing catalog stock into default `ONE_SIZE` variants.
+8. `b2c3d4e5f6a7_contract_drop_product_stock_paddle.py`: Contract migration dropping legacy stock columns from `products` table and dropping legacy Paddle payment columns.
 
 ### How to Apply Migrations
 ```bash
@@ -51,6 +54,13 @@ alembic downgrade -1
 - Product price, order item price, order total, and payment amount now use `sa.Numeric(12, 2)` in MariaDB.
 - Financial arithmetic in Python uses Python's `Decimal` with `ROUND_HALF_UP` for VietQR memo and payment amounts.
 - API serialization formats prices as standard JSON floating-point numbers (`50.0`) to maintain full backward compatibility with frontend clients.
+
+### 3.3 Fashion Catalog & Variant Inventory Breaking Changes
+- **Cart Keying (`truelook_cart_v2`):** Frontend cart now stores items uniquely keyed by `variant_id` (`{ variantId: number, productId: number, quantity: number }`). Legacy `luxestore_cart` and `fastapi_store_cart` keys are safely upgraded or ignored.
+- **Cart Checkout (`POST /api/v1/orders/checkout-cart`):** Checkout payload requires `variant_id` on each item. Server validates stock and creates `OrderItem` referencing `variant_id`, preserving size, color, and SKU snapshots.
+- **Catalog Computed Projections:** `ProductResponse` dynamically computes `price_min`, `price_max`, `available_sizes`, and `available_colors` across active variants.
+- **Variant Inventory Management:** Product stock updates are performed via `POST /api/v1/products/variants/{id}/stock` with mandatory audit reason (`set`, `restock`, `damage`, `correction`).
+- **Variant Lookup Endpoint:** `GET /api/v1/products/variants/lookup?ids=1,2,3` allows clients to fetch live pricing and stock status for cached cart items in a single HTTP roundtrip.
 
 ---
 
