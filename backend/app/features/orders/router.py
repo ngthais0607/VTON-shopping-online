@@ -14,6 +14,7 @@ from app.features.orders import service
 from app.features.orders.schemas import (
     CheckoutCommand,
     CheckoutResponse,
+    LatePaymentResponse,
     OrderPatchStatus,
     OrderResponse,
     TrackingResponse,
@@ -65,6 +66,20 @@ def get_orders(
     _admin: User = Depends(get_current_admin),
 ):
     return service.list_orders(db, limit, offset)
+
+
+@router.get(
+    "/late-payments",
+    response_model=Page[LatePaymentResponse],
+    summary="List late payments for admin manual reconciliation",
+)
+def get_late_payments(
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+):
+    return service.list_late_payments(db, limit, offset)
 
 
 @router.get("/{order_id:int}", response_model=OrderResponse, summary="Get order by ID")

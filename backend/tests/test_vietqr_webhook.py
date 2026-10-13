@@ -136,3 +136,70 @@ def test_webhook_success_marks_order_paid_and_idempotent(client, db_session):
     db_session.refresh(product)
     assert product.reserved_quantity == 0
     assert product.sold_quantity == 1
+
+
+def test_webhook_expired_or_cancelled_order_records_late_payment(client, db_session):
+    order, product = setup_test_order(db_session, total_amount=200.0, status="expired", reserved=0)
+    payload = {
+        "transaction_id": "TXN_LATE_1",
+        "amount": 200.0,
+        "content": f"TRUELOOK_{order.id}",
+    }
+
+    res1 = client.post(
+        WEBHOOK_URL,
+        json=payload,
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    assert res1.status_code == 200
+    assert res1.json()["status"] == "late_payment"
+
+    db_session.refresh(order)
+    db_session.refresh(product)
+    # Order status and inventory are untouched
+    assert order.status == "expired"
+    assert product.stock_quantity == 10
+    assert product.reserved_quantity == 0
+    assert product.sold_quantity == 0
+
+    payment = (
+        db_session.query(Payment)
+        .filter(Payment.provider_transaction_id == "TXN_LATE_1")
+        .one()
+    )
+    assert payment.status == "late_payment"
+    assert payment.amount == 200.0
+
+    # Idempotent retry: same transaction id returns already_processed
+    res2 = client.post(
+        WEBHOOK_URL,
+        json=payload,
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    assert res2.status_code == 200
+    assert res2.json()["status"] == "already_processed"
+
+
+def test_get_late_payments_admin_endpoint(client, db_session, mock_admin_auth):
+    order, _ = setup_test_order(db_session, total_amount=300.0, status="expired", reserved=0)
+    payload = {
+        "transaction_id": "TXN_LATE_ADMIN_1",
+        "amount": 300.0,
+        "content": f"TRUELOOK_{order.id}",
+    }
+    client.post(
+        WEBHOOK_URL,
+        json=payload,
+        headers={"X-Webhook-Secret": SECRET},
+    )
+
+    # Admin access
+    res = client.get("/api/v1/orders/late-payments")
+    assert res.status_code == 200
+    data = res.json()
+    assert "items" in data
+    assert data["total"] >= 1
+    item = next(p for p in data["items"] if p["provider_transaction_id"] == "TXN_LATE_ADMIN_1")
+    assert item["status"] == "late_payment"
+    assert item["order_id"] == order.id
+    assert item["customer_name"] == order.customer_name

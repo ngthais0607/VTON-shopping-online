@@ -28,6 +28,7 @@ from app.features.orders.model import Order, OrderItem, Payment
 from app.features.orders.schemas import (
     CheckoutCommand,
     CheckoutResponse,
+    LatePaymentResponse,
     OrderItemResponse,
     OrderResponse,
     TrackingResponse,
@@ -599,8 +600,14 @@ def process_vietqr_webhook(
 
     locked_products = _lock_transition_products(db, all_product_ids)
     current_time = datetime.now(timezone.utc)
+    has_pending = False
+    has_late = False
+    all_paid = True
+
     for order in orders:
         if order.status == OrderStatus.PENDING.value:
+            has_pending = True
+            all_paid = False
             for item in order.items:
                 item.product = locked_products.get(item.product_id)
             if order.product_id:
@@ -616,10 +623,80 @@ def process_vietqr_webhook(
                 paid_at=current_time,
             )
             db.add(payment)
+        elif order.status == OrderStatus.PAID.value:
+            # Order is already paid
+            pass
+        else:
+            all_paid = False
+            has_late = True
+            logger.warning(
+                "VietQR webhook received for non-pending order %s (status=%s, amount=%s, transaction_id=%s)",
+                order.id,
+                order.status,
+                payload.amount,
+                payload.transaction_id,
+            )
+            payment = Payment(
+                order_id=order.id,
+                provider="vietqr",
+                provider_transaction_id=payload.transaction_id,
+                amount=order.total_amount,
+                currency=order.currency,
+                status="late_payment",
+                paid_at=current_time,
+            )
+            db.add(payment)
 
     db.commit()
+
+    if all_paid:
+        return VietQRWebhookResponse(
+            status="already_processed",
+            message="Order has already been paid",
+            order_ids=order_ids,
+        )
+    if has_late and not has_pending:
+        return VietQRWebhookResponse(
+            status="late_payment",
+            message="Order is expired or cancelled; recorded as late payment",
+            order_ids=order_ids,
+        )
     return VietQRWebhookResponse(
         status="success",
         message="Payment processed successfully",
         order_ids=order_ids,
     )
+
+
+def list_late_payments(
+    db: Session,
+    limit: int = 10,
+    offset: int = 0,
+) -> Page[LatePaymentResponse]:
+    query = (
+        db.query(Payment, Order)
+        .join(Order, Payment.order_id == Order.id)
+        .filter(Payment.status == "late_payment")
+        .order_by(Payment.id.desc())
+    )
+    total = query.count()
+    results = query.offset(offset).limit(limit).all()
+
+    items = [
+        LatePaymentResponse(
+            id=payment.id,
+            order_id=payment.order_id,
+            provider=payment.provider,
+            provider_transaction_id=payment.provider_transaction_id,
+            amount=float(payment.amount),
+            currency=payment.currency,
+            status=payment.status,
+            paid_at=payment.paid_at,
+            created_at=payment.created_at,
+            order_status=order.status,
+            customer_name=order.customer_name,
+            customer_phone=order.customer_phone,
+        )
+        for payment, order in results
+    ]
+    return Page(items=items, total=total, limit=limit, offset=offset)

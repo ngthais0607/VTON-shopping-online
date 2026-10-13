@@ -48,6 +48,23 @@ class VietQRWebhookResponse(BaseModel):
     order_ids: list[int]
 
 
+class LatePaymentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_id: int
+    provider: str
+    provider_transaction_id: str | None = None
+    amount: float
+    currency: str
+    status: str
+    paid_at: datetime | None = None
+    created_at: datetime | None = None
+    order_status: str | None = None
+    customer_name: str | None = None
+    customer_phone: str | None = None
+
+
 class OrderItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
