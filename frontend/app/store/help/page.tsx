@@ -29,6 +29,13 @@ const faqs = [
     questions: [
       { q: "What is your return policy?", a: "TrueLook offers 7-day hassle-free returns for defective items or shipping damage." }
     ]
+  },
+  {
+    category: "Sizing & Fit Consultation",
+    questions: [
+      { q: "Làm thế nào để chọn đúng size quần áo?", a: "Mỗi sản phẩm đều có bảng số đo chi tiết (Size Chart) về vòng ngực, vòng eo, chiều dài và gợi ý cân nặng. Bạn có thể nhấn nút 'Xem bảng size' trên trang chi tiết sản phẩm." },
+      { q: "Nếu mặc không vừa tôi có được đổi size không?", a: "TrueLook hỗ trợ đổi size miễn phí trong vòng 7 ngày kể từ khi nhận hàng với sản phẩm còn nguyên tem mác." }
+    ]
   }
 ];
 

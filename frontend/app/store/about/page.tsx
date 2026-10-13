@@ -24,7 +24,7 @@ export default function AboutPage() {
               Redefining <span className="bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">Premium Retail</span>
             </h1>
             <p className="text-slate-300 max-w-2xl mx-auto text-sm md:text-base leading-relaxed">
-              Founded in 2019, TrueLook delivers high-end lifestyle & technology products paired with uncompromised customer service.
+              Thành lập năm 2019, TrueLook mang đến trải nghiệm thời trang may mặc cao cấp, tôn vinh phong cách cá nhân với chất liệu chuẩn mực và dịch vụ tận tâm.
             </p>
           </div>
         </section>

@@ -44,6 +44,8 @@ const mockProduct: Product = {
   sold_quantity: 3,
   currency: "VND",
   is_active: true,
+  created_at: null,
+  updated_at: null,
   category: { id: 1, name: "Áo sơ mi", slug: "ao-so-mi" },
   images: [
     {

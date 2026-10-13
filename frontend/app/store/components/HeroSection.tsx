@@ -6,10 +6,10 @@ import { motion } from "motion/react";
 const floatingCards = [
   {
     id: 1,
-    name: "Arc Pro Watch",
-    price: "$349",
-    category: "Wearables",
-    img: "https://images.unsplash.com/photo-1631863552122-3072cf599a46?w=200&h=200&fit=crop&auto=format",
+    name: "Đầm Dạ Hội Satin",
+    price: "1.250.000₫",
+    category: "Váy & Đầm",
+    img: "https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=200&h=200&fit=crop&auto=format",
     badge: "New",
     badgeColor: "bg-sky-100 text-sky-800 border border-sky-200",
     delay: 0,
@@ -18,10 +18,10 @@ const floatingCards = [
   },
   {
     id: 2,
-    name: "Studio Headphones",
-    price: "$189",
-    category: "Audio",
-    img: "https://images.unsplash.com/photo-1755719401551-9e2b4be00555?w=200&h=200&fit=crop&auto=format",
+    name: "Sneaker Retro Da",
+    price: "890.000₫",
+    category: "Giày",
+    img: "https://images.unsplash.com/photo-1549298916-b41d501d3772?w=200&h=200&fit=crop&auto=format",
     badge: "Popular",
     badgeColor: "bg-cyan-100 text-cyan-800 border border-cyan-200",
     delay: 0.15,
@@ -30,10 +30,10 @@ const floatingCards = [
   },
   {
     id: 3,
-    name: "Noir Perfume",
-    price: "$124",
-    category: "Fragrance",
-    img: "https://images.unsplash.com/photo-1768025719875-48ed072f3084?w=200&h=200&fit=crop&auto=format",
+    name: "Túi Tote Canvas",
+    price: "250.000₫",
+    category: "Phụ kiện",
+    img: "https://images.unsplash.com/photo-1544816155-12df9643f363?w=200&h=200&fit=crop&auto=format",
     badge: "Best Seller",
     badgeColor: "bg-sky-100 text-sky-800 border border-sky-200",
     delay: 0.3,
@@ -188,19 +188,19 @@ export function HeroSection({ onShopNow }: { onShopNow: () => void }) {
               <div className="w-72 bg-white/95 backdrop-blur-2xl rounded-3xl p-6 shadow-2xl shadow-sky-600/10 border border-sky-200/80">
                 <div className="aspect-square rounded-2xl overflow-hidden bg-sky-50 mb-4 relative group">
                   <Image
-                    src="https://images.unsplash.com/photo-1562907550-096d3bf9b25c?w=400&h=400&fit=crop&auto=format"
-                    alt="Featured laptop"
+                    src="https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=600&h=600&fit=crop&auto=format"
+                    alt="Bộ sưu tập Áo Blazer Linen TrueLook"
                     fill
                     className="object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                 </div>
                 <div className="space-y-1">
-                  <span className="text-[10px] font-extrabold text-sky-600 uppercase tracking-wider">Premium Series</span>
-                  <p className="text-base font-extrabold text-slate-900">Volta Pro 14 Studio</p>
+                  <span className="text-[10px] font-extrabold text-sky-600 uppercase tracking-wider">Bộ Sưu Tập Mới</span>
+                  <p className="text-base font-extrabold text-slate-900">Áo Blazer Linen 2 Hàng Khuy</p>
                   <div className="flex items-center justify-between pt-1">
-                    <span className="text-sky-700 font-extrabold text-lg">$1,299</span>
+                    <span className="text-sky-700 font-extrabold text-lg">890.000₫</span>
                     <span className="text-[10px] font-bold text-sky-700 bg-sky-100 px-2.5 py-0.5 rounded-full border border-sky-200">
-                      In Stock
+                      Còn hàng
                     </span>
                   </div>
                 </div>

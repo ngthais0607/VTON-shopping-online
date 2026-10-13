@@ -607,7 +607,8 @@ export function FeaturedProducts({
                     Reset Filters
                   </button>
                 </div>
-              </motion.div>
+              </div>
+            </motion.div>
             )}
           </AnimatePresence>
 

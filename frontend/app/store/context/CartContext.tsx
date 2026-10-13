@@ -213,7 +213,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             created_at: null,
             updated_at: null,
             category: null,
-            images: v?.image_url ? [{ id: 1, url: v.image_url }] : [],
+            images: v?.image_url ? [{ id: "img-1", url: v.image_url }] : [],
             image_url: v?.image_url || undefined,
           };
 
