@@ -62,10 +62,13 @@ import {
   Product,
   Category,
   ProductFormData,
+  ProductVariant,
 } from "@/lib/types";
 import { format } from "date-fns";
 import Image from "next/image";
 import { ImageUploader } from "@/components/image-uploader";
+import { VariantMatrixGenerator, BulkVariantPayload } from "@/components/admin/variant-matrix-generator";
+import { VariantStockDialog } from "@/components/admin/variant-stock-dialog";
 
 export default function ProductsPage() {
   const { categories, error: categoriesError, isLoading: categoriesLoading, mutate: retryCategories } = useCategoryOptions();
@@ -73,6 +76,10 @@ export default function ProductsPage() {
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const [matrixDialogOpen, setMatrixDialogOpen] = useState(false);
+  const [matrixProduct, setMatrixProduct] = useState<Product | null>(null);
+  const [stockDialogVariant, setStockDialogVariant] = useState<ProductVariant | null>(null);
 
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [searchTerm, setSearchTerm] = useState("");
@@ -128,6 +135,11 @@ export default function ProductsPage() {
     sold_quantity: 0,
     description: "",
     is_active: true,
+    brand: "",
+    gender: "unisex",
+    material: "",
+    fit: "",
+    care_instructions: "",
   });
 
   // Filters and sorting are now handled backend-side.
@@ -151,6 +163,11 @@ export default function ProductsPage() {
       sold_quantity: 0,
       description: "",
       is_active: true,
+      brand: "",
+      gender: "unisex",
+      material: "",
+      fit: "",
+      care_instructions: "",
     });
     setSelectedImage(null);
   };
@@ -189,6 +206,11 @@ export default function ProductsPage() {
       sold_quantity: product.sold_quantity,
       description: product.description || "",
       is_active: product.is_active,
+      brand: product.brand || "",
+      gender: product.gender || "unisex",
+      material: product.material || "",
+      fit: product.fit || "",
+      care_instructions: product.care_instructions || "",
     });
     setCreateDialogOpen(true);
   };
@@ -432,6 +454,73 @@ export default function ProductsPage() {
                       }
                     />
                   </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <label htmlFor="brand" className="text-sm font-medium">
+                        Brand (Thương hiệu)
+                      </label>
+                      <Input
+                        id="brand"
+                        placeholder="VD: TrueLook"
+                        value={formData.brand || ""}
+                        onChange={(e) => updateFormData("brand", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label htmlFor="gender" className="text-sm font-medium">
+                        Gender (Đối tượng)
+                      </label>
+                      <Select
+                        value={formData.gender || "unisex"}
+                        onValueChange={(value) => updateFormData("gender", value)}
+                      >
+                        <SelectTrigger id="gender">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="male">Nam (Male)</SelectItem>
+                          <SelectItem value="female">Nữ (Female)</SelectItem>
+                          <SelectItem value="unisex">Unisex</SelectItem>
+                          <SelectItem value="kids">Trẻ em (Kids)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <label htmlFor="material" className="text-sm font-medium">
+                        Material (Chất liệu)
+                      </label>
+                      <Input
+                        id="material"
+                        placeholder="VD: 100% Cotton Compact"
+                        value={formData.material || ""}
+                        onChange={(e) => updateFormData("material", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label htmlFor="fit" className="text-sm font-medium">
+                        Fit (Kiểu dáng)
+                      </label>
+                      <Input
+                        id="fit"
+                        placeholder="VD: Regular Fit, Oversized"
+                        value={formData.fit || ""}
+                        onChange={(e) => updateFormData("fit", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <label htmlFor="care_instructions" className="text-sm font-medium">
+                      Care Instructions (Hướng dẫn giặt ủi)
+                    </label>
+                    <Input
+                      id="care_instructions"
+                      placeholder="VD: Giặt máy nước lạnh, không sấy khô"
+                      value={formData.care_instructions || ""}
+                      onChange={(e) => updateFormData("care_instructions", e.target.value)}
+                    />
+                  </div>
                   {saveError && <p role="alert">{saveError}</p>}
                   <ImageUploader
                     onFileSelected={setSelectedImage}
@@ -615,6 +704,14 @@ export default function ProductsPage() {
                               Upload Image
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              onClick={() => {
+                                setMatrixProduct(product);
+                                setMatrixDialogOpen(true);
+                              }}
+                            >
+                              Tạo biến thể (Matrix)
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               className="text-red-600"
                               onClick={() => setDeleteProduct(product)}
                             >
@@ -754,6 +851,14 @@ export default function ProductsPage() {
                           onClick={() => openEditProduct(product)}
                         >
                           Upload Image
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setMatrixProduct(product);
+                            setMatrixDialogOpen(true);
+                          }}
+                        >
+                          Tạo biến thể (Matrix)
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-red-600"
@@ -933,6 +1038,56 @@ export default function ProductsPage() {
                 </p>
               </div>
             )}
+
+            {/* Fashion Variants List */}
+            {selectedProduct.variants && selectedProduct.variants.length > 0 && (
+              <div className="py-4 border-t space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Danh sách biến thể ({selectedProduct.variants.length})
+                  </h4>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setMatrixProduct(selectedProduct);
+                      setMatrixDialogOpen(true);
+                    }}
+                    className="text-xs"
+                  >
+                    Tạo thêm biến thể
+                  </Button>
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                  {selectedProduct.variants.map((v) => (
+                    <div
+                      key={v.id}
+                      className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200/80 bg-slate-50 text-xs"
+                    >
+                      <div>
+                        <span className="font-mono font-bold text-slate-800">{v.sku}</span>
+                        <span className="text-slate-500 ml-2">
+                          Size {v.size} · {v.color_name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-slate-700">
+                          Kho: {v.stock_quantity} (Khả dụng: {v.available_stock})
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-[11px] h-7 px-2"
+                          onClick={() => setStockDialogVariant(v)}
+                        >
+                          Sửa tồn kho
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       )}
@@ -961,6 +1116,45 @@ export default function ProductsPage() {
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      {/* Variant Matrix Generator Modal */}
+      {matrixProduct && (
+        <Dialog open={matrixDialogOpen} onOpenChange={setMatrixDialogOpen}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-0 bg-transparent shadow-none">
+            <VariantMatrixGenerator
+              productId={matrixProduct.id}
+              productSlug={matrixProduct.slug || "product"}
+              defaultPrice={matrixProduct.price}
+              onGenerate={async (payload) => {
+                try {
+                  await apiPost(`/products/${matrixProduct.id}/variants/bulk`, payload);
+                  await mutateProducts();
+                  setMatrixDialogOpen(false);
+                } catch (err: any) {
+                  alert(err.message || "Failed to generate variants");
+                }
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Variant Stock Adjustment Dialog */}
+      <VariantStockDialog
+        variant={stockDialogVariant}
+        isOpen={!!stockDialogVariant}
+        onClose={() => setStockDialogVariant(null)}
+        onSubmit={async (data) => {
+          if (!stockDialogVariant) return;
+          try {
+            await apiPost(`/variants/${stockDialogVariant.id}/adjust-stock`, data);
+            await mutateProducts();
+            setStockDialogVariant(null);
+          } catch (err: any) {
+            alert(err.message || "Failed to adjust variant stock");
+          }
+        }}
+      />
     </div>
   );
 }

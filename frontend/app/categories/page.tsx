@@ -51,8 +51,15 @@ export default function CategoriesPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [deleteCategory, setDeleteCategory] = useState<Category | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    slug: string;
+    parent_id: number | null;
+    description: string;
+  }>({
     name: "",
+    slug: "",
+    parent_id: null,
     description: "",
   });
   useEffect(() => { if (!loading && !error && page > 1 && categories.length === 0) setPage(page - 1); }, [loading, error, page, categories.length]);
@@ -61,6 +68,8 @@ export default function CategoriesPage() {
   const resetFormData = () => {
     setFormData({
       name: "",
+      slug: "",
+      parent_id: null,
       description: "",
     });
   };
@@ -69,15 +78,23 @@ export default function CategoriesPage() {
     setEditingCategory(category);
     setFormData({
       name: category.name,
+      slug: category.slug || "",
+      parent_id: category.parent_id ?? null,
       description: category.description || "",
     });
     setCreateDialogOpen(true);
   };
 
   const handleCreateCategory = async () => {
-    const createdCategory = await apiPost<Category, typeof formData>(
+    const payload = {
+      name: formData.name,
+      slug: formData.slug.trim() || undefined,
+      parent_id: formData.parent_id,
+      description: formData.description.trim() || undefined,
+    };
+    await apiPost<Category, typeof payload>(
       "/categories",
-      formData,
+      payload,
     );
     await mutate();
     resetFormData();
@@ -86,9 +103,15 @@ export default function CategoriesPage() {
 
   const handleUpdateCategory = async () => {
     if (!editingCategory) return;
-    const updatedCategory = await apiPatch<Category, typeof formData>(
+    const payload = {
+      name: formData.name,
+      slug: formData.slug.trim() || undefined,
+      parent_id: formData.parent_id,
+      description: formData.description.trim() || undefined,
+    };
+    await apiPatch<Category, typeof payload>(
       `/categories/${editingCategory.id}`,
-      formData,
+      payload,
     );
     await mutate();
     resetFormData();
@@ -150,6 +173,49 @@ export default function CategoriesPage() {
                       setFormData((current) => ({
                         ...current,
                         name: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <label htmlFor="parent_id" className="text-sm font-medium">
+                    Parent Category (Danh mục cha)
+                  </label>
+                  <select
+                    id="parent_id"
+                    className="w-full px-3 py-2 border border-input rounded-md text-sm bg-white"
+                    value={formData.parent_id ?? ""}
+                    onChange={(e) =>
+                      setFormData((current) => ({
+                        ...current,
+                        parent_id: e.target.value ? parseInt(e.target.value) : null,
+                      }))
+                    }
+                  >
+                    <option value="">-- None (Danh mục gốc cấp 1) --</option>
+                    {categories
+                      .filter((c) => !editingCategory || c.id !== editingCategory.id)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="grid gap-2">
+                  <label htmlFor="slug" className="text-sm font-medium">
+                    Slug (URL định danh)
+                  </label>
+                  <Input
+                    id="slug"
+                    placeholder="VD: ao-thun-nam"
+                    value={formData.slug}
+                    onChange={(e) =>
+                      setFormData((current) => ({
+                        ...current,
+                        slug: e.target.value,
                       }))
                     }
                   />
