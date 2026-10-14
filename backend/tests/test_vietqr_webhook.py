@@ -226,3 +226,121 @@ def test_get_late_payments_admin_endpoint(client, db_session, mock_admin_auth):
     assert item["status"] == "late_payment"
     assert item["order_id"] == order.id
     assert item["customer_name"] == order.customer_name
+
+
+def test_webhook_rejects_multi_order_memo(client, db_session):
+    order1, _ = setup_test_order(db_session, total_amount=100.0)
+    order2, _ = setup_test_order(db_session, total_amount=100.0)
+
+    # Multi-order memo TRUELOOK_1_2 is rejected
+    payload = {
+        "transaction_id": "TXN_MULTI_1",
+        "amount": 200.0,
+        "content": f"TRUELOOK_{order1.id}_{order2.id}",
+    }
+    res = client.post(
+        WEBHOOK_URL,
+        json=payload,
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    assert res.status_code == 400
+    assert res.json()["code"] == "unsupported_multi_order_payment"
+
+    # Repeated order ID TRUELOOK_1_1 normalizes to single order and succeeds
+    payload_repeat = {
+        "transaction_id": "TXN_REPEAT_1",
+        "amount": 100.0,
+        "content": f"TRUELOOK_{order1.id}_{order1.id}",
+    }
+    res_repeat = client.post(
+        WEBHOOK_URL,
+        json=payload_repeat,
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    assert res_repeat.status_code == 200
+    assert res_repeat.json()["status"] == "success"
+
+
+def test_webhook_rejects_transaction_order_mismatch(client, db_session):
+    order1, _ = setup_test_order(db_session, total_amount=100.0)
+    order2, _ = setup_test_order(db_session, total_amount=100.0)
+
+    # First order succeeds
+    res1 = client.post(
+        WEBHOOK_URL,
+        json={
+            "transaction_id": "TXN_SHARED_1",
+            "amount": 100.0,
+            "content": f"TRUELOOK_{order1.id}",
+        },
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    assert res1.status_code == 200
+
+    # Reusing same transaction for order 2 raises transaction_order_mismatch
+    res2 = client.post(
+        WEBHOOK_URL,
+        json={
+            "transaction_id": "TXN_SHARED_1",
+            "amount": 100.0,
+            "content": f"TRUELOOK_{order2.id}",
+        },
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    assert res2.status_code == 400
+    assert res2.json()["code"] == "transaction_order_mismatch"
+
+
+def test_webhook_rejects_confirmed_and_unsupported_status(client, db_session):
+    order, _ = setup_test_order(
+        db_session, total_amount=100.0, status="confirmed", reserved=1
+    )
+    res = client.post(
+        WEBHOOK_URL,
+        json={
+            "transaction_id": "TXN_CONFIRMED_1",
+            "amount": 100.0,
+            "content": f"TRUELOOK_{order.id}",
+        },
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    assert res.status_code == 400
+    assert res.json()["code"] == "invalid_payment_order_status"
+
+    # Verify no payment was added
+    payments = db_session.query(Payment).filter(Payment.order_id == order.id).all()
+    assert len(payments) == 0
+
+
+def test_is_payment_transaction_uniqueness_error():
+    from sqlalchemy.exc import IntegrityError
+
+    from app.features.orders.service import _is_payment_transaction_uniqueness_error
+
+    # MariaDB / MySQL named constraint error
+    mariadb_err = IntegrityError(
+        "INSERT INTO payments ...",
+        {},
+        Exception(
+            "1062 (23000): Duplicate entry 'vietqr-TXN123' for key 'uq_payments_provider_trans_id'"
+        ),
+    )
+    assert _is_payment_transaction_uniqueness_error(mariadb_err) is True
+
+    # SQLite unique constraint error
+    sqlite_err = IntegrityError(
+        "INSERT INTO payments ...",
+        {},
+        Exception(
+            "UNIQUE constraint failed: payments.provider, payments.provider_transaction_id"
+        ),
+    )
+    assert _is_payment_transaction_uniqueness_error(sqlite_err) is True
+
+    # Unrelated constraint (e.g. check constraint or foreign key)
+    unrelated_err = IntegrityError(
+        "INSERT INTO orders ...",
+        {},
+        Exception("CHECK constraint failed: total_amount >= 0"),
+    )
+    assert _is_payment_transaction_uniqueness_error(unrelated_err) is False

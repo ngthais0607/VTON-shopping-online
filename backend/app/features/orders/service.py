@@ -641,6 +641,16 @@ def expire_pending_orders(
     return expired_count
 
 
+def _is_payment_transaction_uniqueness_error(exc: IntegrityError) -> bool:
+    msg = str(exc).lower()
+    return (
+        "uq_payments_provider_trans_id" in msg
+        or "payments.provider" in msg
+        or ("duplicate entry" in msg and "provider" in msg)
+        or ("unique constraint failed" in msg and "provider" in msg)
+    )
+
+
 def process_vietqr_webhook(
     db: Session,
     payload: VietQRWebhookPayload,
@@ -657,6 +667,22 @@ def process_vietqr_webhook(
             "Invalid or missing webhook secret", code="unauthorized_webhook"
         )
 
+    pattern = re.compile(r"(?:TRUELOOK|LUXESTORE)_(\d+(?:_\d+)*)", re.IGNORECASE)
+    match = pattern.search(payload.content)
+    if not match:
+        logger.warning(
+            "VietQR webhook memo does not match pattern: %s", payload.content
+        )
+        raise BusinessRuleError("Invalid memo content", code="invalid_webhook_memo")
+
+    distinct_order_ids = sorted(list({int(i) for i in match.group(1).split("_")}))
+    if len(distinct_order_ids) > 1:
+        raise BusinessRuleError(
+            "Multi-order payments are not supported in this version",
+            code="unsupported_multi_order_payment",
+        )
+    order_ids = distinct_order_ids
+
     existing_payment = (
         db.query(Payment)
         .filter(
@@ -666,6 +692,11 @@ def process_vietqr_webhook(
         .first()
     )
     if existing_payment:
+        if existing_payment.order_id not in order_ids:
+            raise BusinessRuleError(
+                f"Transaction {payload.transaction_id} is already associated with order {existing_payment.order_id}",
+                code="transaction_order_mismatch",
+            )
         logger.info(
             "VietQR webhook transaction %s already processed for order %s",
             payload.transaction_id,
@@ -676,16 +707,6 @@ def process_vietqr_webhook(
             message="Transaction already processed",
             order_ids=[existing_payment.order_id],
         )
-
-    pattern = re.compile(r"(?:TRUELOOK|LUXESTORE)_(\d+(?:_\d+)*)", re.IGNORECASE)
-    match = pattern.search(payload.content)
-    if not match:
-        logger.warning(
-            "VietQR webhook memo does not match pattern: %s", payload.content
-        )
-        raise BusinessRuleError("Invalid memo content", code="invalid_webhook_memo")
-
-    order_ids = sorted(list({int(i) for i in match.group(1).split("_")}))
 
     # 1. Lock variants in ascending order first to avoid deadlocks
     locked_variants = _resolve_and_lock_order_inventory(db, order_ids)
@@ -727,6 +748,11 @@ def process_vietqr_webhook(
         .first()
     )
     if existing_payment:
+        if existing_payment.order_id not in order_ids:
+            raise BusinessRuleError(
+                f"Transaction {payload.transaction_id} is already associated with order {existing_payment.order_id}",
+                code="transaction_order_mismatch",
+            )
         logger.info(
             "VietQR webhook transaction %s already processed for order %s",
             payload.transaction_id,
@@ -782,13 +808,13 @@ def process_vietqr_webhook(
                 paid_at=current_time,
             )
             db.add(payment)
-        else:
+        elif order.status in (OrderStatus.EXPIRED.value, OrderStatus.CANCELLED.value):
             all_paid = False
             has_late = True
             logger.warning(
-                "VietQR webhook received for non-pending order %s (status=%s, amount=%s, transaction_id=%s)",
-                order.id,
+                "VietQR webhook received for %s order %s (amount=%s, transaction_id=%s)",
                 order.status,
+                order.id,
                 payload.amount,
                 payload.transaction_id,
             )
@@ -802,20 +828,43 @@ def process_vietqr_webhook(
                 paid_at=current_time,
             )
             db.add(payment)
+        else:
+            raise BusinessRuleError(
+                f"Cannot process payment for order {order.id} in status '{order.status}'",
+                code="invalid_payment_order_status",
+            )
 
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        logger.info(
-            "IntegrityError on VietQR transaction %s, returning already_processed",
-            payload.transaction_id,
-        )
-        return VietQRWebhookResponse(
-            status="already_processed",
-            message="Transaction already processed",
-            order_ids=order_ids,
-        )
+        if _is_payment_transaction_uniqueness_error(exc):
+            fresh_payment = (
+                db.query(Payment)
+                .filter(
+                    Payment.provider == "vietqr",
+                    Payment.provider_transaction_id == payload.transaction_id,
+                )
+                .first()
+            )
+            if fresh_payment:
+                if fresh_payment.order_id in order_ids:
+                    logger.info(
+                        "Resolved uniqueness conflict on transaction %s for order %s",
+                        payload.transaction_id,
+                        fresh_payment.order_id,
+                    )
+                    return VietQRWebhookResponse(
+                        status="already_processed",
+                        message="Transaction already processed",
+                        order_ids=order_ids,
+                    )
+                raise BusinessRuleError(
+                    f"Transaction {payload.transaction_id} is already associated with order {fresh_payment.order_id}",
+                    code="transaction_order_mismatch",
+                )
+        logger.error("Unhandled IntegrityError during VietQR webhook: %s", exc)
+        raise
 
     if has_duplicate and not has_pending:
         return VietQRWebhookResponse(
