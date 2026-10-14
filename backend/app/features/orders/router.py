@@ -17,7 +17,7 @@ from app.features.orders.schemas import (
     LatePaymentResponse,
     OrderPatchStatus,
     OrderResponse,
-    TrackingResponse,
+    PublicTrackingResponse,
     VietQRWebhookPayload,
     VietQRWebhookResponse,
 )
@@ -127,7 +127,7 @@ def get_orders_by_user(
 
 @router.get(
     "/track/{public_code}",
-    response_model=TrackingResponse,
+    response_model=PublicTrackingResponse,
     response_model_exclude_unset=True,
     summary="Track order status by public code",
 )
@@ -141,5 +141,5 @@ def track_order_public(
             raise AuthenticationError(
                 "Could not validate credentials", code="invalid_token"
             )
-        return service.track_order(db, int(public_code), current_user)
+        return service.track_order_public_by_id(db, int(public_code), current_user)
     return service.track_order_by_public_code(db, public_code)

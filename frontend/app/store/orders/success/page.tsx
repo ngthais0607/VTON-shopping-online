@@ -14,6 +14,8 @@ import { Order } from '@/lib/types';
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const orderIdsStr = searchParams.get("order_ids") || "";
+  const codesStr = searchParams.get("codes") || "";
+  const publicCodes = codesStr ? codesStr.split(",").filter(Boolean) : [];
   const orderIds = orderIdsStr ? Array.from(new Set(orderIdsStr.split(",").filter(id => /^[1-9]\d*$/.test(id)))) : [];
   const {data: orders, error, isLoading, mutate} = useSWR<Order[]>(orderIds.length ? ['checkout-orders', orderIds.join(',')] : null,
     () => Promise.all(orderIds.map(id => apiGet<Order>(`/orders/${id}`))), {shouldRetryOnError:false});
@@ -35,7 +37,18 @@ function OrderSuccessContent() {
         </p>
       </div>
 
-      {orderIds.length > 0 && (
+      {publicCodes.length > 0 ? (
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 text-xs text-slate-600 space-y-1">
+          <span className="font-semibold text-slate-500">Order Tracking:</span>
+          <div className="flex flex-wrap gap-1.5 justify-center pt-1 font-mono font-bold text-slate-900">
+            {publicCodes.map((code) => (
+              <Link href={`/store/orders/${code}`} key={code} className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
+                #{code}
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : orderIds.length > 0 ? (
         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 text-xs text-slate-600 space-y-1">
           <span className="font-semibold text-slate-500">Order Reference IDs:</span>
           <div className="flex flex-wrap gap-1.5 justify-center pt-1 font-mono font-bold text-slate-900">
@@ -46,7 +59,7 @@ function OrderSuccessContent() {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
       {isLoading && <p>Loading committed order total...</p>}
       {error && <p role="alert">Unable to load order total. <button onClick={()=>mutate()}>Retry</button></p>}
       {totals && <div><span>Committed order total</span>{Object.entries(totals).map(([currency,total]) => <p key={currency}>{total.toFixed(2)} {currency}</p>)}</div>}

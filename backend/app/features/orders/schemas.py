@@ -127,3 +127,56 @@ class TrackingStep(BaseModel):
 class TrackingResponse(OrderResponse):
     timeline: list[TrackingStep]
     vietqr: VietQRResponse | None = None
+
+
+def mask_customer_name(name: str | None) -> str:
+    if not name or not name.strip():
+        return ""
+    tokens = name.strip().split()
+    if len(tokens) == 1:
+        tok = tokens[0]
+        return f"{tok[0]}***"
+    first = tokens[0]
+    initials = [f"{t[0]}." for t in tokens[1:] if t]
+    return f"{first} {' '.join(initials)}"
+
+
+def mask_customer_phone(phone: str | None) -> str:
+    if not phone:
+        return ""
+    import re
+
+    cleaned = re.sub(r"[\s.\-]+", "", phone)
+    if cleaned.startswith("+84"):
+        cleaned = "0" + cleaned[3:]
+    elif cleaned.startswith("84") and len(cleaned) == 11:
+        cleaned = "0" + cleaned[2:]
+
+    if len(cleaned) >= 4:
+        return f"{cleaned[:2]}******{cleaned[-2:]}"
+    return f"{cleaned[:1]}******{cleaned[-1:]}" if cleaned else "******"
+
+
+class PublicTrackingItem(BaseModel):
+    product_name: str
+    size: str | None = None
+    color_name: str | None = None
+    quantity: int
+
+
+class PublicTrackingResponse(BaseModel):
+    public_code: str
+    status: OrderStatus
+    payment_status: str
+    payment_method: OrderPaymentMethod
+    total_amount: float
+    currency: str
+    created_at: UtcDatetime | None = None
+    expires_at: UtcDatetime | None = None
+    paid_at: UtcDatetime | None = None
+    timeline: list[TrackingStep] = []
+    items: list[PublicTrackingItem] = []
+    vietqr: VietQRResponse | None = None
+    customer_name: str
+    customer_phone: str
+

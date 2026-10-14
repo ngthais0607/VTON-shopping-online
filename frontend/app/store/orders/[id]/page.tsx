@@ -170,7 +170,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                     <Sparkles className="w-3.5 h-3.5" />
                     Live Order Tracker
                   </div>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Order #{order.id}</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Order #{order.public_code || order.id}</h1>
                   <p className="text-sky-100 text-xs sm:text-sm mt-1">
                     Placed on {order.created_at ? new Date(order.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "N/A"}
                   </p>
@@ -325,19 +325,23 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                           </p>
                         )}
                         {item.sku && <p className="text-[11px] text-slate-400 font-mono mt-0.5">SKU: {item.sku}</p>}
-                        <p className="text-xs text-slate-500 mt-0.5">Quantity: {item.quantity} x {formatCurrency(item.unit_price, order.currency)}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Quantity: {item.quantity}{item.unit_price != null ? ` x ${formatCurrency(item.unit_price, order.currency)}` : ""}
+                        </p>
                       </div>
-                      <span className="font-extrabold text-slate-900">{formatCurrency(item.subtotal ?? (item.unit_price * item.quantity), order.currency)}</span>
+                      {item.subtotal != null && (
+                        <span className="font-extrabold text-slate-900">{formatCurrency(item.subtotal, order.currency)}</span>
+                      )}
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="flex items-center justify-between py-4 border-y border-slate-100 text-sm">
                   <div>
-                    <h4 className="font-bold text-slate-900">{order.product_name || "Product"}</h4>
-                    <p className="text-xs text-slate-500 mt-0.5">Quantity: {order.quantity ?? 1} x {formatCurrency(order.unit_price ?? 0, order.currency)}</p>
+                    <h4 className="font-bold text-slate-900">{order.product_name || "Order Items"}</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Quantity: {order.quantity ?? 1}</p>
                   </div>
-                  <span className="font-extrabold text-slate-900">{formatCurrency((order.unit_price ?? 0) * (order.quantity ?? 1), order.currency)}</span>
+                  <span className="font-extrabold text-slate-900">{formatCurrency(order.total_amount, order.currency)}</span>
                 </div>
               )}
 

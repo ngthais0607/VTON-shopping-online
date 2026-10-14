@@ -230,7 +230,26 @@ export interface CheckoutResponse {
   vietqr?: VietQRData | null;
 }
 
-export interface TrackingResponse extends Order {
+export interface PublicTrackingItem {
+  product_name: string;
+  size?: string | null;
+  color_name?: string | null;
+  quantity: number;
+  unit_price?: number | null;
+  subtotal?: number | null;
+  sku?: string | null;
+}
+
+export interface PublicTrackingResponse {
+  public_code: string;
+  status: OrderStatus;
+  payment_status: string;
+  payment_method: OrderPaymentMethod;
+  total_amount: number;
+  currency: string;
+  created_at?: string | null;
+  expires_at?: string | null;
+  paid_at?: string | null;
   timeline: {
     step: number;
     title: string;
@@ -238,8 +257,17 @@ export interface TrackingResponse extends Order {
     completed: boolean;
     timestamp: string | null;
   }[];
+  items: PublicTrackingItem[];
   vietqr?: VietQRData | null;
+  customer_name: string;
+  customer_phone: string;
+  id?: number | string;
+  product_name?: string | null;
+  quantity?: number | null;
+  unit_price?: number | null;
 }
+
+export type TrackingResponse = PublicTrackingResponse;
 
 export interface DashboardMetrics {
   total_products: number;

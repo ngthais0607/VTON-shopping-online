@@ -31,11 +31,15 @@ from app.features.orders.schemas import (
     LatePaymentResponse,
     OrderItemResponse,
     OrderResponse,
+    PublicTrackingItem,
+    PublicTrackingResponse,
     TrackingResponse,
     TrackingStep,
     VietQRResponse,
     VietQRWebhookPayload,
     VietQRWebhookResponse,
+    mask_customer_name,
+    mask_customer_phone,
 )
 from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
@@ -555,11 +559,115 @@ def list_user_orders(
     return [order_to_response(order) for order in orders]
 
 
-def track_order_by_public_code(db: Session, public_code: str) -> TrackingResponse:
+def _build_public_tracking_response(order: Order) -> PublicTrackingResponse:
+    paid = order.status == OrderStatus.PAID.value or (
+        hasattr(order, "status") and order.status == OrderStatus.PAID
+    )
+    timeline = [
+        TrackingStep(
+            step=1,
+            title="Order Placed",
+            description="Order submitted and awaiting payment confirmation.",
+            completed=True,
+            timestamp=order.created_at,
+        ),
+        TrackingStep(
+            step=2,
+            title="Payment Verified",
+            description="VietQR bank transfer verified by an administrator.",
+            completed=paid,
+            timestamp=order.paid_at if paid else None,
+        ),
+        TrackingStep(
+            step=3,
+            title="Processing & Packing",
+            description="Item certified and packed for express dispatch.",
+            completed=paid,
+            timestamp=None,
+        ),
+        TrackingStep(
+            step=4,
+            title="Delivered",
+            description="Order fulfilled and delivered to recipient.",
+            completed=False,
+            timestamp=None,
+        ),
+    ]
+
+    items = []
+    order_items = getattr(order, "items", []) or []
+    for item in order_items:
+        items.append(
+            PublicTrackingItem(
+                product_name=item.product_name,
+                size=item.size,
+                color_name=item.color_name,
+                quantity=item.quantity,
+            )
+        )
+    if not items and getattr(order, "product_name", None):
+        items.append(
+            PublicTrackingItem(
+                product_name=order.product_name,
+                size=None,
+                color_name=None,
+                quantity=getattr(order, "quantity", 1) or 1,
+            )
+        )
+
+    payments = getattr(order, "payments", []) or []
+    payment = payments[-1] if payments else None
+    if payment:
+        payment_status = payment.status
+    elif order.status == OrderStatus.PAID.value:
+        payment_status = "paid"
+    elif order.status == OrderStatus.EXPIRED.value:
+        payment_status = "failed"
+    else:
+        payment_status = "pending"
+
+    vietqr_data = None
+    if (
+        order.payment_method == OrderPaymentMethod.VIETQR.value
+        and order.status == OrderStatus.PENDING.value
+    ):
+        vietqr_data = _vietqr_response([order])
+
+    payload = {
+        "public_code": order.public_code,
+        "status": order.status,
+        "payment_status": payment_status,
+        "payment_method": order.payment_method,
+        "total_amount": order.total_amount,
+        "currency": order.currency,
+        "created_at": order.created_at,
+        "expires_at": order.expires_at,
+        "paid_at": order.paid_at,
+        "timeline": timeline,
+        "items": items,
+        "customer_name": mask_customer_name(order.customer_name),
+        "customer_phone": mask_customer_phone(order.customer_phone),
+    }
+    if vietqr_data is not None:
+        payload["vietqr"] = vietqr_data
+
+    return PublicTrackingResponse(**payload)
+
+
+def track_order_by_public_code(db: Session, public_code: str) -> PublicTrackingResponse:
     order = db.query(Order).filter(Order.public_code == public_code).first()
     if order is None:
         raise OrderNotFoundError("Order not found")
-    return _build_tracking_response(order)
+    return _build_public_tracking_response(order)
+
+
+def track_order_public_by_id(
+    db: Session, order_id: int, user: User | None = None
+) -> PublicTrackingResponse:
+    order = db.get(Order, order_id)
+    if order is None or (user and user.role != "admin" and order.user_id != user.id):
+        raise OrderNotFoundError("Order not found")
+    return _build_public_tracking_response(order)
 
 
 def track_order(

@@ -293,7 +293,9 @@ def test_track_order_owner_can_view(client, db_session, mock_user_auth):
     response = client.get(f"/api/v1/orders/track/{order_id}")
 
     assert response.status_code == 200
-    assert response.json()["id"] == order_id
+    assert response.json()["public_code"]
+    assert "id" not in response.json()
+    assert "shipping_address" not in response.json()
     timeline_copy = " ".join(
         step["description"] for step in response.json()["timeline"]
     )
@@ -316,7 +318,9 @@ def test_track_order_admin_can_view_any_order(client, db_session, mock_user_auth
     response = client.get(f"/api/v1/orders/track/{order_id}")
 
     assert response.status_code == 200
-    assert response.json()["id"] == order_id
+    assert response.json()["public_code"]
+    assert "id" not in response.json()
+    assert "shipping_address" not in response.json()
 
 
 def test_track_order_hides_order_from_other_customer(
@@ -755,7 +759,7 @@ def test_orders_created_with_unique_public_code_and_trackable(
     # Tracking by public_code returns the order
     track_res = client.get(f"/api/v1/orders/track/{public_code}")
     assert track_res.status_code == 200
-    assert track_res.json()["id"] == order_data["id"]
+    assert "id" not in track_res.json()
     assert track_res.json()["public_code"] == public_code
 
 

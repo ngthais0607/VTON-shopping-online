@@ -187,7 +187,7 @@ export default function CustomerOrdersPage() {
                                 {/* Nút xem chi tiết & theo dõi đơn hàng */}
                                 <div className="md:border-l md:border-sky-100 md:pl-4 flex items-center justify-stretch md:justify-center w-full md:w-auto pt-2 md:pt-0">
                                     <button
-                                        onClick={() => router.push(`/store/orders/${order.id}`)}
+                                        onClick={() => router.push(`/store/orders/${order.public_code}`)}
                                         className="w-full md:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-sky-500/20 active:scale-95 transition-all cursor-pointer"
                                     >
                                         <CreditCard className="w-3.5 h-3.5" />

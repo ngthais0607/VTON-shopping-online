@@ -47,6 +47,7 @@ export default function CheckoutPage() {
   // VietQR Modal state
   const [vietqrModalOpen, setVietqrModalOpen] = useState(false);
   const [createdOrderIds, setCreatedOrderIds] = useState<number[]>([]);
+  const [createdOrderCodes, setCreatedOrderCodes] = useState<string[]>([]);
   const [vietqrData, setVietqrData] = useState<VietQRData | null>(null);
 
   useEffect(() => {
@@ -110,7 +111,11 @@ export default function CheckoutPage() {
       const response = await apiPost<CheckoutResponse>("/orders/checkout-cart", payload);
 
       const orderIds = response.orders.map((o) => o.id);
+      const publicCodes = response.orders
+        .map((o) => o.public_code)
+        .filter((c): c is string => Boolean(c));
       setCreatedOrderIds(orderIds);
+      setCreatedOrderCodes(publicCodes);
 
       // Clear cart from context
       clearCart();
@@ -120,7 +125,10 @@ export default function CheckoutPage() {
         setVietqrModalOpen(true);
       } else {
         // COD order completed
-        router.push(`/store/orders/success?order_ids=${orderIds.join(",")}`);
+        const parts: string[] = [];
+        if (publicCodes.length) parts.push(`codes=${publicCodes.join(",")}`);
+        if (orderIds.length) parts.push(`order_ids=${orderIds.join(",")}`);
+        router.push(`/store/orders/success${parts.length ? `?${parts.join("&")}` : ""}`);
       }
     } catch (err: any) {
 
@@ -133,7 +141,10 @@ export default function CheckoutPage() {
 
   const handleContinue = () => {
     setVietqrModalOpen(false);
-    router.push(`/store/orders/success?order_ids=${createdOrderIds.join(",")}`);
+    const parts: string[] = [];
+    if (createdOrderCodes.length) parts.push(`codes=${createdOrderCodes.join(",")}`);
+    if (createdOrderIds.length) parts.push(`order_ids=${createdOrderIds.join(",")}`);
+    router.push(`/store/orders/success${parts.length ? `?${parts.join("&")}` : ""}`);
   };
 
   return (
