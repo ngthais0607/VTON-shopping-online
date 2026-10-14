@@ -1,5 +1,5 @@
 # Stage 1: Build dependencies
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
@@ -7,7 +7,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Stage 2: Production runtime
-FROM python:3.11-slim AS runner
+FROM python:3.12-slim AS runner
 
 WORKDIR /app
 
@@ -30,5 +30,8 @@ ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 ENV FORWARDED_ALLOW_IPS=""
+
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=5 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
 CMD ["sh", "-c", "if [ -n \"$FORWARDED_ALLOW_IPS\" ]; then exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$FORWARDED_ALLOW_IPS\"; else exec uvicorn app.main:app --host 0.0.0.0 --port 8000; fi"]

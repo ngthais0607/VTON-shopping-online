@@ -4,14 +4,14 @@ services:
     container_name: fastapi_mariadb
     restart: always
     environment:
-      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-password123}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD is required}
       MARIADB_DATABASE: ${MARIADB_DATABASE:-fastapi_founder}
     ports:
       - "3307:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -uroot -p$${MARIADB_ROOT_PASSWORD:-password123} || exit 1"]
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -uroot -p$${MARIADB_ROOT_PASSWORD} || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,8 +36,8 @@ services:
     restart: always
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -45,6 +45,57 @@ services:
       - minio_data:/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fastapi_migrate
+    restart: "no"
+    command: python -m alembic upgrade head
+    environment:
+      - DATABASE_URL=mysql+pymysql://root:${MARIADB_ROOT_PASSWORD}@mariadb:3306/${MARIADB_DATABASE:-fastapi_founder}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fastapi_api
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mysql+pymysql://root:${MARIADB_ROOT_PASSWORD}@mariadb:3306/${MARIADB_DATABASE:-fastapi_founder}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
+      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      - MINIO_BUCKET=${MINIO_BUCKET:-product-images}
+      - MINIO_SECURE=${MINIO_SECURE:-False}
+      - VIETQR_BANK_ID=${VIETQR_BANK_ID:-MB}
+      - VIETQR_ACCOUNT_NO=${VIETQR_ACCOUNT_NO:-0382912048}
+      - VIETQR_ACCOUNT_NAME=${VIETQR_ACCOUNT_NAME:-TRUELOOK}
+      - VIETQR_WEBHOOK_SECRET=${VIETQR_WEBHOOK_SECRET:-}
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -57,12 +108,40 @@ services:
     container_name: fastapi_arq_worker
     restart: always
     environment:
-      - DATABASE_URL=mysql+pymysql://root:${MARIADB_ROOT_PASSWORD:-password123}@mariadb:3306/${MARIADB_DATABASE:-fastapi_founder}
+      - DATABASE_URL=mysql+pymysql://root:${MARIADB_ROOT_PASSWORD}@mariadb:3306/${MARIADB_DATABASE:-fastapi_founder}
       - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
     depends_on:
-      - redis
-      - mariadb
+      redis:
+        condition: service_healthy
+      mariadb:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    container_name: nextjs_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (res) => { if (res.statusCode < 400) process.exit(0); else process.exit(1); }).on('error', () => process.exit(1));"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   mariadb_data:
