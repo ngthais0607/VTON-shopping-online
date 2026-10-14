@@ -10,7 +10,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.cache import get_cache
 from app.core.config import get_settings
-from app.core.errors import BusinessRuleError, ConflictError, ResourceNotFoundError
+from app.core.errors import BusinessRuleError, ResourceNotFoundError
 from app.core.schemas import Page
 from app.core.slug import generate_unique_slug, slugify
 from app.features.categories import service as category_service
@@ -114,8 +114,14 @@ def create_product(db: Session, command: ProductCreate) -> Product:
             created_variants.append(v)
         db.flush()
 
-    if created_variants and any(v.is_active for v in created_variants):
-        product.is_active = requested_active
+    has_active_variant = bool(created_variants and any(v.is_active for v in created_variants))
+    if requested_active:
+        if not has_active_variant:
+            raise BusinessRuleError(
+                "Cannot activate product without active variants",
+                code="cannot_activate_product_without_variants",
+            )
+        product.is_active = True
 
     product_id = product.id
     db.commit()
@@ -519,9 +525,9 @@ def update_product(
     if changes.get("is_active") is True:
         has_active_variant = any(v.is_active for v in variants)
         if not has_active_variant:
-            raise ConflictError(
+            raise BusinessRuleError(
                 "Cannot activate product without active variants",
-                code="no_active_variants",
+                code="cannot_activate_product_without_variants",
             )
 
     category = product.category

@@ -16,6 +16,13 @@ def valid_product_payload(**overrides):
         "currency": "USD",
         "is_active": True,
         "description": "Valid inventory baseline",
+        "variants": [
+            {
+                "size": "M",
+                "color_name": "Black",
+                "stock_quantity": 10,
+            }
+        ],
     }
     payload.update(overrides)
     return payload
@@ -637,8 +644,83 @@ def test_update_product_activation_requires_active_variant(
         f"{PRODUCTS_PATH}/{p.id}",
         json={"is_active": True},
     )
-    assert response.status_code == 409
-    assert response.json()["code"] == "no_active_variants"
+    assert response.status_code == 400
+    assert response.json()["code"] == "cannot_activate_product_without_variants"
+
+
+def test_update_product_activation_succeeds_with_active_variant(
+    client, db_session, mock_admin_auth
+):
+    p = persist_product(db_session, name="Inactive Item With Active Variant", is_active=False)
+    for v in p.variants:
+        v.is_active = True
+    db_session.commit()
+    assert any(v.is_active for v in p.variants)
+
+    response = client.patch(
+        f"{PRODUCTS_PATH}/{p.id}",
+        json={"is_active": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["is_active"] is True
+
+
+def test_create_product_default_inactive_draft_succeeds_without_variants(
+    client, db_session, mock_admin_auth
+):
+    response = client.post(
+        PRODUCTS_PATH,
+        json={
+            "name": "Draft Product Without Variants",
+            "price": 199.0,
+            "currency": "VND",
+        },
+    )
+    assert response.status_code in (200, 201)
+    data = response.json()
+    assert data["name"] == "Draft Product Without Variants"
+    assert data["is_active"] is False
+
+
+def test_create_product_explicit_activation_fails_without_variants(
+    client, db_session, mock_admin_auth
+):
+    response = client.post(
+        PRODUCTS_PATH,
+        json={
+            "name": "Active Product Without Variants",
+            "price": 199.0,
+            "currency": "VND",
+            "is_active": True,
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "cannot_activate_product_without_variants"
+
+
+def test_create_product_explicit_activation_succeeds_with_active_variants(
+    client, db_session, mock_admin_auth
+):
+    response = client.post(
+        PRODUCTS_PATH,
+        json={
+            "name": "Active Product With Variants",
+            "price": 199.0,
+            "currency": "VND",
+            "is_active": True,
+            "variants": [
+                {
+                    "size": "M",
+                    "color_name": "Black",
+                    "stock_quantity": 10,
+                }
+            ],
+        },
+    )
+    assert response.status_code in (200, 201)
+    data = response.json()
+    assert data["name"] == "Active Product With Variants"
+    assert data["is_active"] is True
 
 
 def test_get_product_facets_cached_and_invalidated_on_mutation(

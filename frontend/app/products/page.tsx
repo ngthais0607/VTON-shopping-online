@@ -134,13 +134,16 @@ export default function ProductsPage() {
     reserved_quantity: 0,
     sold_quantity: 0,
     description: "",
-    is_active: true,
+    is_active: false,
     brand: "",
     gender: "unisex",
     material: "",
     fit: "",
     care_instructions: "",
   });
+
+  const hasActiveVariants = (p: Product | null | undefined) =>
+    Boolean(p?.variants && p.variants.some((v) => v.is_active));
 
   // Filters and sorting are now handled backend-side.
   // We keep filteredProducts as a direct passthrough of products to preserve visual mapping.
@@ -162,7 +165,7 @@ export default function ProductsPage() {
       reserved_quantity: 0,
       sold_quantity: 0,
       description: "",
-      is_active: true,
+      is_active: false,
       brand: "",
       gender: "unisex",
       material: "",
@@ -408,6 +411,30 @@ export default function ProductsPage() {
                     </div>
                   )}
                   <div className="grid gap-2">
+                    <label htmlFor="is_active" className="text-sm font-medium">
+                      Trạng thái kích hoạt (Active Status)
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <Select
+                        value={formData.is_active ? "active" : "inactive"}
+                        onValueChange={(val) => updateFormData("is_active", val === "active")}
+                      >
+                        <SelectTrigger id="is_active" className="w-[180px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active (Kích hoạt)</SelectItem>
+                          <SelectItem value="inactive">Inactive (Bản nháp)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {(!editingProduct || !hasActiveVariants(editingProduct)) && (
+                        <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded">
+                          Thêm biến thể rồi kích hoạt
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
                     <label
                       htmlFor="description"
                       className="text-sm font-medium"
@@ -637,16 +664,26 @@ export default function ProductsPage() {
                         {product.sold_quantity}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={product.is_active ? "default" : "secondary"}
-                          className={
-                            product.is_active
-                              ? "bg-green-100 text-green-800"
-                              : "bg-slate-100 text-slate-800"
-                          }
-                        >
-                          {product.is_active ? "Active" : "Inactive"}
-                        </Badge>
+                        <div className="flex flex-col gap-1 items-start">
+                          <Badge
+                            variant={product.is_active ? "default" : "secondary"}
+                            className={
+                              product.is_active
+                                ? "bg-green-100 text-green-800"
+                                : "bg-slate-100 text-slate-800"
+                            }
+                          >
+                            {product.is_active ? "Active" : "Inactive"}
+                          </Badge>
+                          {!hasActiveVariants(product) && (
+                            <Badge
+                              variant="outline"
+                              className="text-[11px] bg-amber-50 text-amber-700 border-amber-200"
+                            >
+                              Chưa hiển thị trên cửa hàng vì chưa có biến thể
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-slate-600 text-sm">
                         {displayDate(product.created_at, "MMM dd, yyyy")}
@@ -757,15 +794,25 @@ export default function ProductsPage() {
                       <ImageIcon className="w-8 h-8 text-slate-400" />
                     </div>
                   )}
-                  <Badge
-                    className={`absolute top-3 right-3 ${
-                      product.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-slate-100 text-slate-800"
-                    }`}
-                  >
-                    {product.is_active ? "Active" : "Inactive"}
-                  </Badge>
+                  <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                    <Badge
+                      className={
+                        product.is_active
+                          ? "bg-green-100 text-green-800"
+                          : "bg-slate-100 text-slate-800"
+                      }
+                    >
+                      {product.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                    {!hasActiveVariants(product) && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shadow-sm"
+                      >
+                        Chưa hiển thị trên cửa hàng vì chưa có biến thể
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="p-4">
                   <h3 className="font-semibold text-slate-900 line-clamp-2">
@@ -951,15 +998,25 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-600">Status</p>
-                  <Badge
-                    className={`${
-                      selectedProduct.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-slate-100 text-slate-800"
-                    }`}
-                  >
-                    {selectedProduct.is_active ? "Active" : "Inactive"}
-                  </Badge>
+                  <div className="flex flex-col gap-1 items-start">
+                    <Badge
+                      className={`${
+                        selectedProduct.is_active
+                          ? "bg-green-100 text-green-800"
+                          : "bg-slate-100 text-slate-800"
+                      }`}
+                    >
+                      {selectedProduct.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                    {!hasActiveVariants(selectedProduct) && (
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] bg-amber-50 text-amber-700 border-amber-200"
+                      >
+                        Chưa hiển thị trên cửa hàng vì chưa có biến thể
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="pt-4 border-t space-y-3">
                   <div className="grid grid-cols-2 gap-4">

@@ -91,3 +91,14 @@ it('retains a file input after preview and releases local previews', async()=>{
   unmount();
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
 });
+it('displays warning badge when product has no active variants', async () => {
+  productState.products = [existingProduct];
+  productState.total = 1;
+  render(<ProductsPage />);
+  expect(screen.getByText('Chưa hiển thị trên cửa hàng vì chưa có biến thể')).toBeInTheDocument();
+});
+it('shows activation guidance when creating a product without active variants', async () => {
+  render(<ProductsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Create Product' }));
+  expect(screen.getByText('Thêm biến thể rồi kích hoạt')).toBeInTheDocument();
+});
