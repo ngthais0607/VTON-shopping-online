@@ -8,9 +8,9 @@ This document provides a comprehensive evaluation of the TrueLook platform's arc
 
 | Area | Status | Notes |
 |---|---|---|
-| **(a) CI & Test Suite Integrity** | ✅ **READY** | Full green test suites across Backend (Pytest >150 tests) and Frontend (Vitest 21/21 files, 84/84 tests). Expand-and-contract database migrations verified across round-trip cycles. |
-| **(b) Variant Data Model Stabilization** | ✅ **READY** | Normalized `ProductVariant` entity with size, color, SKU, and MariaDB concurrency safety. Cart and order lines fully track variant instances without ambiguity. |
-| **(c) Garment Imagery Specification** | ⚠️ **CONDITIONAL** | Support for `kind` (`model_photo`, `flat_lay`, `back_view`) and `color_name` tagging exists in `ProductImage`. Product photography guidelines must enforce transparent/neutral flat-lay images for ML warp models. |
+| **(a) CI & Test Suite Integrity** | ✅ **READY** | Full green test suites across Backend (Pytest 328/328 tests) and Frontend (Vitest 21/21 files, 86/86 tests). Expand-and-contract migrations verified across round-trip cycles up to head `c3d4e5f6a7b8`. |
+| **(b) Variant Data Model Stabilization** | ✅ **READY** | Normalized `ProductVariant` entity with size, color, SKU, and MariaDB concurrency safety. Cart and order items strictly key by `variant_id`. Audit history recorded in `inventory_adjustments`. |
+| **(c) Garment Imagery Specification** | ⚠️ **CONDITIONAL** | Support for `kind` (`model_photo`, `flat_lay`, `detail`, `size_chart`, `catalog`) and `color_name` tagging exists in `ProductImage`. Product photography guidelines must enforce transparent/neutral flat-lay images for ML warp models. |
 | **(d) Category Classification Mappings** | ✅ **READY** | Hierarchical category system (`Áo`, `Quần`, `Váy & Đầm`, `Áo khoác`, `Giày`, `Phụ kiện`) maps 1:1 to VTON engine garment classes (upper-body, lower-body, dresses/full-body). |
 | **(e) Async Task Queue Pipeline** | ✅ **READY** | ARQ over Redis 7 is established and operational for background processing. Ready to accept async GPU job dispatching and webhook callbacks without blocking HTTP workers. |
 | **(f) Object Storage & Mask Artifacts** | ✅ **READY** | MinIO S3-compatible storage with dedicated bucket configurations supports human pose maps, garment masks, and warp output composites. |
@@ -21,13 +21,16 @@ This document provides a comprehensive evaluation of the TrueLook platform's arc
 ## 2. Detailed Technical Readiness Assessment
 
 ### (a) CI & Test Suite Stability
-- **Backend:** 100% test pass rate with Pytest against MariaDB 11.2 and SQLite fallback. Concurrency tests guarantee deadlock-free inventory reservation (`ORDER BY product_id ASC, id ASC FOR UPDATE`).
-- **Frontend:** 100% Vitest pass rate across 21 test files (84 passing tests) and clean TypeScript type-checking (`tsc --noEmit` exits code 0).
-- **Alembic:** Expand-and-contract migration pipeline (`a1b2c3d4e5f6` and `b2c3d4e5f6a7`) tested with full round-trip upgrade/downgrade consistency.
+- **Backend:** 100% test pass rate with Pytest (328 tests) against MariaDB 10.11+ and SQLite fallback. Concurrency tests guarantee deadlock-free inventory reservation (`ORDER BY product_id ASC, id ASC FOR UPDATE`).
+- **Frontend:** 100% Vitest pass rate across 21 test files (86 passing tests) and clean TypeScript type-checking (`tsc --noEmit` exits code 0).
+- **Alembic:** Expand-and-contract migration pipeline (`a1b2c3d4e5f6`, `b2c3d4e5f6a7`, `c3d4e5f6a7b8`) tested with full round-trip upgrade/downgrade consistency.
 
 ### (b) Variant Data Model (`ProductVariant`)
 - VTON engines require exact garment specifications (e.g., trying on a "Red Size M" vs. "White Size S").
-- `ProductVariant` attributes (`size`, `color_name`, `color_hex`, `sku`) are now first-class database entities.
+- `ProductVariant` attributes (`size`, `color_name`, `color_hex`, `sku`) are first-class database entities.
+- Every cart item and checkout order item records the `variant_id` exclusively, eliminating arbitrary variant fallback.
+- Stock adjustments are tracked in `inventory_adjustments` audit table.
+- Strict **Zero-VTON Boundary**: No `vton_*` tables or mock inference endpoints exist in the base catalog release branch.
 - Every cart item and checkout order item records the `variant_id` alongside product snapshots, ensuring try-on actions link directly to cart adds with identical variant parameters.
 
 ### (c) Flat-Lay vs. On-Model Photography
