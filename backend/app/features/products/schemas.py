@@ -201,6 +201,8 @@ class ProductPublicResponse(BaseModel):
     images: list[ProductImageResponse] = []
     available_stock: int
     in_stock: bool = True
+    rating_avg: float | None = None
+    review_count: int = 0
     created_at: UtcDatetime | None = None
     updated_at: UtcDatetime | None = None
 
@@ -286,6 +288,8 @@ class ProductDetailPublicResponse(BaseModel):
     available_sizes: list[str] = []
     available_colors: list[FacetColor] = []
     fit_feedback: FitFeedbackSummary | None = None
+    rating_avg: float | None = None
+    review_count: int = 0
     created_at: UtcDatetime | None = None
     updated_at: UtcDatetime | None = None
 

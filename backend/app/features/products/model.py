@@ -152,6 +152,20 @@ class Product(Base):
             return colors
         return []
 
+    @property
+    def rating_avg(self) -> float | None:
+        if getattr(self, "reviews", None):
+            revs = self.reviews
+            if revs:
+                return round(sum(r.rating for r in revs) / len(revs), 1)
+        return None
+
+    @property
+    def review_count(self) -> int:
+        if getattr(self, "reviews", None):
+            return len(self.reviews)
+        return 0
+
     variants = relationship(
         "ProductVariant", back_populates="product", cascade="all, delete-orphan"
     )

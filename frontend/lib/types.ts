@@ -52,6 +52,8 @@ export interface Product {
   available_sizes?: string[];
   available_colors?: string[];
   review_summary?: ReviewSummary | null;
+  rating_avg?: number | null;
+  review_count?: number;
 }
 
 export interface ProductFormData {

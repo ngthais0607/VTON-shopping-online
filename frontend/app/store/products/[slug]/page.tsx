@@ -270,7 +270,7 @@ export default function ProductDetailPage() {
                     <Star
                       key={i}
                       className={`w-4 h-4 ${
-                        i < Math.floor(reviewsData?.average_rating ?? 5)
+                        reviewsData?.average_rating && i < Math.floor(reviewsData.average_rating)
                           ? "text-amber-400 fill-amber-400"
                           : "text-slate-200"
                       }`}
@@ -278,7 +278,7 @@ export default function ProductDetailPage() {
                   ))}
                 </div>
                 <span className="text-xs font-semibold text-slate-700">
-                  {reviewsData?.average_rating?.toFixed(1) ?? "5.0"}
+                  {reviewsData?.average_rating ? reviewsData.average_rating.toFixed(1) : "Chưa có đánh giá"}
                 </span>
                 <span className="text-xs text-slate-400">
                   ({reviewsData?.total_reviews ?? 0} đánh giá)

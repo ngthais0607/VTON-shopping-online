@@ -225,3 +225,38 @@ def test_create_review_rejects_invalid_fit_feedback(
         json={"rating": 5, "fit_feedback": "extra_large"},
     )
     assert response.status_code == 422
+
+
+def test_product_response_includes_truthful_rating_and_review_count(
+    client,
+    mock_user_auth,
+    db_session,
+):
+    product = persist_product(db_session)
+
+    # Empty reviews state
+    resp = client.get(f"/api/v1/products/{product.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["rating_avg"] is None
+    assert data["review_count"] == 0
+
+    # Add review 1 with rating 4
+    client.post(
+        REVIEWS_PATH.format(product_id=product.id),
+        json={"rating": 4, "title": "Good quality"},
+    )
+
+    resp = client.get(f"/api/v1/products/{product.id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["rating_avg"] == 4.0
+    assert data["review_count"] == 1
+
+    # In listing endpoint as well
+    list_resp = client.get("/api/v1/products")
+    assert list_resp.status_code == 200
+    p_item = next(p for p in list_resp.json()["items"] if p["id"] == product.id)
+    assert p_item["rating_avg"] == 4.0
+    assert p_item["review_count"] == 1
+

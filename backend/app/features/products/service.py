@@ -567,6 +567,7 @@ def _active_products_query(db: Session, is_admin: bool = False) -> Query:
             joinedload(Product.category),
             selectinload(Product.images),
             selectinload(Product.variants),
+            selectinload(Product.reviews),
         )
         .filter(
             Product.is_deleted.is_(False),

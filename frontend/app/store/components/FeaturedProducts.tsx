@@ -19,7 +19,7 @@ interface ProductUI {
   category: string;
   price: number;
   originalPrice?: number;
-  rating: number;
+  rating: number | null;
   reviews: number;
   stock: number;
   badge?: string;
@@ -140,10 +140,19 @@ function PurchaseModal({ product, currentUser, onClose, onOrderSuccess }: Purcha
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1">
                     {[...Array(5)].map((_, i) => (
-                      <Star key={i} className={`w-3.5 h-3.5 ${i < Math.floor(product.rating) ? "text-amber-400 fill-amber-400" : "text-slate-300"}`} />
+                      <Star
+                        key={i}
+                        className={`w-3.5 h-3.5 ${
+                          product.rating && i < Math.floor(product.rating)
+                            ? "text-amber-400 fill-amber-400"
+                            : "text-slate-300"
+                        }`}
+                      />
                     ))}
                   </div>
-                  <span className="text-xs text-muted-foreground">{product.rating} ({product.reviews.toLocaleString()} reviews)</span>
+                  <span className="text-xs text-muted-foreground">
+                    {product.rating !== null ? `${product.rating} (${product.reviews.toLocaleString()} đánh giá)` : "Chưa có đánh giá"}
+                  </span>
                   <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${product.stock < 10 ? "bg-rose-50 text-rose-600 font-bold" : "bg-emerald-50 text-emerald-600 font-bold"}`}>
                     {product.stock <= 0 ? "Out of stock" : product.stock < 10 ? `Only ${product.stock} left` : `${product.stock} in stock`}
                   </span>
@@ -301,10 +310,19 @@ function ProductCard({ product, onBuy, onQuickView, index }: ProductCardProps) {
           <div className="flex items-center gap-1.5 mb-3">
             <div className="flex items-center gap-0.5">
               {[...Array(5)].map((_, i) => (
-                <Star key={i} className={`w-3 h-3 ${i < Math.floor(product.rating) ? "text-amber-400 fill-amber-400" : "text-slate-200"}`} />
+                <Star
+                  key={i}
+                  className={`w-3 h-3 ${
+                    product.rating && i < Math.floor(product.rating)
+                      ? "text-amber-400 fill-amber-400"
+                      : "text-slate-200"
+                  }`}
+                />
               ))}
             </div>
-            <span className="text-xs text-muted-foreground">({product.reviews.toLocaleString()})</span>
+            <span className="text-xs text-muted-foreground">
+              {product.rating !== null ? `${product.rating} (${product.reviews.toLocaleString()})` : "(Chưa có đánh giá)"}
+            </span>
           </div>
         </div>
 
@@ -409,8 +427,8 @@ export function FeaturedProducts({
 
   // Map backend products directly to visual structure
   const uiProducts: ProductUI[] = products.map((p) => {
-    const rating = (p.id % 5) * 0.1 + 4.5;
-    const reviews = p.id * 17 + 23;
+    const rating = p.rating_avg ?? null;
+    const reviews = p.review_count ?? 0;
     const stock = getAvailableStock(p);
     
     let badge = undefined;
