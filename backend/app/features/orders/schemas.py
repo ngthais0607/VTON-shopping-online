@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.schemas import UtcDatetime
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
@@ -13,15 +15,51 @@ class CartItemRequest(BaseModel):
 
 class CheckoutCommand(BaseModel):
     items: list[CartItemRequest] = Field(min_length=1)
-    customer_name: str = Field(min_length=1, max_length=255)
-    customer_phone: str = Field(min_length=1, max_length=50)
-    shipping_address: str = Field(min_length=1, max_length=1000)
+    customer_name: str
+    customer_phone: str
+    shipping_address: str
     notes: str | None = Field(default=None, max_length=2000)
     payment_method: OrderPaymentMethod = OrderPaymentMethod.VIETQR
+
+    @field_validator("customer_name")
+    @classmethod
+    def validate_customer_name(cls, v: str) -> str:
+        trimmed = v.strip()
+        if len(trimmed) < 2 or len(trimmed) > 100:
+            raise ValueError("Customer name must be between 2 and 100 characters")
+        return trimmed
+
+    @field_validator("customer_phone")
+    @classmethod
+    def validate_customer_phone(cls, v: str) -> str:
+        cleaned = re.sub(r"[\s.\-]+", "", v)
+        match = re.match(r"^(0|\+84)(3|5|7|8|9)\d{8}$", cleaned)
+        if not match:
+            raise ValueError("Invalid Vietnamese phone number")
+        if cleaned.startswith("+84"):
+            cleaned = "0" + cleaned[3:]
+        return cleaned
+
+    @field_validator("shipping_address")
+    @classmethod
+    def validate_shipping_address(cls, v: str) -> str:
+        trimmed = v.strip()
+        if len(trimmed) < 10 or len(trimmed) > 1000:
+            raise ValueError("Shipping address must be between 10 and 1000 characters")
+        return trimmed
+
+    @field_validator("notes")
+    @classmethod
+    def validate_notes(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        trimmed = v.strip()
+        return trimmed if trimmed else None
 
 
 class OrderPatchStatus(BaseModel):
     status: OrderStatus
+
 
 
 class VietQRResponse(BaseModel):

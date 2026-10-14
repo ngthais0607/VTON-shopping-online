@@ -49,8 +49,8 @@ def test_order_lookup_hides_another_customers_order(client, db_session, mock_use
         json={
             "items": [{"variant_id": product.variants[0].id, "quantity": 1}],
             "customer_name": "Buyer",
-            "customer_phone": "123",
-            "shipping_address": "Address",
+            "customer_phone": "0912345678",
+            "shipping_address": "123 Test Street, Hanoi",
         },
     )
     assert created.status_code == 201
@@ -79,8 +79,8 @@ def test_checkout_reports_typed_stock_conflict(client, db_session, mock_user_aut
         json={
             "items": [{"variant_id": product.variants[0].id, "quantity": 2}],
             "customer_name": "Buyer",
-            "customer_phone": "123",
-            "shipping_address": "Address",
+            "customer_phone": "0912345678",
+            "shipping_address": "123 Test Street, Hanoi",
         },
     )
     assert response.status_code == 409
@@ -134,8 +134,8 @@ def _checkout(client, target, quantity=1, payment_method="vietqr", **overrides):
     payload = {
         "items": [{"variant_id": variant_id, "quantity": quantity}],
         "customer_name": "Test Customer",
-        "customer_phone": "0123456789",
-        "shipping_address": "123 Test Street",
+        "customer_phone": "0912345678",
+        "shipping_address": "123 Test Street, Hanoi",
         "notes": "Leave at reception",
         "payment_method": payment_method,
     }
@@ -389,8 +389,8 @@ def test_checkout_persists_fulfillment_fields(client, db_session, mock_user_auth
     data = response.json()["orders"][0]
     order = db_session.query(Order).filter(Order.id == data["id"]).one()
     assert data["customer_name"] == order.customer_name == "Test Customer"
-    assert data["customer_phone"] == order.customer_phone == "0123456789"
-    assert data["shipping_address"] == order.shipping_address == "123 Test Street"
+    assert data["customer_phone"] == order.customer_phone == "0912345678"
+    assert data["shipping_address"] == order.shipping_address == "123 Test Street, Hanoi"
     assert data["notes"] == order.notes == "Leave at reception"
     assert data["payment_method"] == order.payment_method == "vietqr"
 
@@ -626,8 +626,8 @@ def test_duplicate_cart_items_are_aggregated(client, db_session, mock_user_auth)
             {"variant_id": product.variants[0].id, "quantity": 3},
         ],
         "customer_name": "Duplicate Buyer",
-        "customer_phone": "0123456789",
-        "shipping_address": "123 Duplicate Street",
+        "customer_phone": "0912345678",
+        "shipping_address": "123 Duplicate Street, Hanoi",
         "payment_method": "vietqr",
     }
 
@@ -653,8 +653,8 @@ def test_invalid_item_rolls_back_all_orders_and_reservations(
             {"variant_id": 999999, "quantity": 1},
         ],
         "customer_name": "Atomic Buyer",
-        "customer_phone": "0123456789",
-        "shipping_address": "123 Atomic Street",
+        "customer_phone": "0912345678",
+        "shipping_address": "123 Atomic Street, Hanoi",
         "payment_method": "vietqr",
     }
 
@@ -699,8 +699,8 @@ def test_checkout_enqueues_emails_only_after_commit(
     command = CheckoutCommand(
         items=[{"variant_id": product.variants[0].id, "quantity": 1}],
         customer_name="Buyer",
-        customer_phone="123",
-        shipping_address="Address",
+        customer_phone="0912345678",
+        shipping_address="123 Test Street, Hanoi",
     )
     with patch.object(db_session, "commit", side_effect=record_commit):
         response = checkout_cart(db_session, mock_user_auth, command, fake_order_queue)

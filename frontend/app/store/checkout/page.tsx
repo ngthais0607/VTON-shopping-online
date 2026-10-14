@@ -101,9 +101,9 @@ export default function CheckoutPage() {
           variant_id: item.variantId,
           quantity: item.quantity,
         })),
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        shipping_address: shippingAddress,
+        customer_name: validation.data.fullName,
+        customer_phone: validation.data.phone,
+        shipping_address: validation.data.address,
         notes,
         payment_method: paymentMethod,
       };
