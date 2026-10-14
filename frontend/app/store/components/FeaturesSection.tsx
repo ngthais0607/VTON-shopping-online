@@ -6,7 +6,7 @@ const features = [
   {
     icon: Truck,
     title: "Express Shipping",
-    description: "Same-day dispatch on orders placed before 3pm. Free nationwide shipping over $50.",
+    description: "Same-day dispatch on orders placed before 3pm. Free nationwide shipping on all orders.",
     color: "text-sky-600",
     bg: "bg-sky-50 border-sky-100",
     delay: 0,

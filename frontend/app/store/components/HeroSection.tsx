@@ -76,7 +76,7 @@ export function HeroSection({ onShopNow }: { onShopNow: () => void }) {
             <motion.div variants={fadeUp}>
               <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-sky-100/80 border border-sky-200/80 text-sky-800 text-xs font-bold tracking-wider uppercase backdrop-blur-md shadow-xs">
                 <Sparkles className="w-3.5 h-3.5 text-sky-600 animate-spin" style={{ animationDuration: "6s" }} />
-                Free express shipping on orders over $50
+                Miễn phí vận chuyển toàn quốc cho mọi đơn hàng
               </span>
             </motion.div>
 

@@ -289,7 +289,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                         <div className="space-y-2 pt-4 border-t border-slate-200/60 relative z-10">
                             <div className="flex items-center gap-2.5 text-[11px] text-slate-600 font-semibold">
                                 <Truck className="h-4 w-4 text-indigo-500 shrink-0" />
-                                <span>Free Express Shipping &gt; $50</span>
+                                <span>Free Express Shipping on All Orders</span>
                             </div>
                             <div className="flex items-center gap-2.5 text-[11px] text-slate-600 font-semibold">
                                 <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
