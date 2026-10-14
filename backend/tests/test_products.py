@@ -102,6 +102,8 @@ def test_create_product_returns_typed_response(client, mock_admin_auth):
         "price_max",
         "category",
         "images",
+        "rating_avg",
+        "review_count",
         "created_at",
         "updated_at",
     }
@@ -328,7 +330,7 @@ def test_list_products_eager_loads_category_and_images_without_n_plus_one(
         item["category"]["name"] == "Electronics" for item in response.json()["items"]
     )
     assert all(len(item["images"]) == 1 for item in response.json()["items"])
-    assert len(select_statements) == 4
+    assert len(select_statements) == 5
 
 
 def test_patch_product_is_partial(client, db_session, mock_admin_auth):
