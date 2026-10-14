@@ -175,9 +175,9 @@ def update_user(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    _current_admin: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> None:
-    service.delete_user(db, user_id)
+    service.delete_user(db, user_id, actor=current_admin)
 
 
 def _set_refresh_cookie(

@@ -595,3 +595,82 @@ def test_registration_always_creates_customer_role(client, db_session):
     user_in_db = db_session.query(User).filter(User.id == user_data["id"]).one()
     assert user_in_db.role == "customer"
 
+
+def test_admin_cannot_delete_self(client, db_session, mock_admin_auth):
+    response = client.delete(f"/api/v1/users/{mock_admin_auth.id}")
+    assert response.status_code == 409
+    assert response.json()["code"] == "admin_cannot_delete_self"
+
+
+def test_cannot_delete_last_admin(client, db_session, mock_admin_auth):
+    # Only mock_admin_auth exists as admin
+    other_admin = User(
+        username="temp_admin_actor",
+        email="temp_admin@example.com",
+        password_hash="unused",
+        role="admin",
+    )
+    # If other_admin attempts to delete mock_admin_auth while mock_admin_auth is the only one in DB
+    with pytest.raises(service.ConflictError) as exc_info:
+        service.delete_user(db_session, mock_admin_auth.id, actor=other_admin)
+    assert exc_info.value.code == "cannot_delete_last_admin"
+    assert exc_info.value.status_code == 409
+
+
+def test_customer_cannot_delete_user(client, db_session, mock_user_auth):
+    response = client.delete(f"/api/v1/users/{mock_user_auth.id}")
+    assert response.status_code == 403
+    assert response.json()["code"] == "admin_required"
+
+
+def test_soft_delete_releases_identifiers_and_invalidates_tokens(client, db_session, mock_admin_auth):
+    # Create customer
+    customer = User(
+        username="alice_original",
+        email="alice_original@example.com",
+        password_hash=hash_password("Password123456"),
+        role="customer",
+    )
+    db_session.add(customer)
+    db_session.commit()
+    customer_id = customer.id
+
+    access_token = create_access_token({"sub": str(customer_id)})
+    refresh_token = create_refresh_token({"sub": str(customer_id), "ver": customer.refresh_version})
+
+    # Admin deletes customer
+    del_res = client.delete(f"/api/v1/users/{customer_id}")
+    assert del_res.status_code == 204
+
+    # Verify soft deleted in DB and identifiers tombstoned
+    db_session.expire_all()
+    deleted_user = db_session.get(User, customer_id)
+    assert deleted_user.is_deleted is True
+    assert deleted_user.deleted_at is not None
+    assert deleted_user.email.startswith(f"deleted+{customer_id}+")
+    assert deleted_user.username.startswith(f"deleted_{customer_id}_")
+
+    # Identifiers are now reusable
+    limiter.reset()
+    reg_payload = {
+        "username": "alice_original",
+        "email": "alice_original@example.com",
+        "password": "NewPassword123456",
+        "first_name": "New Alice",
+    }
+    reg_res = client.post("/api/v1/users/register", json=reg_payload)
+    assert reg_res.status_code == 201
+    new_user = reg_res.json()
+    assert new_user["id"] != customer_id
+    assert new_user["username"] == "alice_original"
+    assert new_user["email"] == "alice_original@example.com"
+
+    # Old tokens of deleted user are rejected
+    me_res = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {access_token}"})
+    assert me_res.status_code == 401
+
+    limiter.reset()
+    refresh_res = client.post("/api/v1/users/refresh", json={"refresh_token": refresh_token})
+    assert refresh_res.status_code == 401
+
+

@@ -187,10 +187,35 @@ def update_user(db: Session, user_id: int, command: UserPatch) -> User:
     return _update_user(db, user, command)
 
 
-def delete_user(db: Session, user_id: int) -> None:
+def delete_user(db: Session, user_id: int, actor: User) -> None:
+    if actor.id == user_id:
+        raise ConflictError(
+            "Administrators cannot delete their own account",
+            code="admin_cannot_delete_self",
+        )
+
     user = _get_active_user(db, user_id)
+
+    if user.role == "admin":
+        active_admins = (
+            db.query(User)
+            .filter(User.role == "admin", User.is_deleted.is_(False))
+            .order_by(User.id.asc())
+            .with_for_update()
+            .all()
+        )
+        if len(active_admins) <= 1:
+            raise ConflictError(
+                "Cannot delete the last remaining admin account",
+                code="cannot_delete_last_admin",
+            )
+
+    now = datetime.now(timezone.utc)
+    ts = int(now.timestamp())
+    user.email = f"deleted+{user.id}+{ts}@invalid"
+    user.username = f"deleted_{user.id}_{ts}"
     user.is_deleted = True
-    user.deleted_at = datetime.now(timezone.utc)
+    user.deleted_at = now
     _commit_user(db, user, refresh=False)
 
 
