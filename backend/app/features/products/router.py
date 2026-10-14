@@ -114,8 +114,10 @@ def list_products(
 )
 def lookup_variants(
     ids: str = Query(default="", description="Comma-separated variant IDs"),
+    skus: str = Query(default="", description="Comma-separated variant SKUs"),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
+    storage: ProductStorage = Depends(get_product_storage),
 ):
     id_list: list[int] = []
     if ids and ids.strip():
@@ -125,8 +127,14 @@ def lookup_variants(
             raise BusinessRuleError(
                 "Invalid variant ID in query list", code="invalid_variant_id"
             )
+    sku_list: list[str] = []
+    if skus and skus.strip():
+        sku_list = [s.strip() for s in skus.split(",") if s.strip()]
+
     is_admin = bool(current_user and current_user.role == "admin")
-    return service.lookup_variants(db, id_list, is_admin=is_admin)
+    return service.lookup_variants(
+        db, ids=id_list, skus=sku_list, is_admin=is_admin, storage=storage
+    )
 
 
 @router.get(

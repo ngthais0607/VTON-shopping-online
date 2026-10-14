@@ -34,6 +34,15 @@ SUPPORTED_IMAGE_FORMATS = {
 }
 
 
+VALID_IMAGE_KINDS = {
+    "model_photo",
+    "flat_lay",
+    "detail",
+    "size_chart",
+    "catalog",
+}
+
+
 def sniff_image_type(data: bytes) -> str | None:
     """Detect image type from leading magic bytes.
 
@@ -61,6 +70,12 @@ def store_product_image(
     is_primary: bool = False,
     sort_order: int = 0,
 ) -> ProductImage:
+    if kind and kind not in VALID_IMAGE_KINDS:
+        raise BusinessRuleError(
+            f"Invalid image kind '{kind}'",
+            code="invalid_image_kind",
+        )
+
     product = service.get_product(db, product_id)
 
     if size is not None and size > MAX_IMAGE_SIZE_BYTES:

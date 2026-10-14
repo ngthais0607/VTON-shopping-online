@@ -4,7 +4,9 @@ from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 
 
-def test_bulk_variant_matrix_generation_is_idempotent(client, db_session, mock_admin_auth):
+def test_bulk_variant_matrix_generation_is_idempotent(
+    client, db_session, mock_admin_auth
+):
     product = Product(
         name="Cotton Polo",
         slug="cotton-polo",
@@ -328,3 +330,67 @@ def test_sku_collision_returns_409_duplicate_sku(client, db_session, mock_admin_
     assert res_patch.status_code == 409
     assert res_patch.json()["code"] == "duplicate_sku"
 
+
+def test_bulk_variant_explicit_zero_stock_not_overridden_by_default(
+    client, db_session, mock_admin_auth
+):
+    product = Product(
+        name="Zero Stock Jacket",
+        slug="zero-stock-jacket",
+        price=200000,
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    payload = {
+        "variants": [
+            {
+                "size": "S",
+                "color_name": "Red",
+                "color_hex": "#FF0000",
+                "stock_quantity": 0,
+            }
+        ],
+        "default_stock": 25,
+    }
+    res = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json=payload,
+    )
+    assert res.status_code == 201
+    variants = res.json()
+    assert len(variants) == 1
+    assert variants[0]["stock_quantity"] == 0
+
+
+def test_variant_hex_code_validation(client, db_session, mock_admin_auth):
+    product = Product(
+        name="Hex Validation Shirt",
+        slug="hex-val-shirt",
+        price=100000,
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    # Invalid hex formats
+    for bad_hex in ["#123", "123456", "#GGGGGG", "red", "#1234567"]:
+        res_bad = client.post(
+            f"/api/v1/products/{product.id}/variants/bulk",
+            json={
+                "sizes": ["M"],
+                "colors": [{"name": "Red", "hex": bad_hex}],
+            },
+        )
+        assert res_bad.status_code == 422
+
+    # Valid hex format
+    res_good = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json={
+            "sizes": ["M"],
+            "colors": [{"name": "ValidBlue", "hex": "#0000FF"}],
+        },
+    )
+    assert res_good.status_code == 201

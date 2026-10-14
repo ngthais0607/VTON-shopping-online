@@ -1,4 +1,3 @@
-
 from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 
@@ -175,3 +174,34 @@ def test_lookup_variants_empty_ids(client):
     response = client.get("/api/v1/products/variants/lookup?ids=")
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_lookup_variants_by_sku(client, db_session):
+    product = Product(
+        name="SKU Lookup Shirt",
+        slug="sku-lookup-shirt",
+        price=100000,
+        currency="VND",
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.flush()
+
+    v1 = ProductVariant(
+        product_id=product.id,
+        sku="SKU-LOOKUP-1",
+        size="M",
+        color_name="Red",
+        color_hex="#FF0000",
+        stock_quantity=10,
+        is_active=True,
+    )
+    db_session.add(v1)
+    db_session.commit()
+
+    response = client.get(f"/api/v1/products/variants/lookup?skus={v1.sku}")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["sku"] == "SKU-LOOKUP-1"
+    assert data[0]["id"] == v1.id

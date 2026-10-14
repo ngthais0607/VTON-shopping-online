@@ -391,7 +391,14 @@ def test_upload_route_returns_public_contract_without_object_name(
     )
 
     assert response.status_code == 201
-    assert response.json().keys() == {"id", "url", "color_name", "kind", "is_primary", "sort_order"}
+    assert response.json().keys() == {
+        "id",
+        "url",
+        "color_name",
+        "kind",
+        "is_primary",
+        "sort_order",
+    }
     assert response.json()["url"].startswith("https://images.example.test/products/")
     assert "object_name" not in response.text
     assert product_storage.put_payloads == [VALID_WEBP_BYTES]
@@ -507,3 +514,14 @@ def test_storage_dependency_returns_the_application_owned_adapter():
     )
 
     assert get_product_storage(request) is storage
+
+
+def test_upload_image_rejects_invalid_kind(client, db_session, mock_admin_auth):
+    product = persist_product(db_session, name="Kind Test Product")
+    response = client.post(
+        f"/api/v1/products/{product.id}/images",
+        files={"file": ("photo.jpg", VALID_JPEG_BYTES, "image/jpeg")},
+        data={"kind": "invalid_kind_123"},
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_image_kind"

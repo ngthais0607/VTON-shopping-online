@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Query, Session, joinedload, selectinload
@@ -227,15 +228,27 @@ def get_product_by_slug(db: Session, slug: str, is_admin: bool = False) -> Produ
 
 
 def lookup_variants(
-    db: Session, ids: list[int], is_admin: bool = False
+    db: Session,
+    ids: list[int] | None = None,
+    skus: list[str] | None = None,
+    is_admin: bool = False,
+    storage: Any | None = None,
 ) -> list[VariantLookupPublicItem | VariantLookupAdminItem]:
-    if len(ids) > 50:
+    ids = ids or []
+    skus = [s.strip() for s in (skus or []) if s.strip()]
+    if len(ids) + len(skus) > 50:
         raise BusinessRuleError(
             "Cannot lookup more than 50 variants at once",
             code="too_many_variant_ids",
         )
-    if not ids:
+    if not ids and not skus:
         return []
+
+    conditions = []
+    if ids:
+        conditions.append(ProductVariant.id.in_(ids))
+    if skus:
+        conditions.append(ProductVariant.sku.in_(skus))
 
     variants = (
         db.query(ProductVariant)
@@ -243,22 +256,30 @@ def lookup_variants(
             joinedload(ProductVariant.product).joinedload(Product.category),
             joinedload(ProductVariant.product).selectinload(Product.images),
         )
-        .filter(
-            ProductVariant.id.in_(ids),
-        )
+        .filter(or_(*conditions))
         .all()
     )
-    found_map = {v.id: v for v in variants}
+    found_map_id = {v.id: v for v in variants}
+    found_map_sku = {v.sku: v for v in variants}
 
     settings = get_settings()
     base_url = settings.minio_external_url.rstrip("/")
 
-    items: list[VariantLookupPublicItem | VariantLookupAdminItem] = []
+    ordered_variants: list[ProductVariant] = []
+    seen_ids = set()
     for var_id in ids:
-        v = found_map.get(var_id)
-        if v is None:
-            continue
+        v = found_map_id.get(var_id)
+        if v is not None and v.id not in seen_ids:
+            seen_ids.add(v.id)
+            ordered_variants.append(v)
+    for var_sku in skus:
+        v = found_map_sku.get(var_sku)
+        if v is not None and v.id not in seen_ids:
+            seen_ids.add(v.id)
+            ordered_variants.append(v)
 
+    items: list[VariantLookupPublicItem | VariantLookupAdminItem] = []
+    for v in ordered_variants:
         product = v.product
         cat_deleted = bool(product and product.category and product.category.is_deleted)
         is_active = bool(
@@ -278,6 +299,8 @@ def lookup_variants(
             chosen = matching or primary or product.images[0]
             if chosen.object_name.startswith(("http://", "https://")):
                 image_url = chosen.object_name
+            elif storage is not None:
+                image_url = storage.public_url(chosen.object_name)
             else:
                 image_url = f"{base_url}/{settings.minio_bucket}/{chosen.object_name}"
 

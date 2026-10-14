@@ -93,7 +93,11 @@ def bulk_create_variants(
             color_name=cand.color_name.strip(),
             color_hex=cand.color_hex,
             price=cand.price if cand.price is not None else command.default_price,
-            stock_quantity=cand.stock_quantity or command.default_stock,
+            stock_quantity=(
+                cand.stock_quantity
+                if cand.stock_quantity is not None
+                else command.default_stock
+            ),
             reserved_quantity=0,
             sold_quantity=0,
             is_active=True,
@@ -245,6 +249,8 @@ def delete_variant(db: Session, variant_id: int) -> None:
         db.query(ProductVariant)
         .options(selectinload(ProductVariant.order_items))
         .filter(ProductVariant.id == variant_id)
+        .populate_existing()
+        .with_for_update()
         .first()
     )
     if variant is None:
