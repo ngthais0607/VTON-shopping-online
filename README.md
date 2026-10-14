@@ -86,7 +86,7 @@ The seed script has **no `--help` or dry-run mode**; `python -m app.seed` immedi
 
 ## Frontend and session behavior
 
-`frontend/` is a Next.js 16 / React 19 client with Axios, SWR, Tailwind and Vitest. `NEXT_PUBLIC_API_BASE_URL` accepts an API origin such as `http://localhost:8000`, or a base already ending in `/api/v1`; the client adds the version prefix exactly once. Configure the backend CORS origin to match the frontend host/port. Local HTTP development also requires `REFRESH_COOKIE_SECURE=False`.
+`frontend/` is a Next.js 16 / React 19 client with Axios, SWR, Tailwind and Vitest. `NEXT_PUBLIC_API_BASE_URL` accepts an API origin such as `http://localhost:8000`, or a base already ending in `/api/v1`; the client adds the version prefix exactly once. Configure the backend CORS origin to match the frontend host/port. Both frontend and backend hosts must share the same site (e.g. `localhost` on both, rather than mixing `127.0.0.1` and `localhost`) for the browser to send `SameSite=Lax` refresh cookies. Local HTTP development also requires `REFRESH_COOKIE_SECURE=False`.
 
 From `frontend/`:
 
@@ -96,7 +96,7 @@ Copy-Item .env.example .env.local
 pnpm dev
 ```
 
-Login sends `{identifier,password}` and accepts an email or username. The client keeps the access token in local storage and refreshes through the HttpOnly cookie, sharing one refresh attempt for simultaneous expired requests. Logout clears local credentials/private cache and calls the backend cookie-clearing endpoint; server-clear failures are visible. Password changes use PATCH, invalidate refresh tokens on the backend, and return the client to login. Backend access tokens retain their existing expiration semantics.
+Login sends `{identifier,password}` and accepts an email or username. The client keeps the access token in local storage and refreshes through the HttpOnly cookie, sharing one refresh attempt for simultaneous expired requests. Logout clears local credentials/private cache and calls the backend cookie-clearing endpoint; server-clear failures are visible. By architectural design, logout does not maintain a server-side denylist for stateless access tokens; issued access tokens remain valid until their natural short-lived expiration. Password changes use PATCH, invalidate refresh tokens on the backend, and return the client to login. Backend access tokens retain their existing expiration semantics.
 
 Products, categories, customers and admin orders consume `{items,total,limit,offset}` pages. Category selectors load all pages. Profile/product/category edits use PATCH; order status retains PUT. Product images use `{id,url}`. Upload retry after a saved product does not create the product again. Dashboard charts describe the recent-order sample and do not invent weekly revenue or growth comparisons.
 

@@ -88,11 +88,13 @@ def refresh_user_session(
     summary="Logout user",
 )
 def logout_user(request: Request, response: Response) -> None:
+    settings = request.app.state.settings
     response.delete_cookie(
         key="refresh_token",
-        secure=request.app.state.settings.refresh_cookie_secure,
+        path="/",
+        secure=settings.refresh_cookie_secure,
         httponly=True,
-        samesite="lax",
+        samesite=getattr(settings, "refresh_cookie_samesite", "lax"),
     )
 
 
@@ -191,4 +193,5 @@ def _set_refresh_cookie(
         samesite=getattr(settings, "refresh_cookie_samesite", "lax"),
         secure=settings.refresh_cookie_secure,
         max_age=settings.refresh_token_expire_days * 24 * 3600,
+        path="/",
     )

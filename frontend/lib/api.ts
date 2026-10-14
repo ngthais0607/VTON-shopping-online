@@ -5,7 +5,7 @@ export function normalizeApiBase(base: string): string {
     const clean = base.replace(/\/+$/, '');
     return clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
 }
-const API_BASE_URL = normalizeApiBase(process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000');
+const API_BASE_URL = normalizeApiBase(process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000');
 
 export class ApiError extends Error {
     constructor(message: string, public status?: number, public code?: string, public details?: unknown) {

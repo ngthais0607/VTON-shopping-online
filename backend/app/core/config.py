@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Any
 
-from pydantic import BeforeValidator, Field, ValidationInfo, field_validator
+from pydantic import BeforeValidator, Field, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -71,6 +71,20 @@ class Settings(BaseSettings):
         endpoint = info.data.get("minio_endpoint", "localhost:9000")
         scheme = "https" if info.data.get("minio_secure", False) else "http"
         return f"{scheme}://{endpoint}"
+
+    @field_validator("refresh_cookie_samesite")
+    @classmethod
+    def validate_refresh_cookie_samesite(cls, value: str) -> str:
+        val = value.lower()
+        if val not in {"lax", "strict", "none"}:
+            raise ValueError("refresh_cookie_samesite must be one of 'lax', 'strict', or 'none'")
+        return val
+
+    @model_validator(mode="after")
+    def validate_cookie_security(self) -> "Settings":
+        if self.refresh_cookie_samesite == "none" and not self.refresh_cookie_secure:
+            raise ValueError("refresh_cookie_secure must be True when refresh_cookie_samesite is 'none'")
+        return self
 
 
 @lru_cache
