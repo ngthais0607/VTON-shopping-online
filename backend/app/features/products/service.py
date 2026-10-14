@@ -6,6 +6,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Query, Session, joinedload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
+from app.core.config import get_settings
 from app.core.errors import BusinessRuleError, ConflictError, ResourceNotFoundError
 from app.core.schemas import Page
 from app.core.slug import generate_unique_slug, slugify
@@ -21,7 +22,8 @@ from app.features.products.schemas import (
     ProductSort,
     ProductStockAdjustment,
     StockStatus,
-    VariantLookupItem,
+    VariantLookupAdminItem,
+    VariantLookupPublicItem,
 )
 from app.features.products.variant_model import ProductVariant
 
@@ -63,8 +65,8 @@ def create_product(db: Session, command: ProductCreate) -> Product:
     return _get_active_product(db, product_id)
 
 
-def list_products(db: Session, filters: ProductFilters) -> Page[Product]:
-    query = _active_products_query(db)
+def list_products(db: Session, filters: ProductFilters, is_admin: bool = False) -> Page[Product]:
+    query = _active_products_query(db, is_admin=is_admin)
 
     if filters.search:
         query = query.filter(
@@ -81,7 +83,7 @@ def list_products(db: Session, filters: ProductFilters) -> Page[Product]:
         category_service.get_category(db, filters.category_id)
         cat_ids = category_service.get_category_and_descendant_ids(db, filters.category_id)
         query = query.filter(Product.category_id.in_(cat_ids))
-    if filters.is_active is not None:
+    if is_admin and filters.is_active is not None:
         query = query.filter(Product.is_active.is_(filters.is_active))
     if filters.gender:
         query = query.filter(Product.gender == filters.gender)
@@ -137,29 +139,13 @@ def list_products(db: Session, filters: ProductFilters) -> Page[Product]:
     )
 
 
-def get_product(db: Session, product_id: int) -> Product:
-    return _get_active_product(db, product_id)
+def get_product(db: Session, product_id: int, is_admin: bool = False) -> Product:
+    return _get_active_product(db, product_id, is_admin=is_admin)
 
 
-def get_product_by_slug(db: Session, slug: str) -> Product:
-    product = (
-        db.query(Product)
-        .outerjoin(Category, Product.category_id == Category.id)
-        .options(
-            joinedload(Product.category),
-            selectinload(Product.images),
-            selectinload(Product.variants),
-        )
-        .filter(
-            Product.slug == slug,
-            Product.is_deleted.is_(False),
-            or_(
-                Product.category_id.is_(None),
-                Category.is_deleted.is_(False),
-            ),
-        )
-        .first()
-    )
+def get_product_by_slug(db: Session, slug: str, is_admin: bool = False) -> Product:
+    query = _active_products_query(db, is_admin=is_admin)
+    product = query.filter(Product.slug == slug).first()
     if product is None:
         raise ResourceNotFoundError(
             f"Product with slug '{slug}' was not found",
@@ -168,7 +154,9 @@ def get_product_by_slug(db: Session, slug: str) -> Product:
     return product
 
 
-def lookup_variants(db: Session, ids: list[int]) -> list[VariantLookupItem]:
+def lookup_variants(
+    db: Session, ids: list[int], is_admin: bool = False
+) -> list[VariantLookupPublicItem | VariantLookupAdminItem]:
     if len(ids) > 50:
         raise BusinessRuleError(
             "Cannot lookup more than 50 variants at once",
@@ -180,67 +168,97 @@ def lookup_variants(db: Session, ids: list[int]) -> list[VariantLookupItem]:
     variants = (
         db.query(ProductVariant)
         .options(
+            joinedload(ProductVariant.product).joinedload(Product.category),
             joinedload(ProductVariant.product).selectinload(Product.images),
         )
         .filter(
             ProductVariant.id.in_(ids),
-            ProductVariant.is_active.is_(True),
         )
         .all()
     )
+    found_map = {v.id: v for v in variants}
 
-    items: list[VariantLookupItem] = []
-    for v in variants:
-        product = v.product
-        if not product or product.is_deleted:
+    settings = get_settings()
+    base_url = settings.minio_external_url.rstrip("/")
+
+    items: list[VariantLookupPublicItem | VariantLookupAdminItem] = []
+    for var_id in ids:
+        v = found_map.get(var_id)
+        if v is None:
             continue
 
+        product = v.product
+        cat_deleted = bool(product and product.category and product.category.is_deleted)
+        is_active = bool(
+            v.is_active
+            and product
+            and not product.is_deleted
+            and product.is_active
+            and not cat_deleted
+        )
+
         image_url = None
-        if product.images:
+        if product and product.images:
             matching = next((img for img in product.images if img.color_name == v.color_name), None)
             primary = next((img for img in product.images if img.is_primary), None)
             chosen = matching or primary or product.images[0]
-            image_url = chosen.object_name
+            if chosen.object_name.startswith(("http://", "https://")):
+                image_url = chosen.object_name
+            else:
+                image_url = f"{base_url}/{settings.minio_bucket}/{chosen.object_name}"
 
-        effective_price = float(v.price if v.price is not None else product.price)
+        effective_price = float(v.price if v.price is not None else (product.price if product else 0.0))
+        prod_name = product.name if product else "Unavailable"
+        prod_slug = product.slug if product else ""
+        prod_id = product.id if product else 0
+        avail_stock = v.available_stock if is_active else 0
+        has_stock = (avail_stock > 0) if is_active else False
 
-        items.append(
-            VariantLookupItem(
-                id=v.id,
-                product_id=product.id,
-                product_name=product.name,
-                product_slug=product.slug,
-                sku=v.sku,
-                size=v.size,
-                color_name=v.color_name,
-                color_hex=v.color_hex,
-                price=effective_price,
-                stock_quantity=v.stock_quantity,
-                reserved_quantity=v.reserved_quantity,
-                sold_quantity=v.sold_quantity,
-                available_stock=v.available_stock,
-                is_active=v.is_active and product.is_active,
-                image_url=image_url,
+        if is_admin:
+            items.append(
+                VariantLookupAdminItem(
+                    id=v.id,
+                    product_id=prod_id,
+                    product_name=prod_name,
+                    product_slug=prod_slug,
+                    sku=v.sku,
+                    size=v.size,
+                    color_name=v.color_name,
+                    color_hex=v.color_hex,
+                    price=effective_price,
+                    stock_quantity=v.stock_quantity,
+                    reserved_quantity=v.reserved_quantity,
+                    sold_quantity=v.sold_quantity,
+                    available_stock=avail_stock,
+                    in_stock=has_stock,
+                    is_active=is_active,
+                    image_url=image_url,
+                )
             )
-        )
+        else:
+            items.append(
+                VariantLookupPublicItem(
+                    id=v.id,
+                    product_id=prod_id,
+                    product_name=prod_name,
+                    product_slug=prod_slug,
+                    sku=v.sku,
+                    size=v.size,
+                    color_name=v.color_name,
+                    color_hex=v.color_hex,
+                    price=effective_price,
+                    available_stock=avail_stock,
+                    in_stock=has_stock,
+                    is_active=is_active,
+                    image_url=image_url,
+                )
+            )
     return items
 
 
 def get_product_facets(db: Session) -> ProductFacetsResponse:
     products = (
-        db.query(Product)
-        .outerjoin(Category, Product.category_id == Category.id)
-        .options(
-            selectinload(Product.variants),
-        )
-        .filter(
-            Product.is_deleted.is_(False),
-            Product.is_active.is_(True),
-            or_(
-                Product.category_id.is_(None),
-                Category.is_deleted.is_(False),
-            ),
-        )
+        _active_products_query(db, is_admin=False)
         .all()
     )
 
@@ -392,8 +410,8 @@ def delete_product(db: Session, product_id: int) -> None:
     db.commit()
 
 
-def _active_products_query(db: Session) -> Query:
-    return (
+def _active_products_query(db: Session, is_admin: bool = False) -> Query:
+    query = (
         db.query(Product)
         .outerjoin(Category, Product.category_id == Category.id)
         .options(
@@ -409,11 +427,17 @@ def _active_products_query(db: Session) -> Query:
             ),
         )
     )
+    if not is_admin:
+        query = query.filter(
+            Product.is_active.is_(True),
+            Product.variants.any(ProductVariant.is_active.is_(True)),
+        )
+    return query
 
 
-def _get_active_product(db: Session, product_id: int) -> Product:
+def _get_active_product(db: Session, product_id: int, is_admin: bool = False) -> Product:
     product = (
-        _active_products_query(db)
+        _active_products_query(db, is_admin=is_admin)
         .filter(Product.id == product_id)
         .populate_existing()
         .first()

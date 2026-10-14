@@ -6,21 +6,26 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.errors import BusinessRuleError
 from app.core.schemas import Page
-from app.core.security import get_current_admin, get_current_user
+from app.core.security import get_current_admin, get_current_user, get_optional_user
 from app.features.products import images, reviews, service
 from app.features.products.schemas import (
+    ProductAdminResponse,
     ProductCreate,
-    ProductDetailResponse,
+    ProductDetailAdminResponse,
+    ProductDetailPublicResponse,
     ProductFacetsResponse,
     ProductFilters,
     ProductImageResponse,
     ProductPatch,
+    ProductPublicResponse,
     ProductResponse,
     ProductStockAdjustment,
+    ProductVariantPublicResponse,
     ReviewCreate,
     ReviewResponse,
     ReviewSummary,
-    VariantLookupItem,
+    VariantLookupAdminItem,
+    VariantLookupPublicItem,
 )
 from app.features.users.model import User
 from app.integrations.storage import ProductStorage, get_product_storage
@@ -44,24 +49,40 @@ def create_product(
 
 @router.get(
     "",
-    response_model=Page[ProductResponse],
+    response_model=Page[ProductAdminResponse] | Page[ProductPublicResponse],
     summary="Get products",
 )
 def list_products(
     filters: Annotated[ProductFilters, Depends()],
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ):
-    return service.list_products(db, filters)
+    is_admin = bool(current_user and current_user.role == "admin")
+    page = service.list_products(db, filters, is_admin=is_admin)
+    if is_admin:
+        return Page(
+            items=[ProductAdminResponse.model_validate(p) for p in page.items],
+            total=page.total,
+            limit=page.limit,
+            offset=page.offset,
+        )
+    return Page(
+        items=[ProductPublicResponse.model_validate(p) for p in page.items],
+        total=page.total,
+        limit=page.limit,
+        offset=page.offset,
+    )
 
 
 @router.get(
     "/variants/lookup",
-    response_model=list[VariantLookupItem],
+    response_model=list[VariantLookupAdminItem] | list[VariantLookupPublicItem],
     summary="Batch lookup product variants for cart validation",
 )
 def lookup_variants(
     ids: str = Query(default="", description="Comma-separated variant IDs"),
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
 ):
     id_list: list[int] = []
     if ids and ids.strip():
@@ -69,7 +90,8 @@ def lookup_variants(
             id_list = [int(i.strip()) for i in ids.split(",") if i.strip()]
         except ValueError:
             raise BusinessRuleError("Invalid variant ID in query list", code="invalid_variant_id")
-    return service.lookup_variants(db, id_list)
+    is_admin = bool(current_user and current_user.role == "admin")
+    return service.lookup_variants(db, id_list, is_admin=is_admin)
 
 
 @router.get(
@@ -83,20 +105,39 @@ def get_product_facets(db: Session = Depends(get_db)):
 
 @router.get(
     "/by-slug/{slug}",
-    response_model=ProductDetailResponse,
+    response_model=ProductDetailAdminResponse | ProductDetailPublicResponse,
     summary="Get product detail by slug",
 )
-def get_product_by_slug(slug: str, db: Session = Depends(get_db)):
-    return service.get_product_by_slug(db, slug)
+def get_product_by_slug(
+    slug: str,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
+    is_admin = bool(current_user and current_user.role == "admin")
+    product = service.get_product_by_slug(db, slug, is_admin=is_admin)
+    if is_admin:
+        return ProductDetailAdminResponse.model_validate(product)
+    active_variants = [v for v in product.variants if v.is_active]
+    dto = ProductDetailPublicResponse.model_validate(product)
+    dto.variants = [ProductVariantPublicResponse.model_validate(v) for v in active_variants]
+    return dto
 
 
 @router.get(
     "/{product_id}",
-    response_model=ProductResponse,
+    response_model=ProductAdminResponse | ProductPublicResponse,
     summary="Get product by ID",
 )
-def get_product(product_id: int, db: Session = Depends(get_db)):
-    return service.get_product(db, product_id)
+def get_product(
+    product_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_user),
+):
+    is_admin = bool(current_user and current_user.role == "admin")
+    product = service.get_product(db, product_id, is_admin=is_admin)
+    if is_admin:
+        return ProductAdminResponse.model_validate(product)
+    return ProductPublicResponse.model_validate(product)
 
 
 @router.patch(

@@ -138,6 +138,16 @@ class Product(Base):
         return float(self.price or 0.0)
 
     @property
+    def available_stock(self) -> int:
+        if getattr(self, "variants", None):
+            return sum(v.available_stock for v in self.variants if v.is_active)
+        return max(0, self.stock_quantity - self.reserved_quantity - self.sold_quantity)
+
+    @property
+    def in_stock(self) -> bool:
+        return self.available_stock > 0
+
+    @property
     def available_sizes(self) -> list[str]:
         if getattr(self, "variants", None):
             sizes = []

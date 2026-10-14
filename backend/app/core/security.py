@@ -94,6 +94,27 @@ def get_current_user(
     return user
 
 
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    db: Session = Depends(get_db),
+) -> User | None:
+    if credentials is None or not credentials.credentials:
+        return None
+    try:
+        user_id = int(decode_access_token(credentials.credentials))
+        user = (
+            db.query(User)
+            .filter(
+                User.id == user_id,
+                User.is_deleted.is_(False),
+            )
+            .first()
+        )
+        return user
+    except Exception:
+        return None
+
+
 def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
         raise ForbiddenError(

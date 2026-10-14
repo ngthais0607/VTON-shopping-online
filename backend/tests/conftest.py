@@ -149,12 +149,15 @@ def mock_admin_auth(client, db_session):
     else:
         mock_admin = existing
 
-    from app.core.security import get_current_admin
+    from app.core.security import get_current_admin, get_optional_user
 
     app.dependency_overrides[get_current_admin] = lambda: mock_admin
+    app.dependency_overrides[get_optional_user] = lambda: mock_admin
     yield mock_admin
     if get_current_admin in app.dependency_overrides:
         del app.dependency_overrides[get_current_admin]
+    if get_optional_user in app.dependency_overrides:
+        del app.dependency_overrides[get_optional_user]
 
 
 @pytest.fixture
@@ -177,9 +180,12 @@ def mock_user_auth(client, db_session):
     else:
         mock_user = existing
 
-    from app.core.security import get_current_user
+    from app.core.security import get_current_user, get_optional_user
 
     app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_optional_user] = lambda: mock_user
     yield mock_user
     if get_current_user in app.dependency_overrides:
         del app.dependency_overrides[get_current_user]
+    if get_optional_user in app.dependency_overrides:
+        del app.dependency_overrides[get_optional_user]

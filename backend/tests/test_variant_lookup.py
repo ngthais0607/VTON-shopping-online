@@ -54,15 +54,17 @@ def test_lookup_variants_success(client, db_session):
     assert item1["color_name"] == "White"
     assert item1["color_hex"] == "#FFFFFF"
     assert item1["price"] == 160000.0
-    assert item1["stock_quantity"] == 10
-    assert item1["reserved_quantity"] == 2
-    assert item1["sold_quantity"] == 1
+    assert "stock_quantity" not in item1
+    assert "reserved_quantity" not in item1
+    assert "sold_quantity" not in item1
     assert item1["available_stock"] == 7
     assert item1["is_active"] is True
+    assert item1["in_stock"] is True
 
     item2 = next(item for item in data if item["id"] == v2.id)
     assert item2["price"] == 150000.0  # Fallback to product price
     assert item2["available_stock"] == 5
+    assert "stock_quantity" not in item2
 
 
 def test_lookup_variants_missing_ids_omitted(client, db_session):
@@ -122,8 +124,44 @@ def test_lookup_variants_out_of_stock_data(client, db_session):
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
-    assert data[0]["stock_quantity"] == 5
+    assert "stock_quantity" not in data[0]
     assert data[0]["available_stock"] == 0
+    assert data[0]["in_stock"] is False
+
+
+def test_lookup_variants_admin_sees_stock_metrics(client, db_session, mock_admin_auth):
+    product = Product(
+        name="Admin Lookup Prod",
+        slug="admin-lookup-prod",
+        price=100000,
+        currency="VND",
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.flush()
+
+    v = ProductVariant(
+        product_id=product.id,
+        sku="admin-lookup-M",
+        size="M",
+        color_name="Black",
+        stock_quantity=15,
+        reserved_quantity=3,
+        sold_quantity=2,
+        is_active=True,
+    )
+    db_session.add(v)
+    db_session.commit()
+
+    response = client.get(f"/api/v1/products/variants/lookup?ids={v.id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["stock_quantity"] == 15
+    assert data[0]["reserved_quantity"] == 3
+    assert data[0]["sold_quantity"] == 2
+    assert data[0]["available_stock"] == 10
+    assert data[0]["in_stock"] is True
 
 
 def test_lookup_variants_rejects_more_than_50_ids(client):

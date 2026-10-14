@@ -138,7 +138,33 @@ class ProductImageResponse(BaseModel):
         return f"{base_url}/{settings.minio_bucket}/{value}"
 
 
-class ProductResponse(BaseModel):
+class ProductVariantPublicResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: int
+    sku: str
+    size: str
+    color_name: str
+    color_hex: str | None = None
+    price: float | None = None
+    available_stock: int
+    in_stock: bool = True
+    is_active: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ProductVariantAdminResponse(ProductVariantPublicResponse):
+    stock_quantity: int
+    reserved_quantity: int
+    sold_quantity: int
+
+
+ProductVariantResponse = ProductVariantAdminResponse
+
+
+class ProductPublicResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -146,9 +172,6 @@ class ProductResponse(BaseModel):
     slug: str
     price: float
     description: str | None = None
-    stock_quantity: int
-    reserved_quantity: int
-    sold_quantity: int
     currency: str
     is_active: bool
     brand: str | None = None
@@ -161,30 +184,22 @@ class ProductResponse(BaseModel):
     price_max: float | None = None
     category: CategorySummary | None = None
     images: list[ProductImageResponse] = []
+    available_stock: int
+    in_stock: bool = True
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
 
-class ProductVariantResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    product_id: int
-    sku: str
-    size: str
-    color_name: str
-    color_hex: str | None = None
-    price: float | None = None
+class ProductAdminResponse(ProductPublicResponse):
     stock_quantity: int
     reserved_quantity: int
     sold_quantity: int
-    available_stock: int
-    is_active: bool
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
 
 
-class VariantLookupItem(BaseModel):
+ProductResponse = ProductAdminResponse
+
+
+class VariantLookupPublicItem(BaseModel):
     id: int
     product_id: int
     product_name: str
@@ -194,12 +209,19 @@ class VariantLookupItem(BaseModel):
     color_name: str
     color_hex: str | None = None
     price: float
+    available_stock: int
+    in_stock: bool = True
+    is_active: bool
+    image_url: str | None = None
+
+
+class VariantLookupAdminItem(VariantLookupPublicItem):
     stock_quantity: int
     reserved_quantity: int
     sold_quantity: int
-    available_stock: int
-    is_active: bool
-    image_url: str | None = None
+
+
+VariantLookupItem = VariantLookupAdminItem
 
 
 class FacetColor(BaseModel):
@@ -223,7 +245,7 @@ class FitFeedbackSummary(BaseModel):
     total_responses: int = 0
 
 
-class ProductDetailResponse(BaseModel):
+class ProductDetailPublicResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -239,19 +261,28 @@ class ProductDetailResponse(BaseModel):
     fit: str | None = None
     care_instructions: str | None = None
     size_chart: dict[str, Any] | None = None
-    stock_quantity: int
-    reserved_quantity: int
-    sold_quantity: int
     currency: str
     is_active: bool
+    available_stock: int
+    in_stock: bool = True
     category: CategorySummary | None = None
     images: list[ProductImageResponse] = []
-    variants: list[ProductVariantResponse] = []
+    variants: list[ProductVariantPublicResponse] = []
     available_sizes: list[str] = []
     available_colors: list[FacetColor] = []
     fit_feedback: FitFeedbackSummary | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class ProductDetailAdminResponse(ProductDetailPublicResponse):
+    stock_quantity: int
+    reserved_quantity: int
+    sold_quantity: int
+    variants: list[ProductVariantAdminResponse] = []
+
+
+ProductDetailResponse = ProductDetailAdminResponse
 
 
 class ReviewCreate(BaseModel):

@@ -113,6 +113,8 @@ def test_create_product_returns_typed_response(client, mock_admin_auth):
         "stock_quantity",
         "reserved_quantity",
         "sold_quantity",
+        "available_stock",
+        "in_stock",
         "currency",
         "is_active",
         "brand",
