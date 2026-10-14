@@ -14,7 +14,6 @@ def valid_product_payload(**overrides):
         "name": "Inventory Validation Product",
         "price": 25.0,
         "currency": "USD",
-        "stock_quantity": 10,
         "is_active": True,
         "description": "Valid inventory baseline",
     }
@@ -442,8 +441,7 @@ def test_patch_product_rejects_inventory_invalid_after_merge(
         json={"stock_quantity": 6},
     )
 
-    assert response.status_code == 400
-    assert response.json()["code"] == "invalid_product_inventory"
+    assert response.status_code == 422
 
 
 def test_create_product_rejects_deleted_category(

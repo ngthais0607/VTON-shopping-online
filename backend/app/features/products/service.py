@@ -36,7 +36,6 @@ def create_product(db: Session, command: ProductCreate) -> Product:
         category = category_service.get_category(db, command.category_id)
 
     data = command.model_dump()
-    data.pop("stock_quantity", None)
     variants_input = data.pop("variants", None)
 
     existing_slugs = set(s[0] for s in db.query(Product.slug).all())
@@ -532,19 +531,6 @@ def update_product(
             if category_id is not None
             else None
         )
-
-    stock_quantity = changes.pop("stock_quantity", None)
-    if stock_quantity is not None:
-        if (product.reserved_quantity or 0) + (
-            product.sold_quantity or 0
-        ) > stock_quantity:
-            raise BusinessRuleError(
-                "Reserved and sold quantities cannot exceed total stock",
-                code="invalid_product_inventory",
-            )
-        if product.variants:
-            first_v = product.variants[0]
-            first_v.stock_quantity = stock_quantity
 
     if "slug" in changes and changes["slug"]:
         existing_slugs = set(

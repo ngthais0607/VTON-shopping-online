@@ -172,9 +172,10 @@ export default function ProductsPage() {
     setSelectedImage(null);
   };
   const handleCreateProduct = async () => {
-    const createdProduct = await apiPost<Product, ProductFormData>(
+    const { stock_quantity, reserved_quantity, sold_quantity, ...createPayload } = formData;
+    const createdProduct = await apiPost<Product, typeof createPayload>(
       "/products",
-      formData,
+      createPayload,
     );
     if (!createdProduct.id) return;
     setEditingProduct(createdProduct);
@@ -216,9 +217,10 @@ export default function ProductsPage() {
   };
   const handleUpdateProduct = async () => {
     if (!editingProduct) return;
-    await apiPatch<Product, ProductFormData>(
+    const { stock_quantity, reserved_quantity, sold_quantity, ...patchPayload } = formData;
+    await apiPatch<Product, typeof patchPayload>(
       `/products/${editingProduct.id}`,
-      formData,
+      patchPayload,
     );
     if (selectedImage) {
       const imageFormData = new FormData();
@@ -386,56 +388,25 @@ export default function ProductsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="grid gap-2">
-                      <label htmlFor="stock" className="text-sm font-medium">
-                        Stock Quantity
-                      </label>
-                      <Input
-                        id="stock"
-                        type="number"
-                        value={formData.stock_quantity}
-                        onChange={(e) =>
-                          updateFormData(
-                            "stock_quantity",
-                            Number(e.target.value),
-                          )
-                        }
-                      />
+                  {editingProduct ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                      <div className="font-medium text-slate-700 mb-1">
+                        Thông tin tồn kho (Chỉ đọc)
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-slate-600">
+                        <div>Tổng kho: <span className="font-semibold text-slate-900">{editingProduct.stock_quantity}</span></div>
+                        <div>Đang giữ: <span className="font-semibold text-slate-900">{editingProduct.reserved_quantity}</span></div>
+                        <div>Đã bán: <span className="font-semibold text-slate-900">{editingProduct.sold_quantity}</span></div>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">
+                        * Tồn kho được quản lý theo từng biến thể (Variant). Hãy dùng nút &quot;Quản lý biến thể&quot; để điều chỉnh kho có kiểm toán.
+                      </p>
                     </div>
-                    <div className="grid gap-2">
-                      <label htmlFor="reserved" className="text-sm font-medium">
-                        Reserved
-                      </label>
-                      <Input
-                        id="reserved"
-                        type="number"
-                        value={formData.reserved_quantity}
-                        onChange={(e) =>
-                          updateFormData(
-                            "reserved_quantity",
-                            Number(e.target.value),
-                          )
-                        }
-                      />
+                  ) : (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-xs text-blue-700">
+                      💡 Tồn kho sẽ được tạo và cập nhật khi bạn thêm các biến thể (size/màu) cho sản phẩm này.
                     </div>
-                    <div className="grid gap-2">
-                      <label htmlFor="sold" className="text-sm font-medium">
-                        Sold
-                      </label>
-                      <Input
-                        id="sold"
-                        type="number"
-                        value={formData.sold_quantity}
-                        onChange={(e) =>
-                          updateFormData(
-                            "sold_quantity",
-                            Number(e.target.value),
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
+                  )}
                   <div className="grid gap-2">
                     <label
                       htmlFor="description"

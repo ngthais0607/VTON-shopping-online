@@ -79,7 +79,7 @@ def test_product_patch_serializes_with_checkout():
 
             event.listen(session.bind, "after_cursor_execute", hold_after_lock)
             try:
-                update_product(session, product_id, ProductPatch(stock_quantity=0))
+                update_product(session, product_id, ProductPatch(name="Updated Concurrently"))
             finally:
                 event.remove(session.bind, "after_cursor_execute", hold_after_lock)
 

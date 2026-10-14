@@ -59,9 +59,9 @@ export interface ProductFormData {
   price: number;
   description?: string | null;
   category_id?: number | null;
-  stock_quantity: number;
-  reserved_quantity: number;
-  sold_quantity: number;
+  stock_quantity?: number;
+  reserved_quantity?: number;
+  sold_quantity?: number;
   currency: string;
   is_active: boolean;
   brand?: string | null;

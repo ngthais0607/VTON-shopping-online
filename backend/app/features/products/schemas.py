@@ -78,7 +78,6 @@ class ProductCreate(BaseModel):
     price: float = Field(ge=0)
     description: str | None = Field(default=None, max_length=1000)
     category_id: int | None = None
-    stock_quantity: int = Field(default=0, ge=0)
     currency: str = Field(default="VND", min_length=1, max_length=10)
     is_active: bool = False
     brand: str | None = Field(default=None, max_length=100)
@@ -98,7 +97,6 @@ class ProductPatch(BaseModel):
     price: float | None = Field(default=None, ge=0)
     description: str | None = Field(default=None, max_length=1000)
     category_id: int | None = None
-    stock_quantity: int | None = Field(default=None, ge=0)
     currency: str | None = Field(default=None, min_length=1, max_length=10)
     is_active: bool | None = None
     brand: str | None = Field(default=None, max_length=100)
