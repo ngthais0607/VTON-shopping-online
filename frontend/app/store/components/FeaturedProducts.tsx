@@ -11,6 +11,7 @@ import { useCart } from "../context/CartContext";
 import { getAvailableStock } from "@/lib/inventory";
 import { FashionFilters } from "@/components/store/fashion-filters";
 import { formatCurrency } from "@/lib/utils";
+import { getProductImageUrl } from "@/lib/placeholder-images";
 
 interface ProductUI {
   source: DBProduct;
@@ -444,10 +445,7 @@ export function FeaturedProducts({
       badgeColor = "bg-amber-100 text-amber-700";
     }
     
-    let img = "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&h=600&fit=crop&q=80";
-    if (p.images && p.images.length > 0) {
-      img = p.images[0].url;
-    }
+    const img = getProductImageUrl(p);
     
     return {
       source: p,

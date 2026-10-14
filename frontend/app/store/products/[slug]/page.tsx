@@ -23,6 +23,7 @@ import { SizeChartModal } from "@/components/store/size-chart-modal";
 import { useVariantSelection } from "@/hooks/use-variant-selection";
 import { apiGet, apiPost } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { DEFAULT_PRODUCT_PLACEHOLDER } from "@/lib/placeholder-images";
 import type { FitFeedbackType, Product, ReviewSummary } from "@/lib/types";
 import { useCart } from "../../context/CartContext";
 
@@ -177,7 +178,7 @@ export default function ProductDetailPage() {
     );
   }
 
-  const images = product.images?.length > 0 ? product.images : [{ id: "placeholder", url: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&h=800&fit=crop&q=80" }];
+  const images = product.images?.length > 0 ? product.images : [{ id: "placeholder", url: DEFAULT_PRODUCT_PLACEHOLDER }];
   const mainImage = images[activeImageIndex] || images[0];
   const fitBreakdown = reviewsData?.fit_breakdown;
 

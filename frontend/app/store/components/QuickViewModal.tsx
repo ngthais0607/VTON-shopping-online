@@ -12,6 +12,7 @@ import { getAvailableStock } from "@/lib/inventory";
 import { useVariantSelection } from "@/hooks/use-variant-selection";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
+import { getProductImageUrl } from "@/lib/placeholder-images";
 
 interface QuickViewModalProps {
   product: Product;
@@ -56,7 +57,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   });
 
   const effectiveStock = selectedVariant ? getAvailableStock(selectedVariant) : availableStock;
-  const imageUrl = product.images && product.images.length > 0 ? product.images[0].url : undefined;
+  const imageUrl = getProductImageUrl(product);
 
   const fetchReviews = useCallback(async () => {
     setLoadingReviews(true);
