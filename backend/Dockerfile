@@ -29,5 +29,6 @@ ENV PATH="/home/appuser/.local/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
+ENV FORWARDED_ALLOW_IPS=""
 
-CMD ["fastapi", "run", "app/main.py", "--port", "8000"]
+CMD ["sh", "-c", "if [ -n \"$FORWARDED_ALLOW_IPS\" ]; then exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips \"$FORWARDED_ALLOW_IPS\"; else exec uvicorn app.main:app --host 0.0.0.0 --port 8000; fi"]

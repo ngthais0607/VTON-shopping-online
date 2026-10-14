@@ -40,6 +40,7 @@ class Settings(BaseSettings):
         NoDecode,
         BeforeValidator(_parse_cors_origins),
     ] = ("http://localhost:3000",)
+    forwarded_allow_ips: str = ""
 
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = Field(min_length=1)
