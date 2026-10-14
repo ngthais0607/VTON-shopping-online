@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -614,8 +615,20 @@ def process_vietqr_webhook(
         )
         raise BusinessRuleError("Invalid memo content", code="invalid_webhook_memo")
 
-    order_ids = [int(i) for i in match.group(1).split("_")]
-    orders = db.query(Order).filter(Order.id.in_(order_ids)).all()
+    order_ids = sorted(list({int(i) for i in match.group(1).split("_")}))
+
+    # 1. Lock variants in ascending order first to avoid deadlocks
+    locked_variants = _resolve_and_lock_order_inventory(db, order_ids)
+
+    # 2. Lock orders in ascending order with populate_existing and FOR UPDATE
+    orders = (
+        db.query(Order)
+        .filter(Order.id.in_(order_ids))
+        .order_by(Order.id.asc())
+        .populate_existing()
+        .with_for_update()
+        .all()
+    )
     if len(orders) != len(order_ids):
         raise ResourceNotFoundError(
             "One or more orders in memo not found", code="orders_not_found"
@@ -634,10 +647,31 @@ def process_vietqr_webhook(
             code="amount_mismatch",
         )
 
-    locked_variants = _resolve_and_lock_order_inventory(db, order_ids)
+    # Check under lock whether this transaction was already processed
+    existing_payment = (
+        db.query(Payment)
+        .filter(
+            Payment.provider == "vietqr",
+            Payment.provider_transaction_id == payload.transaction_id,
+        )
+        .first()
+    )
+    if existing_payment:
+        logger.info(
+            "VietQR webhook transaction %s already processed for order %s",
+            payload.transaction_id,
+            existing_payment.order_id,
+        )
+        return VietQRWebhookResponse(
+            status="already_processed",
+            message="Transaction already processed",
+            order_ids=[existing_payment.order_id],
+        )
+
     current_time = datetime.now(timezone.utc)
     has_pending = False
     has_late = False
+    has_duplicate = False
     all_paid = True
 
     for order in orders:
@@ -648,7 +682,6 @@ def process_vietqr_webhook(
                 if item.variant_id:
                     item.variant = locked_variants.get(item.variant_id)
             apply_order_transition(order, OrderStatus.PAID, current_time)
-
 
             payment = Payment(
                 order_id=order.id,
@@ -661,8 +694,24 @@ def process_vietqr_webhook(
             )
             db.add(payment)
         elif order.status == OrderStatus.PAID.value:
-            # Order is already paid
-            pass
+            # Order is already paid. Record duplicate payment without re-decrementing stock.
+            all_paid = False
+            has_duplicate = True
+            logger.warning(
+                "VietQR webhook received transaction %s for already-paid order %s",
+                payload.transaction_id,
+                order.id,
+            )
+            payment = Payment(
+                order_id=order.id,
+                provider="vietqr",
+                provider_transaction_id=payload.transaction_id,
+                amount=order.total_amount,
+                currency=order.currency,
+                status="duplicate_payment",
+                paid_at=current_time,
+            )
+            db.add(payment)
         else:
             all_paid = False
             has_late = True
@@ -684,18 +733,36 @@ def process_vietqr_webhook(
             )
             db.add(payment)
 
-    db.commit()
-
-    if all_paid:
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        logger.info(
+            "IntegrityError on VietQR transaction %s, returning already_processed",
+            payload.transaction_id,
+        )
         return VietQRWebhookResponse(
             status="already_processed",
-            message="Order has already been paid",
+            message="Transaction already processed",
+            order_ids=order_ids,
+        )
+
+    if has_duplicate and not has_pending:
+        return VietQRWebhookResponse(
+            status="duplicate_payment",
+            message="Order has already been paid; recorded as duplicate payment",
             order_ids=order_ids,
         )
     if has_late and not has_pending:
         return VietQRWebhookResponse(
             status="late_payment",
             message="Order is expired or cancelled; recorded as late payment",
+            order_ids=order_ids,
+        )
+    if all_paid:
+        return VietQRWebhookResponse(
+            status="already_processed",
+            message="Order has already been paid",
             order_ids=order_ids,
         )
     return VietQRWebhookResponse(
