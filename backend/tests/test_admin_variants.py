@@ -394,3 +394,111 @@ def test_variant_hex_code_validation(client, db_session, mock_admin_auth):
         },
     )
     assert res_good.status_code == 201
+
+
+def test_bulk_create_variants_rejects_incomplete_matrix_or_blank_entries(
+    client, db_session, mock_admin_auth
+):
+    product = Product(
+        name="Validation Matrix Product",
+        slug="val-matrix-prod",
+        price=150000,
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    # 1. Empty payload rejected with 422
+    res_empty = client.post(f"/api/v1/products/{product.id}/variants/bulk", json={})
+    assert res_empty.status_code == 422
+
+    # 2. Only sizes rejected with 422
+    res_sizes = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json={"sizes": ["S", "M"]},
+    )
+    assert res_sizes.status_code == 422
+
+    # 3. Only colors rejected with 422
+    res_colors = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json={"colors": [{"name": "Red", "hex": "#FF0000"}]},
+    )
+    assert res_colors.status_code == 422
+
+    # 4. Blank size entry rejected with 422
+    res_blank_size = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json={
+            "sizes": ["S", "   "],
+            "colors": [{"name": "Red", "hex": "#FF0000"}],
+        },
+    )
+    assert res_blank_size.status_code == 422
+
+    # 5. Blank color name rejected with 422
+    res_blank_color = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json={
+            "sizes": ["S"],
+            "colors": [{"name": "   ", "hex": "#FF0000"}],
+        },
+    )
+    assert res_blank_color.status_code == 422
+
+    # 6. Partial matrix alongside explicit variants rejected with 422
+    res_partial_alongside = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json={
+            "variants": [{"size": "L", "color_name": "Green", "stock_quantity": 5}],
+            "sizes": ["XL"],
+        },
+    )
+    assert res_partial_alongside.status_code == 422
+
+
+def test_bulk_create_variants_supports_explicit_and_mixed_complete_payloads(
+    client, db_session, mock_admin_auth
+):
+    product = Product(
+        name="Mixed Payload Product",
+        slug="mixed-payload-prod",
+        price=180000,
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    # 1. Explicit variants-only succeeds
+    res_explicit = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json={
+            "variants": [
+                {"size": "S", "color_name": "White", "stock_quantity": 10},
+                {"size": "M", "color_name": "White", "stock_quantity": 12},
+            ]
+        },
+    )
+    assert res_explicit.status_code == 201
+    variants = res_explicit.json()
+    assert len(variants) == 2
+    assert all(v["color_name"] == "White" for v in variants)
+
+    # 2. Mixed complete payload (full matrix + explicit variants) succeeds
+    res_mixed = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json={
+            "sizes": ["L"],
+            "colors": [{"name": "Black", "hex": "#000000"}],
+            "default_stock": 20,
+            "variants": [
+                {"size": "XL", "color_name": "Black", "color_hex": "#000000", "stock_quantity": 8}
+            ],
+        },
+    )
+    assert res_mixed.status_code == 201
+    all_vars = res_mixed.json()
+    # 2 existing + 1 matrix (L/Black) + 1 explicit (XL/Black) = 4 variants
+    assert len(all_vars) == 4
+    sizes = {v["size"] for v in all_vars}
+    assert {"S", "M", "L", "XL"} == sizes
