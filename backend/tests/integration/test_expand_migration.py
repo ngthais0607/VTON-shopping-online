@@ -106,3 +106,105 @@ def test_expand_migration_data_backfill():
         cleanup_conn.exec_driver_sql("DELETE FROM users WHERE id = 99991")
         verify_session.commit()
         verify_session.close()
+
+
+def test_expand_migration_preflight_aborts_on_dirty_data():
+    db_url = os.environ.get("TEST_DATABASE_URL")
+    if not db_url:
+        pytest.skip("TEST_DATABASE_URL is required")
+
+    backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    ini_path = os.path.join(backend_dir, "alembic.ini")
+    alembic_cfg = Config(ini_path)
+    alembic_cfg.set_main_option("script_location", os.path.join(backend_dir, "alembic"))
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+
+    engine = create_engine(db_url)
+    session_factory = sessionmaker(bind=engine)
+
+    # 1. Downgrade to baseline f7c2a1b9e8d3
+    command.downgrade(alembic_cfg, "f7c2a1b9e8d3")
+
+    session = session_factory()
+    conn = session.connection()
+    # Insert dirty product: stock=5, reserved=3, sold=4 (reserved+sold=7 > 5)
+    conn.exec_driver_sql(
+        "INSERT INTO products (id, name, price, stock_quantity, reserved_quantity, sold_quantity, currency, is_active, created_at, updated_at) "
+        "VALUES (99993, 'Dirty Oversold Product', 200.00, 5, 3, 4, 'VND', 1, NOW(), NOW())"
+    )
+    session.commit()
+    session.close()
+
+    # Ensure clamp is not enabled
+    old_env = os.environ.pop("MIGRATION_CLAMP_OVERSOLD", None)
+    try:
+        with pytest.raises(RuntimeError, match="Preflight check failed"):
+            command.upgrade(alembic_cfg, "a1b2c3d4e5f6")
+
+        # Verify product_variants table does NOT exist and alembic_version is still f7c2a1b9e8d3
+        inspector_session = session_factory()
+        insp_conn = inspector_session.connection()
+        tables = insp_conn.exec_driver_sql("SHOW TABLES LIKE 'product_variants'").fetchall()
+        assert len(tables) == 0, "product_variants table should not exist after preflight abort"
+
+        ver = insp_conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
+        assert ver == "f7c2a1b9e8d3"
+
+        inspector_session.close()
+    finally:
+        if old_env is not None:
+            os.environ["MIGRATION_CLAMP_OVERSOLD"] = old_env
+        clean_s = session_factory()
+        clean_s.connection().exec_driver_sql("DELETE FROM products WHERE id = 99993")
+        clean_s.commit()
+        clean_s.close()
+        # restore head
+        command.upgrade(alembic_cfg, "head")
+
+
+def test_expand_migration_clamp_oversold():
+    db_url = os.environ.get("TEST_DATABASE_URL")
+    if not db_url:
+        pytest.skip("TEST_DATABASE_URL is required")
+
+    backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    ini_path = os.path.join(backend_dir, "alembic.ini")
+    alembic_cfg = Config(ini_path)
+    alembic_cfg.set_main_option("script_location", os.path.join(backend_dir, "alembic"))
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+
+    engine = create_engine(db_url)
+    session_factory = sessionmaker(bind=engine)
+
+    # 1. Downgrade to baseline f7c2a1b9e8d3
+    command.downgrade(alembic_cfg, "f7c2a1b9e8d3")
+
+    session = session_factory()
+    conn = session.connection()
+    # Insert dirty product: stock=5, reserved=3, sold=4
+    conn.exec_driver_sql(
+        "INSERT INTO products (id, name, price, stock_quantity, reserved_quantity, sold_quantity, currency, is_active, created_at, updated_at) "
+        "VALUES (99994, 'Oversold To Clamp', 200.00, 5, 3, 4, 'VND', 1, NOW(), NOW())"
+    )
+    session.commit()
+    session.close()
+
+    os.environ["MIGRATION_CLAMP_OVERSOLD"] = "1"
+    try:
+        command.upgrade(alembic_cfg, "head")
+
+        verify_session = session_factory()
+        variant = verify_session.query(ProductVariant).filter(ProductVariant.product_id == 99994).first()
+        assert variant is not None
+        # Clamped stock should be reserved (3) + sold (4) = 7
+        assert variant.stock_quantity == 7
+        assert variant.reserved_quantity == 3
+        assert variant.sold_quantity == 4
+        verify_session.close()
+    finally:
+        os.environ.pop("MIGRATION_CLAMP_OVERSOLD", None)
+        clean_s = session_factory()
+        clean_s.connection().exec_driver_sql("DELETE FROM product_variants WHERE product_id = 99994")
+        clean_s.connection().exec_driver_sql("DELETE FROM products WHERE id = 99994")
+        clean_s.commit()
+        clean_s.close()

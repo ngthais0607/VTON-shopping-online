@@ -5,12 +5,17 @@ Revises: f7c2a1b9e8d3
 Create Date: 2026-10-13 14:15:00.000000
 """
 
+import logging
+import os
+import re
+import unicodedata
 from typing import Sequence, Union
 
 import sqlalchemy as sa
 
 from alembic import op
-from app.core.slug import generate_unique_slug
+
+logger = logging.getLogger("alembic.runtime.migration")
 
 # revision identifiers, used by Alembic.
 revision: str = 'a1b2c3d4e5f6'
@@ -19,7 +24,77 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _slugify(text: str) -> str:
+    """Generate clean, lowercase, URL-safe slug from text without external libraries."""
+    if not text:
+        return ""
+    cleaned = text.replace("đ", "d").replace("Đ", "d")
+    normalized = unicodedata.normalize("NFKD", cleaned)
+    without_marks = "".join(c for c in normalized if not unicodedata.combining(c))
+    lower = without_marks.lower()
+    hyphenated = re.sub(r"[^a-z0-9]+", "-", lower)
+    return re.sub(r"-+", "-", hyphenated).strip("-")
+
+
+def _generate_unique_slug(base_text: str, existing_slugs: set[str]) -> str:
+    """Generate a unique slug, appending -2, -3, etc. if a collision exists."""
+    base_slug = _slugify(base_text)
+    if not base_slug:
+        base_slug = "item"
+    candidate = base_slug
+    counter = 2
+    while candidate in existing_slugs:
+        candidate = f"{base_slug}-{counter}"
+        counter += 1
+    return candidate
+
+
 def upgrade() -> None:
+    bind = op.get_bind()
+
+    # Preflight Check: Inspect existing products for oversold or invalid stock data BEFORE any DDL
+    invalid_rows = bind.execute(sa.text(
+        """
+        SELECT id, stock_quantity, reserved_quantity, sold_quantity 
+        FROM products 
+        WHERE (COALESCE(reserved_quantity, 0) + COALESCE(sold_quantity, 0) > COALESCE(stock_quantity, 0))
+           OR stock_quantity < 0 OR reserved_quantity < 0 OR sold_quantity < 0
+           OR stock_quantity IS NULL OR reserved_quantity IS NULL OR sold_quantity IS NULL
+        ORDER BY id ASC
+        """
+    )).fetchall()
+
+    if invalid_rows:
+        if os.environ.get("MIGRATION_CLAMP_OVERSOLD") == "1":
+            for r_id, r_stock, r_reserved, r_sold in invalid_rows:
+                clean_res = max(0, r_reserved or 0)
+                clean_sold = max(0, r_sold or 0)
+                new_stock = max(0, clean_res + clean_sold)
+                bind.execute(
+                    sa.text(
+                        """
+                        UPDATE products 
+                        SET stock_quantity = :st, reserved_quantity = :res, sold_quantity = :sold 
+                        WHERE id = :id
+                        """
+                    ),
+                    {"st": new_stock, "res": clean_res, "sold": clean_sold, "id": r_id}
+                )
+                logger.warning(
+                    f"Clamped oversold product id={r_id}: stock {r_stock}->{new_stock}, "
+                    f"reserved {r_reserved}->{clean_res}, sold {r_sold}->{clean_sold}"
+                )
+        else:
+            sample = invalid_rows[:20]
+            details = "\n".join(
+                f"  - Product ID {r[0]}: stock={r[1]}, reserved={r[2]}, sold={r[3]}" for r in sample
+            )
+            raise RuntimeError(
+                f"Preflight check failed in a1b2c3d4e5f6: Found {len(invalid_rows)} product(s) with invalid/oversold stock:\n"
+                f"{details}\n"
+                f"Action required: Set MIGRATION_CLAMP_OVERSOLD=1 to clamp stock to (reserved + sold), or fix data manually before running migration."
+            )
+
     # 1. Create product_variants table
     op.create_table(
         'product_variants',
@@ -96,7 +171,7 @@ def upgrade() -> None:
     cats = bind.execute(sa.text("SELECT id, name FROM categories ORDER BY id ASC")).fetchall()
     cat_slugs: set[str] = set()
     for cat_id, cat_name in cats:
-        c_slug = generate_unique_slug(cat_name, cat_slugs)
+        c_slug = _generate_unique_slug(cat_name, cat_slugs)
         cat_slugs.add(c_slug)
         bind.execute(
             sa.text("UPDATE categories SET slug = :slug WHERE id = :id"),
@@ -110,7 +185,7 @@ def upgrade() -> None:
     prod_slugs: set[str] = set()
 
     for p_id, p_name, p_stock, p_reserved, p_sold, p_active, p_created, p_updated in prods:
-        p_slug = generate_unique_slug(p_name, prod_slugs)
+        p_slug = _generate_unique_slug(p_name, prod_slugs)
         prod_slugs.add(p_slug)
         bind.execute(
             sa.text("UPDATE products SET slug = :slug WHERE id = :id"),
