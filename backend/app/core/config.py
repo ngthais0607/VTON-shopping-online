@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     refresh_cookie_secure: bool = True
     refresh_cookie_samesite: str = "lax"
 
-    bootstrap_admin_email: str | None = None
     order_expire_minutes: int = Field(default=15, gt=0)
     low_stock_threshold: int = Field(default=20, ge=1)
 

@@ -577,3 +577,21 @@ def test_integrity_error_is_rolled_back_and_translated(monkeypatch):
     assert exc_info.value.code == "duplicate_user"
     assert session.rolled_back is True
     assert (target.username, target.first_name) == ("original", "Original")
+
+
+def test_registration_always_creates_customer_role(client, db_session):
+    limiter.reset()
+    payload = {
+        "username": "bootstrap_test_user",
+        "email": "admin@example.org",
+        "password": "Password123456",
+        "first_name": "Bootstrap",
+        "last_name": "Test",
+    }
+    response = client.post("/api/v1/users/register", json=payload)
+    assert response.status_code == 201
+    user_data = response.json()
+    assert user_data["role"] == "customer"
+    user_in_db = db_session.query(User).filter(User.id == user_data["id"]).one()
+    assert user_in_db.role == "customer"
+
