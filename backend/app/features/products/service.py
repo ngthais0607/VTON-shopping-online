@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session, joinedload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.cache import get_cache
 from app.core.config import get_settings
-from app.core.errors import BusinessRuleError, ResourceNotFoundError
+from app.core.errors import BusinessRuleError, ConflictError, ResourceNotFoundError
 from app.core.schemas import Page
 from app.core.slug import generate_unique_slug, slugify
 from app.features.categories import service as category_service
@@ -30,6 +31,50 @@ from app.features.products.schemas import (
 from app.features.products.variant_model import ProductVariant
 
 
+def _escape_like(text: str) -> str:
+    """Escape SQL LIKE metacharacters %, _, and backslash."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _get_scoped_existing_slugs(
+    db: Session, base_slug: str, exclude_product_id: int | None = None
+) -> set[str]:
+    """Query only candidate slug and its numbered suffix collisions, avoiding full table scan."""
+    escaped = _escape_like(base_slug)
+    query = db.query(Product.slug).filter(
+        or_(
+            Product.slug == base_slug,
+            Product.slug.like(f"{escaped}-%", escape="\\"),
+        )
+    )
+    if exclude_product_id is not None:
+        query = query.filter(Product.id != exclude_product_id)
+    return set(s[0] for s in query.all())
+
+
+def _get_scoped_existing_skus(
+    db: Session,
+    explicit_skus: list[str],
+    generated_base_skus: list[str],
+) -> set[str]:
+    """Query only candidate SKUs and generated suffix collisions, avoiding full table scan."""
+    conditions = []
+    if explicit_skus:
+        conditions.append(ProductVariant.sku.in_(explicit_skus))
+    for base_sku in set(generated_base_skus):
+        escaped = _escape_like(base_sku)
+        conditions.append(
+            or_(
+                ProductVariant.sku == base_sku,
+                ProductVariant.sku.like(f"{escaped}-%", escape="\\"),
+            )
+        )
+    if not conditions:
+        return set()
+    query = db.query(ProductVariant.sku).filter(or_(*conditions))
+    return set(s[0] for s in query.all())
+
+
 def create_product(db: Session, command: ProductCreate) -> Product:
     category = None
     if command.category_id is not None:
@@ -38,9 +83,10 @@ def create_product(db: Session, command: ProductCreate) -> Product:
     data = command.model_dump()
     variants_input = data.pop("variants", None)
 
-    existing_slugs = set(s[0] for s in db.query(Product.slug).all())
     base_slug = slugify(data.get("slug")) if data.get("slug") else slugify(data["name"])
-    data["slug"] = generate_unique_slug(base_slug or "product", existing_slugs)
+    base_slug = base_slug or "product"
+    existing_slugs = _get_scoped_existing_slugs(db, base_slug)
+    data["slug"] = generate_unique_slug(base_slug, existing_slugs)
 
     requested_active = data.pop("is_active", False)
     data["is_active"] = False
@@ -55,7 +101,32 @@ def create_product(db: Session, command: ProductCreate) -> Product:
 
     created_variants = []
     if variants_input and len(variants_input) > 0:
-        existing_skus = set(s[0] for s in db.query(ProductVariant.sku).all())
+        explicit_skus: list[str] = []
+        generated_base_skus: list[str] = []
+        for cand in variants_input:
+            cand_sku = (
+                cand.get("sku")
+                if isinstance(cand, dict)
+                else getattr(cand, "sku", None)
+            )
+            if cand_sku:
+                explicit_skus.append(cand_sku)
+            else:
+                c_name = (
+                    cand.get("color_name")
+                    if isinstance(cand, dict)
+                    else getattr(cand, "color_name", "Default")
+                )
+                c_size = (
+                    cand.get("size")
+                    if isinstance(cand, dict)
+                    else getattr(cand, "size", "ONE_SIZE")
+                )
+                clean_color = re.sub(r"[^A-Za-z0-9]+", "", c_name).upper() or "DEF"
+                clean_size = re.sub(r"[^A-Za-z0-9]+", "", c_size).upper() or "STD"
+                generated_base_skus.append(f"{product.slug}-{clean_color}-{clean_size}"[:55])
+
+        existing_skus = _get_scoped_existing_skus(db, explicit_skus, generated_base_skus)
         for cand in variants_input:
             sku = (
                 cand.get("sku")
@@ -124,7 +195,14 @@ def create_product(db: Session, command: ProductCreate) -> Product:
         product.is_active = True
 
     product_id = product.id
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError(
+            "Product slug or variant SKU conflict occurred",
+            code="conflict",
+        ) from exc
     invalidate_catalog_cache()
     return _get_active_product(db, product_id, is_admin=True)
 
@@ -540,19 +618,25 @@ def update_product(
         )
 
     if "slug" in changes and changes["slug"]:
-        existing_slugs = set(
-            s[0] for s in db.query(Product.slug).filter(Product.id != product_id).all()
+        base_slug = slugify(changes["slug"]) or "product"
+        existing_slugs = _get_scoped_existing_slugs(
+            db, base_slug, exclude_product_id=product_id
         )
-        changes["slug"] = generate_unique_slug(
-            slugify(changes["slug"]) or "product", existing_slugs
-        )
+        changes["slug"] = generate_unique_slug(base_slug, existing_slugs)
 
     for field, value in changes.items():
         setattr(product, field, value)
     if "category_id" in changes:
         product.category = category
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError(
+            "Product slug conflict occurred",
+            code="conflict",
+        ) from exc
     invalidate_catalog_cache()
     return _get_active_product(db, product_id, is_admin=True)
 
