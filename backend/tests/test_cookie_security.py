@@ -3,7 +3,6 @@ from pydantic import ValidationError
 from starlette.testclient import TestClient
 
 from app.core.config import Settings
-from app.main import create_app
 
 
 def _make_auth_settings(**overrides) -> Settings:

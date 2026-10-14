@@ -1,6 +1,5 @@
 from decimal import Decimal
 
-import pytest
 from sqlalchemy import event
 from starlette.testclient import TestClient
 
@@ -8,7 +7,6 @@ from app.core.schemas import Page
 from app.features.orders import service
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 from app.features.orders.model import Order, OrderItem, Payment
-from app.features.orders.schemas import OrderResponse
 from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
@@ -140,7 +138,7 @@ def test_list_user_orders_returns_page_and_constant_queries(db_session):
     _create_orders(db_session, user, count=3)
     db_session.expire_all()
 
-    with QueryCounter(engine) as qc:
+    with QueryCounter(engine):
         page = service.list_user_orders(db_session, user.id, user, limit=2, offset=0)
 
     assert isinstance(page, Page)

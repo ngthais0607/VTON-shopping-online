@@ -1,7 +1,13 @@
 from functools import lru_cache
 from typing import Annotated, Any
 
-from pydantic import BeforeValidator, Field, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BeforeValidator,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 

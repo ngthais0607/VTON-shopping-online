@@ -127,4 +127,46 @@
 
 ---
 
+### 5. Phase 4: Operations, Order Lifecycle & Proxy Security (Tasks 19 - 23b)
+- **Item 4.1 (MinIO TLS & Configurable Storage Encryption):**
+  - Added `storage_use_ssl: bool = False` to `Settings` in `backend/app/core/config.py`.
+  - Updated `Minio` client initialization in `backend/app/features/storage/service.py` to pass `secure=settings.storage_use_ssl`.
+  - Updated health check and storage service diagnostics to honor TLS configuration.
+  - Added regression test `backend/tests/test_storage_tls.py`.
+  - Commit: `24a877e` (`feat(storage): support configurable TLS for object storage`).
+- **Item 4.2 (Cookie Security & CORS Realignment):**
+  - Added `auth_cookie_secure: bool` and `auth_cookie_samesite: str` settings with sensible defaults (`secure=False` for dev, `True` for prod, `samesite="lax"`).
+  - Aligned refresh cookie response headers across login, register, and refresh endpoints to enforce `httponly=True`, `secure=settings.auth_cookie_secure`, `samesite=settings.auth_cookie_samesite`.
+  - Realigned CORS origins defaults (`cors_origins`) to include local development addresses and environment variables, forbidding wildcards when credentials are allowed.
+  - Added regression tests in `backend/tests/test_cookie_security.py`.
+  - Commit: `351d387` (`fix(auth): align refresh cookie attributes and CORS defaults`).
+- **Item 4.3 (Rate Limiting Behind Trusted Reverse Proxy):**
+  - Removed custom/insecure manual `X-Forwarded-For` string splitting in rate limiting middleware.
+  - Standardized on ASGI `request.client.host` populated by trusted ASGI/Uvicorn proxy middleware (`--proxy-headers`, `--forwarded-allow-ips`).
+  - Added `forwarded_allow_ips` configuration to `Settings` and Uvicorn deployment commands.
+  - Added regression tests in `backend/tests/test_trusted_proxy_rate_limit.py`.
+  - Commit: `485dd44` (`fix(security): delegate trusted proxy client resolution to ASGI server`).
+- **Item 4.4 (N+1 Elimination & Order Pagination):**
+  - Converted `list_user_orders` to return `Page[OrderResponse]` with explicit pagination query parameters (`limit`, `offset`), matching canonical API pagination.
+  - Eliminated N+1 relational queries on orders, items, and payments by applying `selectinload(Order.items)` and `selectinload(Order.payments)`.
+  - Updated frontend `useUserOrders` hook and customer orders page with pagination controls.
+  - Added query counting regression tests in `backend/tests/test_orders_nplusone.py`.
+  - Commit: `62faf0b` (`perf(orders): paginate customer order history and eliminate relational N+1 queries`).
+- **Item 4.5 & 4.5b (Delivery Lifecycle, Cancellation & Payment Status):**
+  - Implemented post-dispatch order states (`SHIPPED`, `DELIVERED`) and state transitions in `apply_order_transition` in `backend/app/features/orders/domain.py`.
+  - Added customer cancellation endpoint (`POST /orders/{id}/cancel`), permitting owner cancellation only before dispatch (`PENDING`, `CONFIRMED`).
+  - Maintained inventory accounting invariants: cancelling unpaid orders unreserves stock; cancelling paid orders unmarks sold stock; transitions to `SHIPPED` / `DELIVERED` leave physical inventory unchanged.
+  - Centralized deterministic payment status evaluation for terminated orders in order and dashboard services.
+  - Added regression tests in `backend/tests/test_order_delivery_lifecycle.py`.
+  - Commit: `f943564` (`feat(orders): support customer cancellation and post-dispatch delivery lifecycle`).
+- **Phase 4 Test Suite Gate:**
+  - Full backend unit test suite: 445 passed, 22 skipped (MariaDB live tests without MariaDB env), 0 failed.
+  - Full backend imports and `ruff check app tests`: 0 errors.
+  - Full frontend Vitest suite: 26 test files passed, 100 tests passed.
+  - Full frontend ESLint: 0 warnings, 0 errors.
+  - Full frontend TypeScript typecheck: 0 errors (`tsc --noEmit`).
+  - Full frontend Next.js production build: 26 routes compiled cleanly.
+
+---
+
 

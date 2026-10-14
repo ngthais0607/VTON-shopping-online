@@ -4,15 +4,12 @@ from unittest.mock import MagicMock
 import pytest
 from starlette.testclient import TestClient
 
-from app.core.errors import BusinessRuleError
-from app.features.orders import service
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 from app.features.orders.domain import (
     InvalidOrderTransition,
     apply_order_transition,
-    available_stock,
 )
-from app.features.orders.model import Order, OrderItem, Payment
+from app.features.orders.model import Order, OrderItem
 from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
