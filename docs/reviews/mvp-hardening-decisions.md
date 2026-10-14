@@ -83,3 +83,48 @@
 
 ---
 
+### 4. Phase 3: Security, Identity & Data Integrity (Tasks 11 - 18)
+- **Item 3.1 (Review Deduplication, Unique Constraint, Purchase Eligibility & Pagination):**
+  - Added Alembic migration `e4f5a6b7c8d9_dedupe_and_add_unique_review_constraint.py` with deterministic deduplication preserving newest verified purchase or highest ID, creating unique constraint `uq_product_reviews_user_product` on `(user_id, product_id)`.
+  - Enforced verified paid purchase requirement for review creation; duplicate submissions update the existing review (upsert).
+  - Migrated review listing to canonical `{items, total, limit, offset}` pagination.
+  - Commit: `f3c5e9d` (`feat(reviews): enforce paid-purchase upserts and migrate paginated consumers`).
+- **Item 3.2 (Public Order Tracking Masking & PII Protection):**
+  - Isolated public order tracking DTO `PublicTrackingResponse` returning masked customer name (`Ng*** V** B`), masked phone (`*******678`), district/city only shipping destination (`Quan 1, Ho Chi Minh`), public tracking code, and sanitised timeline descriptions.
+  - Migrated storefront tracking links to use `public_code` instead of internal integer ID.
+  - Commit: `221b25a` (`fix(tracking): isolate public DTO and migrate storefront public-code links`).
+- **Item 3.3 (Checkout Input Normalization & Server Validation):**
+  - Implemented field validators on `CheckoutCommand` for `customer_name` (trimmed, 2-100 characters), `customer_phone` (strips whitespace/dots/hyphens, validates Vietnamese regex `^(0|\+84)(3|5|7|8|9)\d{8}$`, normalizes `+84` prefix to `0`), and `shipping_address` (trimmed, 10-1000 characters).
+  - Aligned frontend Zod schema `checkoutSchema` in `frontend/lib/validations/checkout.ts` to transform and normalize input identically and pass normalized values to checkout payload.
+  - Commit: `819bdb4` (`fix(checkout): normalize Vietnamese contact input consistently`).
+- **Item 3.4 (Admin Management CLI & Bootstrap Removal):**
+  - Removed `bootstrap_admin_email` config setting and promotion logic from `_create_user`. Registration exclusively assigns `customer` role.
+  - Added management CLI `python -m app.cli create-admin --email <email> --username <username>` prompting securely for password and confirmation via `getpass`.
+  - Added `backend/tests/test_admin_cli.py` covering creation, duplicate rejection, and password policy errors. Updated `README.md`.
+  - Commit: `c17e076` (`feat(users): replace public admin bootstrap with secure management CLI`).
+- **Item 3.5 (Actor-Aware Soft Deletion & Last Admin Safeguard):**
+  - Updated `delete_user(db, user_id, actor)` in `service.py`: blocks self-deletion (409 `admin_cannot_delete_self`), locks all active admin rows ascending with `FOR UPDATE` to prevent concurrent mutual deletion and enforce last-admin guard (409 `cannot_delete_last_admin`).
+  - Releases unique constraints on soft deletion by tombstoning email (`deleted+{id}+{ts}@invalid`) and username (`deleted_{id}_{ts}`), enabling immediate re-registration.
+  - Added integration concurrency test `backend/tests/integration/test_admin_deletion_concurrency.py`.
+  - Commit: `91435b7` (`fix(users): protect admin deletion and release soft-deleted identifiers`).
+- **Item 3.6 (Canonical Optional-Auth Dependency):**
+  - Consolidated `get_optional_user` into canonical `get_current_user_optional(credentials, db) -> User | None`.
+  - Removed production test hack reading `request.app.dependency_overrides`.
+  - Updated all route consumers and test override fixtures.
+  - Commit: `023d6ce` (`refactor(auth): consolidate optional user dependency and remove mock bypass`).
+- **Item 3.7 (Variant-Aware Catalog Price Filtering & Sorting):**
+  - Replaced base-price-only filtering and sorting in `list_products` with correlated subquery `MIN(COALESCE(variant.price, product.price))` across all active variants, falling back to `Product.price` for products without active variants.
+  - Implemented stable tie-break ordering (`Product.id.asc()` for `price_asc`, `Product.id.desc()` for `price_desc`).
+  - Added regression suite `backend/tests/test_product_variant_price_query.py`.
+  - Commit: `81ad23b` (`fix(products): filter and sort catalog by effective variant price`).
+- **Phase 3 Test Suite Gate (Task 18):**
+  - Full backend unit test suite: 426 passed, 0 failed, 1 warning (Starlette testclient httpx deprecation).
+  - Full backend imports and `ruff check app tests`: 0 errors.
+  - Full frontend Vitest suite: 26 test files passed, 100 tests passed.
+  - Full frontend ESLint: 0 warnings, 0 errors.
+  - Full frontend TypeScript typecheck: 0 errors (`tsc --noEmit`).
+  - Full frontend Next.js production build: 26 routes compiled successfully.
+
+---
+
+

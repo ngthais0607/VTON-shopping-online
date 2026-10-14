@@ -144,8 +144,8 @@ def test_checkout_rechecks_locked_product_when_identity_map_is_stale(db_session)
     command = CheckoutCommand(
         items=[{"variant_id": variant.id, "quantity": 2}],
         customer_name="Buyer",
-        customer_phone="123",
-        shipping_address="Address",
+        customer_phone="0912345678",
+        shipping_address="123 Test Street, Hanoi",
     )
 
     with pytest.raises(InsufficientStockError):

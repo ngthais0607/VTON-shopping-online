@@ -53,8 +53,8 @@ def checkout_payload(variant_or_product, **kwargs):
     return dict(
         items=[dict(variant_id=variant_id, quantity=1)],
         customer_name="Buyer",
-        customer_phone="123",
-        shipping_address="Home",
+        customer_phone="0912345678",
+        shipping_address="123 Test Street, Hanoi",
         payment_method="vietqr",
         **kwargs,
     )
@@ -177,8 +177,7 @@ def test_checkout_hides_deleted_category(client, db_session, mock_user_auth):
 @pytest.mark.parametrize(
     "field,limit",
     [
-        ("customer_name", 255),
-        ("customer_phone", 50),
+        ("customer_name", 100),
         ("shipping_address", 1000),
         ("notes", 2000),
     ],
@@ -199,6 +198,23 @@ def test_checkout_storage_bounds(
 @pytest.mark.parametrize("extra", [0, 1])
 def test_review_storage_bounds(client, db_session, mock_user_auth, field, limit, extra):
     product = product_row(db_session)
+    order = Order(
+        user_id=mock_user_auth.id,
+        product_id=product.id,
+        product_name=product.name,
+        unit_price=product.price,
+        quantity=1,
+        total_amount=product.price,
+        currency=product.currency,
+        status="paid",
+        payment_method="vietqr",
+        customer_name="Buyer",
+        customer_phone="0912345678",
+        shipping_address="123 Test Street, Hanoi",
+    )
+    db_session.add(order)
+    db_session.commit()
+
     response = client.post(
         f"/api/v1/products/{product.id}/reviews",
         json={"rating": 5, field: "x" * (limit + extra)},
