@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 
 import { VietQRData } from '@/lib/types';
 export type { VietQRData } from '@/lib/types';
+import { formatCurrency } from '@/lib/utils';
 
 interface VietQRModalProps {
   vietqrData: VietQRData;
@@ -119,7 +120,7 @@ export function VietQRModal({
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-medium">Total Amount</span>
                   <span className="font-extrabold text-indigo-600 text-sm">
-                    ${vietqrData.amount.toLocaleString()} ({vietqrData.amount.toLocaleString()} VND)
+                    {formatCurrency(vietqrData.amount, "VND")}
                   </span>
                 </div>
 

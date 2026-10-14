@@ -29,6 +29,7 @@ import useSWR from 'swr';
 import { RevenueChart } from './components/revenue-chart';
 import { OrderStatusChart } from './components/order-status-chart';
 import { getAvailableStock } from '@/lib/inventory';
+import { formatCurrency } from '@/lib/utils';
 
 export default function Dashboard() {
   const {data, error, isLoading: loading, mutate: loadData} = useSWR('/dashboard-summary', async () => Promise.all([
@@ -94,10 +95,7 @@ export default function Dashboard() {
           />
           <MetricCard
             title="Revenue"
-            value={`$${dashboardMetrics.revenue.toLocaleString('en-US', {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0,
-            })}`}
+            value={formatCurrency(dashboardMetrics.revenue)}
             icon={TrendingUp}
           />
         </div>

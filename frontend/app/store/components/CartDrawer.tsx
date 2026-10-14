@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence } from "motion/react";
+import { formatCurrency } from "@/lib/utils";
 
 export function CartDrawer() {
   const { cartItems, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart, totalAmount, totalCount } = useCart();
@@ -135,7 +136,7 @@ export function CartDrawer() {
 
                       <div className="flex items-center justify-between mt-2">
                         <span className="font-bold text-slate-900 text-sm">
-                          ${((variant?.price ?? product.price) * quantity).toLocaleString()}
+                          {formatCurrency((variant?.price ?? product.price) * quantity, product.currency)}
                         </span>
 
                         {/* Quantity Controls */}
@@ -167,22 +168,17 @@ export function CartDrawer() {
                 <div className="space-y-1.5 text-xs text-slate-600">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
-                    <span className="font-semibold text-slate-900">${totalAmount.toLocaleString()}</span>
+                    <span className="font-semibold text-slate-900">{formatCurrency(totalAmount)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Estimated Shipping</span>
                     <span className="font-semibold text-slate-900">
-                      {shippingFee === 0 ? <span className="text-emerald-600 font-bold">Free</span> : `$${shippingFee}`}
+                      {shippingFee === 0 ? <span className="text-emerald-600 font-bold">Miễn phí</span> : formatCurrency(shippingFee)}
                     </span>
                   </div>
-                  {shippingFee > 0 && (
-                    <p className="text-[11px] text-sky-600 font-medium">
-                      Add ${(100 - totalAmount).toFixed(0)} more for Free Shipping!
-                    </p>
-                  )}
                   <div className="border-t border-sky-100 pt-2 flex justify-between text-sm font-bold text-slate-900">
                     <span>Total</span>
-                    <span className="text-sky-600 text-base">${finalTotal.toLocaleString()}</span>
+                    <span className="text-sky-600 text-base">{formatCurrency(finalTotal)}</span>
                   </div>
                 </div>
 

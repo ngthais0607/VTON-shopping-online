@@ -1,5 +1,5 @@
 "use client";
-import { displayDate } from '@/lib/utils';
+import { displayDate, formatCurrency } from '@/lib/utils';
 
 
 import { useCallback, useEffect, useState } from "react";
@@ -158,7 +158,7 @@ export default function CustomerOrdersPage() {
                                     <div className="flex items-center gap-4 text-sm text-slate-500 font-medium">
                                         <span>Quantity: <strong className="text-slate-800">{order.quantity ?? (order.items ? order.items.reduce((s, it) => s + it.quantity, 0) : 1)}</strong></span>
                                         {order.unit_price != null ? (
-                                            <span>Unit Price: <strong className="text-slate-800">${order.unit_price.toFixed(2)}</strong></span>
+                                            <span>Unit Price: <strong className="text-slate-800">{formatCurrency(order.unit_price, order.currency)}</strong></span>
                                         ) : (order.items && order.items.length > 0 ? (
                                             <span className="text-xs text-sky-600 font-semibold">{order.items.length} items</span>
                                         ) : null)}
@@ -169,7 +169,7 @@ export default function CustomerOrdersPage() {
                                 <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 min-w-[150px] border-t md:border-t-0 pt-3 md:pt-0">
                                     <div className="text-left md:text-right">
                                         <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-0.5">Total Amount</p>
-                                        <p className="text-xl font-black text-slate-950">${order.total.toFixed(2)}</p>
+                                        <p className="text-xl font-black text-slate-950">{formatCurrency(order.total, order.currency)}</p>
                                     </div>
 
                                     <div className="flex items-center gap-2">

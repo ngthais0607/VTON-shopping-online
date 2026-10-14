@@ -10,6 +10,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
+import { formatCurrency } from "@/lib/utils";
 
 interface RevenueChartProps {
   data: { name: string; revenue: number }[];
@@ -38,10 +39,10 @@ export function RevenueChart({ data }: RevenueChartProps) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} />
-            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} tickFormatter={(v) => `$${v}`} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} tickFormatter={(v) => formatCurrency(Number(v))} />
             <Tooltip
               contentStyle={{ backgroundColor: "#0f172a", borderRadius: "12px", border: "none", color: "#fff", fontSize: "12px" }}
-              formatter={(val: number) => [`$${val.toLocaleString()}`, "Revenue"]}
+              formatter={(val: number) => [formatCurrency(Number(val)), "Revenue"]}
             />
             <Area type="monotone" dataKey="revenue" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
           </AreaChart>

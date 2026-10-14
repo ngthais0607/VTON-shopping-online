@@ -27,6 +27,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { User, CheckoutResponse, CheckoutCommand } from "@/lib/types";
+import { formatCurrency } from "@/lib/utils";
 
 export default function CheckoutPage() {
   const { cartItems, totalAmount, clearCart, isLoaded } = useCart();
@@ -294,7 +295,7 @@ export default function CheckoutPage() {
                   </>
                 ) : (
                   <>
-                    <span>Place Order · ${grandTotal.toLocaleString()}</span>
+                    <span>Place Order · {formatCurrency(grandTotal)}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -329,7 +330,7 @@ export default function CheckoutPage() {
                       )}
                       <p className="text-[11px] text-slate-400">Qty: {quantity}</p>
                     </div>
-                    <span className="font-bold text-slate-900 text-xs">${((variant?.price ?? product.price) * quantity).toLocaleString()}</span>
+                    <span className="font-bold text-slate-900 text-xs">{formatCurrency((variant?.price ?? product.price) * quantity, product.currency)}</span>
                   </div>
                 ))}
               </div>
@@ -337,17 +338,17 @@ export default function CheckoutPage() {
               <div className="space-y-2 border-t border-slate-100 pt-4 text-xs text-slate-600">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold text-slate-900">${totalAmount.toLocaleString()}</span>
+                  <span className="font-semibold text-slate-900">{formatCurrency(totalAmount)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Shipping Fee</span>
                   <span className="font-semibold text-slate-900">
-                    {shippingFee === 0 ? <span className="text-emerald-600 font-bold">Free</span> : `$${shippingFee}`}
+                    {shippingFee === 0 ? <span className="text-emerald-600 font-bold">Miễn phí</span> : formatCurrency(shippingFee)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm font-extrabold text-slate-900 pt-2 border-t border-slate-100">
                   <span>Total</span>
-                  <span className="text-indigo-600 text-base">${grandTotal.toLocaleString()}</span>
+                  <span className="text-indigo-600 text-base">{formatCurrency(grandTotal)}</span>
                 </div>
               </div>
 

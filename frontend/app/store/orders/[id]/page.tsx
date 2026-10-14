@@ -23,6 +23,7 @@ import {
   ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { formatCurrency } from "@/lib/utils";
 
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
@@ -302,7 +303,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                     />
                   </div>
                   <p className="text-[11px] text-slate-500 font-medium mt-4 text-center">
-                    Amount: <strong className="text-sky-600 font-extrabold text-sm">${order.total_amount.toLocaleString()}</strong>
+                    Amount: <strong className="text-sky-600 font-extrabold text-sm">{formatCurrency(order.total_amount, order.currency)}</strong>
                   </p>
                 </div>
               </motion.div>
@@ -324,9 +325,9 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                           </p>
                         )}
                         {item.sku && <p className="text-[11px] text-slate-400 font-mono mt-0.5">SKU: {item.sku}</p>}
-                        <p className="text-xs text-slate-500 mt-0.5">Quantity: {item.quantity} x ${item.unit_price.toFixed(2)}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Quantity: {item.quantity} x {formatCurrency(item.unit_price, order.currency)}</p>
                       </div>
-                      <span className="font-extrabold text-slate-900">${(item.subtotal ?? (item.unit_price * item.quantity)).toFixed(2)}</span>
+                      <span className="font-extrabold text-slate-900">{formatCurrency(item.subtotal ?? (item.unit_price * item.quantity), order.currency)}</span>
                     </div>
                   ))}
                 </div>
@@ -334,24 +335,24 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                 <div className="flex items-center justify-between py-4 border-y border-slate-100 text-sm">
                   <div>
                     <h4 className="font-bold text-slate-900">{order.product_name || "Product"}</h4>
-                    <p className="text-xs text-slate-500 mt-0.5">Quantity: {order.quantity ?? 1} x ${(order.unit_price ?? 0).toFixed(2)}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Quantity: {order.quantity ?? 1} x {formatCurrency(order.unit_price ?? 0, order.currency)}</p>
                   </div>
-                  <span className="font-extrabold text-slate-900">${((order.unit_price ?? 0) * (order.quantity ?? 1)).toFixed(2)}</span>
+                  <span className="font-extrabold text-slate-900">{formatCurrency((order.unit_price ?? 0) * (order.quantity ?? 1), order.currency)}</span>
                 </div>
               )}
 
               <div className="space-y-2 text-xs text-slate-600">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold text-slate-900">${order.total_amount.toFixed(2)}</span>
+                  <span className="font-semibold text-slate-900">{formatCurrency(order.total_amount, order.currency)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Express Dispatch & Shipping</span>
-                  <span className="font-bold text-emerald-600">FREE</span>
+                  <span className="font-bold text-emerald-600">Miễn phí</span>
                 </div>
                 <div className="flex justify-between pt-3 border-t border-slate-100 text-sm font-extrabold text-slate-900">
                   <span>Order Total</span>
-                  <span className="text-sky-600 text-base">${order.total_amount.toFixed(2)}</span>
+                  <span className="text-sky-600 text-base">{formatCurrency(order.total_amount, order.currency)}</span>
                 </div>
               </div>
             </div>

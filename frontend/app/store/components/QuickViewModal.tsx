@@ -11,6 +11,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { getAvailableStock } from "@/lib/inventory";
 import { useVariantSelection } from "@/hooks/use-variant-selection";
 import Link from "next/link";
+import { formatCurrency } from "@/lib/utils";
 
 interface QuickViewModalProps {
   product: Product;
@@ -181,7 +182,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                 <div className="flex flex-col justify-between space-y-4">
                   <div>
                     <h3 className="text-xl font-extrabold text-slate-900 leading-snug">{product.name}</h3>
-                    <p className="text-2xl font-bold text-sky-600 mt-2">${product.price.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-sky-600 mt-2">{formatCurrency(product.price, product.currency)}</p>
                     
                     <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
                       <div className="flex text-amber-400">

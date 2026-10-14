@@ -10,6 +10,7 @@ import { QuickViewModal } from "./QuickViewModal";
 import { useCart } from "../context/CartContext";
 import { getAvailableStock } from "@/lib/inventory";
 import { FashionFilters } from "@/components/store/fashion-filters";
+import { formatCurrency } from "@/lib/utils";
 
 interface ProductUI {
   source: DBProduct;
@@ -174,19 +175,19 @@ function PurchaseModal({ product, currentUser, onClose, onOrderSuccess }: Purcha
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Subtotal ({qty} item{qty > 1 ? "s" : ""})</span>
-                    <span className="text-slate-900 font-medium">${(product.price * qty).toLocaleString()}</span>
+                    <span className="text-slate-900 font-medium">{formatCurrency(product.price * qty, product.source.currency)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">Shipping</span>
-                    <span className="text-emerald-600 font-medium">Free</span>
+                    <span className="text-emerald-600 font-medium">Miễn phí</span>
                   </div>
                   <div className="flex justify-between pt-2 border-t border-sky-100">
                     <span className="text-slate-900 font-semibold">Total</span>
                     <div className="text-right">
-                      <span className="text-sky-600 font-bold text-lg">${(product.price * qty).toLocaleString()}</span>
+                      <span className="text-sky-600 font-bold text-lg">{formatCurrency(product.price * qty, product.source.currency)}</span>
                       {product.originalPrice && (
                         <span className="block text-xs text-slate-400 line-through">
-                          ${(product.originalPrice * qty).toLocaleString()}
+                          {formatCurrency(product.originalPrice * qty, product.source.currency)}
                         </span>
                       )}
                     </div>
@@ -199,7 +200,7 @@ function PurchaseModal({ product, currentUser, onClose, onOrderSuccess }: Purcha
                   className="w-full py-3.5 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white text-sm font-medium flex items-center justify-center gap-2 shadow-md shadow-sky-500/25 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none active:scale-[0.98] transition-all cursor-pointer"
                 >
                   <ShoppingCart className="w-4 h-4" />
-                  {ordering ? "Processing..." : `Purchase · $${(product.price * qty).toLocaleString()}`}
+                  {ordering ? "Processing..." : `Purchase · ${formatCurrency(product.price * qty, product.source.currency)}`}
                 </button>
               </div>
             </motion.div>
@@ -311,10 +312,10 @@ function ProductCard({ product, onBuy, onQuickView, index }: ProductCardProps) {
           <div className="flex items-center justify-between mb-3">
             <div>
               <span className="text-slate-900 font-bold text-base">
-                {isRange ? `Từ $${priceMin}` : `$${product.price}`}
+                {isRange ? `Từ ${formatCurrency(priceMin, product.source.currency)}` : formatCurrency(product.price, product.source.currency)}
               </span>
               {product.originalPrice && (
-                <span className="text-xs text-slate-400 line-through ml-1.5">${product.originalPrice}</span>
+                <span className="text-xs text-slate-400 line-through ml-1.5">{formatCurrency(product.originalPrice, product.source.currency)}</span>
               )}
             </div>
             <span className={`text-xs font-semibold ${product.stock <= 0 ? "text-rose-500" : product.stock < 10 ? "text-amber-600" : "text-emerald-600"}`}>
