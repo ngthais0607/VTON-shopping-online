@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -207,6 +208,9 @@ class ProductImage(Base):
 
 class ProductReview(Base):
     __tablename__ = "product_reviews"
+    __table_args__ = (
+        UniqueConstraint("user_id", "product_id", name="uq_product_reviews_user_product"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)

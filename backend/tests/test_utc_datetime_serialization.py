@@ -1,13 +1,10 @@
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
 
-import pytest
-
-from app.core.schemas import UtcDatetime, serialize_utc_datetime
+from app.core.schemas import serialize_utc_datetime
 from app.features.categories.schemas import CategoryResponse
 from app.features.dashboard.schemas import RecentOrderSummary
-from app.features.orders.schemas import OrderResponse, TrackingStep
-from app.features.products.schemas import ProductPublicResponse, ReviewResponse
+from app.features.orders.schemas import TrackingStep
 from app.features.products.variant_schemas import InventoryAdjustmentResponse
 from app.features.users.schemas import UserResponse
 

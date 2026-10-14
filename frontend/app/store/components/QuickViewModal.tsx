@@ -450,12 +450,12 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                   <h4 className="text-sm font-bold text-slate-800">Customer Feedback</h4>
                   {loadingReviews ? (
                     <div className="py-6 text-center text-xs text-slate-400">Loading reviews...</div>
-                  ) : reviewsData.reviews.length === 0 ? (
+                  ) : (reviewsData.items ?? reviewsData.reviews ?? []).length === 0 ? (
                     <div className="py-6 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                       No reviews yet. Be the first to review this product!
                     </div>
                   ) : (
-                    reviewsData.reviews.map((rev) => (
+                    (reviewsData.items ?? reviewsData.reviews ?? []).map((rev) => (
                       <div key={rev.id} className="p-4 rounded-xl border border-slate-100 bg-white shadow-2xs space-y-1.5">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">

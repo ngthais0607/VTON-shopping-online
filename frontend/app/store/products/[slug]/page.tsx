@@ -180,7 +180,10 @@ export default function ProductDetailPage() {
 
   const images = product.images?.length > 0 ? product.images : [{ id: "placeholder", url: DEFAULT_PRODUCT_PLACEHOLDER }];
   const mainImage = images[activeImageIndex] || images[0];
-  const fitBreakdown = reviewsData?.fit_breakdown;
+  const fitBreakdown =
+    reviewsData?.summary?.fit_feedback ??
+    reviewsData?.fit_feedback ??
+    reviewsData?.fit_breakdown;
 
   return (
     <div className="min-h-screen bg-white">
@@ -538,8 +541,8 @@ export default function ProductDetailPage() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
               {/* Reviews List */}
               <div className="lg:col-span-7 space-y-4">
-                {reviewsData?.reviews && reviewsData.reviews.length > 0 ? (
-                  reviewsData.reviews.map((rev) => (
+                {(reviewsData?.items ?? reviewsData?.reviews ?? []).length > 0 ? (
+                  (reviewsData?.items ?? reviewsData?.reviews ?? []).map((rev) => (
                     <div key={rev.id} className="p-5 rounded-2xl border border-slate-100 bg-white shadow-2xs">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-bold text-sm text-slate-900">{rev.user_name}</span>

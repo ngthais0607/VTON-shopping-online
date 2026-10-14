@@ -22,8 +22,8 @@ from app.features.products.schemas import (
     ProductSort,
     ProductVariantPublicResponse,
     ReviewCreate,
+    ReviewPage,
     ReviewResponse,
-    ReviewSummary,
     StockStatus,
     VariantLookupAdminItem,
     VariantLookupPublicItem,
@@ -281,8 +281,13 @@ def create_review(
 
 @router.get(
     "/{product_id}/reviews",
-    response_model=ReviewSummary,
+    response_model=ReviewPage,
     summary="Get product reviews",
 )
-def get_reviews(product_id: int, db: Session = Depends(get_db)):
-    return reviews.get_product_reviews(db, product_id)
+def get_reviews(
+    product_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    return reviews.get_product_reviews(db, product_id, limit=limit, offset=offset)

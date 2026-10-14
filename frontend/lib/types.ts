@@ -176,12 +176,26 @@ export interface ReviewResponse {
   created_at: string | null;
 }
 
-export interface ReviewSummary {
+export interface ReviewAggregateSummary {
   average_rating: number | null;
   total_reviews: number;
-  fit_breakdown?: FitFeedbackSummary | null;
-  reviews: ReviewResponse[];
+  fit_feedback?: FitFeedbackSummary | null;
 }
+
+export interface ReviewPage {
+  items?: ReviewResponse[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+  summary?: ReviewAggregateSummary;
+  average_rating?: number | null;
+  total_reviews?: number;
+  fit_feedback?: FitFeedbackSummary | null;
+  fit_breakdown?: FitFeedbackSummary | null;
+  reviews?: ReviewResponse[];
+}
+
+export type ReviewSummary = ReviewPage;
 
 export interface CartItemV2 {
   variantId: number;

@@ -24,6 +24,9 @@ This document summarizes the architectural hardening, data integrity improvement
 6. `f7c2a1b9e8d3_enforce_orders_public_code_not_null.py`: Enforced non-null constraint on orders public_code.
 7. `a1b2c3d4e5f6_expand_product_variants_and_fashion.py`: Expand migration introducing `product_variants` (size, color, SKU, price override, variant inventory), fashion attributes (`brand`, `gender`, `material`, `fit`, `care_instructions`, `size_chart`), category hierarchy (`parent_id`, `slug`), and backfilling existing catalog stock into default `ONE_SIZE` variants.
 8. `b2c3d4e5f6a7_contract_drop_product_stock_paddle.py`: Contract migration dropping legacy stock columns from `products` table and dropping legacy Paddle payment columns.
+9. `c3d4e5f6a7b8_add_inventory_adjustments.py`: Added inventory adjustments table and audit reason tracking.
+10. `d4e5f6a7b8c9_dedupe_and_add_unique_review_constraint.py`: Deduplicates legacy reviews per (user_id, product_id) preserving newest created_at (with ID tie-break), and adds unique constraint `uq_product_reviews_user_product`.
+    > **CẢNH BÁO MẤT DỮ LIỆU (DESTRUCTIVE DEDUPLICATION WARNING):** Revision này xóa vĩnh viễn các đánh giá trùng lặp cũ hơn của cùng một người dùng trên cùng một sản phẩm. Khi chạy `alembic downgrade`, constraint duy nhất bị xóa nhưng các bản ghi đánh giá trùng lặp đã bị xóa sẽ KHÔNG được khôi phục.
 
 ### How to Apply Migrations
 ```bash

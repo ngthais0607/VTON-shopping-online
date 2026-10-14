@@ -25,6 +25,9 @@ b2c3d4e5f6a7_contract_product_legacy_columns (Contract phase: Preflight validati
   │
   ▼
 c3d4e5f6a7b8_add_inventory_adjustments (Audit phase: Adds inventory_adjustments table with FK to product_variants)
+  │
+  ▼
+d4e5f6a7b8c9_dedupe_and_add_unique_review_constraint (Integrity phase: Deduplicates reviews, adds unique constraint)
   (head)
 ```
 
@@ -54,6 +57,11 @@ c3d4e5f6a7b8_add_inventory_adjustments (Audit phase: Adds inventory_adjustments 
   - `ix_inventory_adjustments_variant_id` on `variant_id`.
   - `ix_inventory_adjustments_created_at` on `created_at`.
 - **Downgrade Safety:** In MariaDB/MySQL, dropping an index referenced by active foreign key constraints causes error 1553. The downgrade procedure directly drops `inventory_adjustments`, automatically removing associated constraints and indexes cleanly.
+
+### `d4e5f6a7b8c9` (Review Deduplication & Unique Constraint)
+- **Deduplication:** Scans `product_reviews` for duplicate entries with the same `(user_id, product_id)`. Retains the newest review based on `created_at` (tie-breaking with largest `id`), and deletes older duplicates.
+- **Unique Constraint:** Creates `uq_product_reviews_user_product` on `(user_id, product_id)` using dialect-safe `batch_alter_table`.
+- **Destructive Limitation Warning:** Older duplicate reviews are permanently removed during upgrade. Downgrade drops `uq_product_reviews_user_product` but does not restore previously deleted duplicate reviews.
 
 ---
 

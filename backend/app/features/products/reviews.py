@@ -1,33 +1,42 @@
-from sqlalchemy.orm import Session, joinedload
 
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, joinedload, selectinload
+
+from app.core.errors import ForbiddenError
+from app.features.orders.constants import OrderStatus
+from app.features.orders.domain import is_order_paid
 from app.features.orders.model import Order, OrderItem
 from app.features.products import service as product_service
 from app.features.products.model import ProductReview
 from app.features.products.schemas import (
     FitFeedbackSummary,
+    ReviewAggregateSummary,
     ReviewCreate,
-    ReviewSummary,
+    ReviewPage,
 )
 from app.features.users.model import User
 
 
-def list_product_reviews(db: Session, product_id: int) -> ReviewSummary:
+def list_product_reviews(
+    db: Session, product_id: int, limit: int = 10, offset: int = 0
+) -> ReviewPage:
     product_service.get_product(db, product_id)
-    reviews = (
+
+    all_reviews = (
         db.query(ProductReview)
         .options(joinedload(ProductReview.user))
         .filter(ProductReview.product_id == product_id)
-        .order_by(ProductReview.created_at.desc())
+        .order_by(ProductReview.created_at.desc(), ProductReview.id.desc())
         .all()
     )
-    total_reviews = len(reviews)
+    total_reviews = len(all_reviews)
     average_rating = (
-        round(sum(review.rating for review in reviews) / total_reviews, 1)
-        if reviews
+        round(sum(review.rating for review in all_reviews) / total_reviews, 1)
+        if all_reviews
         else None
     )
 
-    feedback_reviews = [r for r in reviews if r.fit_feedback]
+    feedback_reviews = [r for r in all_reviews if r.fit_feedback]
     fit_feedback_summary = None
     if feedback_reviews:
         total_fb = len(feedback_reviews)
@@ -41,10 +50,24 @@ def list_product_reviews(db: Session, product_id: int) -> ReviewSummary:
             total_responses=total_fb,
         )
 
-    return ReviewSummary(
+    summary = ReviewAggregateSummary(
         average_rating=average_rating,
         total_reviews=total_reviews,
-        reviews=reviews,
+        fit_feedback=fit_feedback_summary,
+    )
+
+    page_items = all_reviews[offset : offset + limit]
+
+    return ReviewPage(
+        items=page_items,
+        total=total_reviews,
+        limit=limit,
+        offset=offset,
+        summary=summary,
+        # backwards-compatibility fields
+        average_rating=average_rating,
+        total_reviews=total_reviews,
+        reviews=page_items,
         fit_feedback=fit_feedback_summary,
     )
 
@@ -59,21 +82,57 @@ def create_product_review(
 
     if isinstance(user, int):
         user_id = user
-        user_obj = db.get(User, user_id)
     else:
         user_id = user.id
-        user_obj = user
 
-    paid_order = (
+    orders = (
         db.query(Order)
         .outerjoin(Order.items)
+        .options(selectinload(Order.payments))
         .filter(
             Order.user_id == user_id,
             (Order.product_id == product_id) | (OrderItem.product_id == product_id),
-            Order.status == "paid",
+            ~Order.status.in_(
+                [
+                    OrderStatus.CANCELLED.value,
+                    OrderStatus.EXPIRED.value,
+                    OrderStatus.CANCELLED,
+                    OrderStatus.EXPIRED,
+                ]
+            ),
+        )
+        .all()
+    )
+
+    if not any(is_order_paid(o) for o in orders):
+        raise ForbiddenError(
+            "Only verified purchasers can review this product",
+            code="review_not_eligible_unpurchased",
+        )
+
+    # Lock user row to serialize concurrent first submissions
+    db.query(User).filter(User.id == user_id).with_for_update().first()
+
+    existing = (
+        db.query(ProductReview)
+        .filter(
+            ProductReview.user_id == user_id,
+            ProductReview.product_id == product_id,
         )
         .first()
     )
+
+    if existing is not None:
+        existing.rating = command.rating
+        existing.title = command.title
+        existing.comment = command.comment
+        existing.fit_feedback = command.fit_feedback
+        existing.is_verified_purchase = True
+        db.commit()
+        db.refresh(existing)
+        product_service.invalidate_catalog_cache()
+        return existing
+
     review = ProductReview(
         product_id=product_id,
         user_id=user_id,
@@ -81,12 +140,36 @@ def create_product_review(
         title=command.title,
         comment=command.comment,
         fit_feedback=command.fit_feedback,
-        is_verified_purchase=paid_order is not None,
-        user=user_obj,
+        is_verified_purchase=True,
     )
     db.add(review)
-    db.flush()
-    db.commit()
+    try:
+        db.commit()
+        db.refresh(review)
+    except IntegrityError:
+        db.rollback()
+        # Concurrent first submission collision recovery
+        existing = (
+            db.query(ProductReview)
+            .filter(
+                ProductReview.user_id == user_id,
+                ProductReview.product_id == product_id,
+            )
+            .first()
+        )
+        if existing is not None:
+            existing.rating = command.rating
+            existing.title = command.title
+            existing.comment = command.comment
+            existing.fit_feedback = command.fit_feedback
+            existing.is_verified_purchase = True
+            db.commit()
+            db.refresh(existing)
+            review = existing
+        else:
+            raise
+
+    product_service.invalidate_catalog_cache()
     return review
 
 

@@ -14,7 +14,7 @@ from pydantic import (
 )
 
 from app.core.config import get_settings
-from app.core.schemas import UtcDatetime
+from app.core.schemas import Page, UtcDatetime
 from app.features.products.variant_schemas import VariantItem
 
 
@@ -328,8 +328,18 @@ class ReviewResponse(BaseModel):
     created_at: UtcDatetime | None = None
 
 
-class ReviewSummary(BaseModel):
-    average_rating: float | None
-    total_reviews: int
-    reviews: list[ReviewResponse]
+class ReviewAggregateSummary(BaseModel):
+    average_rating: float | None = None
+    total_reviews: int = 0
     fit_feedback: FitFeedbackSummary | None = None
+
+
+class ReviewPage(Page[ReviewResponse]):
+    summary: ReviewAggregateSummary
+    average_rating: float | None = None
+    total_reviews: int = 0
+    fit_feedback: FitFeedbackSummary | None = None
+    reviews: list[ReviewResponse] = Field(default_factory=list)
+
+
+ReviewSummary = ReviewPage
