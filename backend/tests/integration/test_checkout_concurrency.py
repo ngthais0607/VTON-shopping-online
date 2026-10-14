@@ -1,4 +1,3 @@
-import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
@@ -74,7 +73,7 @@ def test_checkout_final_unit_cannot_be_oversold():
         try:
             current_user = session.get(User, user_id)
             barrier.wait()
-            asyncio.run(checkout_cart(session, current_user, checkout, AsyncMock()))
+            checkout_cart(session, current_user, checkout, AsyncMock())
             return "success"
         except InsufficientStockError:
             session.rollback()
@@ -88,7 +87,9 @@ def test_checkout_final_unit_cannot_be_oversold():
     verify_session = session_factory()
     final_variant = verify_session.get(ProductVariant, variant_id)
     order_count = (
-        verify_session.query(OrderItem).filter(OrderItem.variant_id == variant_id).count()
+        verify_session.query(OrderItem)
+        .filter(OrderItem.variant_id == variant_id)
+        .count()
     )
     assert sorted(results) == ["conflict", "success"]
     assert order_count == 1
@@ -172,7 +173,7 @@ def test_multi_item_checkout_atomicity_under_concurrency():
         try:
             current_user = session.get(User, user_id)
             barrier.wait()
-            asyncio.run(checkout_cart(session, current_user, checkout, AsyncMock()))
+            checkout_cart(session, current_user, checkout, AsyncMock())
             return "success"
         except InsufficientStockError:
             session.rollback()

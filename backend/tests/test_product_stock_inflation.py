@@ -1,11 +1,11 @@
 from decimal import Decimal
-import pytest
+
 from sqlalchemy.orm import Session
 
 from app.features.products.model import Product
-from app.features.products.variant_model import ProductVariant
 from app.features.products.schemas import ProductPatch
 from app.features.products.service import update_product
+from app.features.products.variant_model import ProductVariant
 
 
 def test_update_product_does_not_inflate_variant_stock(db_session: Session):

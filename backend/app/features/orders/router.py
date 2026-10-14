@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -49,13 +49,16 @@ def vietqr_webhook(
     status_code=status.HTTP_201_CREATED,
     summary="Checkout multi-item cart",
 )
-async def checkout_cart(
+def checkout_cart(
     command: CheckoutCommand,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     queue: TaskQueue = Depends(get_task_queue),
 ):
-    return await service.checkout_cart(db, current_user, command, queue)
+    return service.checkout_cart(
+        db, current_user, command, queue, background_tasks=background_tasks
+    )
 
 
 @router.get("", response_model=Page[OrderResponse], summary="Get all orders")
@@ -96,14 +99,17 @@ def get_order(
     response_model=OrderResponse,
     summary="Update order status",
 )
-async def update_order_status(
+def update_order_status(
     order_id: int,
     command: OrderPatchStatus,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _admin: User = Depends(get_current_admin),
     queue: TaskQueue = Depends(get_task_queue),
 ):
-    return await service.change_order_status(db, order_id, command.status, queue)
+    return service.change_order_status(
+        db, order_id, command.status, queue, background_tasks=background_tasks
+    )
 
 
 @router.get(
@@ -132,6 +138,8 @@ def track_order_public(
 ):
     if public_code.isdigit():
         if current_user is None:
-            raise AuthenticationError("Could not validate credentials", code="invalid_token")
+            raise AuthenticationError(
+                "Could not validate credentials", code="invalid_token"
+            )
         return service.track_order(db, int(public_code), current_user)
     return service.track_order_by_public_code(db, public_code)

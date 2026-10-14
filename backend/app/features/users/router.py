@@ -1,4 +1,12 @@
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -29,13 +37,14 @@ router = APIRouter(prefix="/api/v1/users", tags=["Users"])
     summary="Register user",
 )
 @limiter.limit("5/minute")
-async def register_user(
+def register_user(
     request: Request,
     command: UserCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     queue: TaskQueue = Depends(get_task_queue),
 ):
-    return await service.register_user(db, command, queue)
+    return service.register_user(db, command, queue, background_tasks=background_tasks)
 
 
 @router.post("/login", response_model=TokenResponse, summary="Login user")

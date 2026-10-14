@@ -1,4 +1,3 @@
-import asyncio
 import gc
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
@@ -8,7 +7,6 @@ import pytest
 from sqlalchemy import event, update
 from sqlalchemy.orm import Session
 
-from app.core.errors import BusinessRuleError
 from app.core.rate_limiter import limiter
 from app.core.security import hash_password
 from app.features.categories.model import Category
@@ -27,9 +25,7 @@ def product_row(db, **kwargs):
     stock_qty = kwargs.pop("stock_quantity", 10)
     reserved_qty = kwargs.pop("reserved_quantity", 0)
     sold_qty = kwargs.pop("sold_quantity", 0)
-    product = Product(
-        name="Final regression", price=10.5, currency="VND", **kwargs
-    )
+    product = Product(name="Final regression", price=10.5, currency="VND", **kwargs)
     db.add(product)
     db.flush()
     variant = ProductVariant(
@@ -49,7 +45,11 @@ def product_row(db, **kwargs):
 
 
 def checkout_payload(variant_or_product, **kwargs):
-    variant_id = variant_or_product.variants[0].id if hasattr(variant_or_product, "variants") and variant_or_product.variants else variant_or_product
+    variant_id = (
+        variant_or_product.variants[0].id
+        if hasattr(variant_or_product, "variants") and variant_or_product.variants
+        else variant_or_product
+    )
     return dict(
         items=[dict(variant_id=variant_id, quantity=1)],
         customer_name="Buyer",
@@ -136,7 +136,10 @@ def test_transition_retains_locked_product_without_nonlocking_reload(
 
         def require_lock(state):
             gc.collect()
-            if state.is_select and state.bind_mapper.class_ in (Product, ProductVariant):
+            if state.is_select and state.bind_mapper.class_ in (
+                Product,
+                ProductVariant,
+            ):
                 reads.append(state.statement)
                 assert state.statement._for_update_arg is not None, (
                     "locked Product was discarded and lazily reloaded"
@@ -146,9 +149,7 @@ def test_transition_retains_locked_product_without_nonlocking_reload(
         if expire:
             assert expire_pending_orders(fresh) == 1
         else:
-            asyncio.run(
-                change_order_status(fresh, order_id, OrderStatus.PAID, AsyncMock())
-            )
+            change_order_status(fresh, order_id, OrderStatus.PAID, AsyncMock())
         event.remove(fresh, "do_orm_execute", require_lock)
         assert len(reads) == 1
         current = fresh.get(Product, product_id)

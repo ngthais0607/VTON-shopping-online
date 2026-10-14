@@ -1,9 +1,9 @@
 from decimal import Decimal
-import pytest
+
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.features.orders.model import Order, OrderItem, Payment
+from app.features.orders.model import Order, OrderItem
 from app.features.orders.schemas import VietQRWebhookPayload
 from app.features.orders.service import process_vietqr_webhook
 from app.features.products.model import Product

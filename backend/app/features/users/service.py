@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from fastapi import BackgroundTasks
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session
@@ -44,26 +45,51 @@ class DuplicateUserError(ConflictError):
         )
 
 
-async def register_user(
-    db: Session,
-    command: UserCreate,
-    queue: TaskQueue,
-) -> User:
-    user = _create_user(db, command)
+async def _enqueue_welcome_email(queue: TaskQueue, user_id: int) -> None:
     try:
-        await queue.enqueue("send_welcome_email_task", user.id)
+        await queue.enqueue("send_welcome_email_task", user_id)
     except Exception as exc:
         logger.error(
             "Failed to enqueue welcome email for user %s: %s",
-            user.id,
+            user_id,
             exc,
             extra={
-                "user_id": user.id,
+                "user_id": user_id,
                 "task_name": "send_welcome_email_task",
                 "error": str(exc),
             },
             exc_info=True,
         )
+
+
+def register_user(
+    db: Session,
+    command: UserCreate,
+    queue: TaskQueue,
+    background_tasks: BackgroundTasks | None = None,
+) -> User:
+    user = _create_user(db, command)
+    if background_tasks is not None:
+        background_tasks.add_task(_enqueue_welcome_email, queue, user.id)
+    else:
+        try:
+            import anyio
+
+            anyio.from_thread.run(_enqueue_welcome_email, queue, user.id)
+        except Exception:
+            try:
+                import asyncio
+
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(_enqueue_welcome_email(queue, user.id))
+                else:
+                    loop.run_until_complete(_enqueue_welcome_email(queue, user.id))
+            except Exception:
+                try:
+                    asyncio.run(_enqueue_welcome_email(queue, user.id))
+                except Exception as exc:
+                    logger.error("Failed to dispatch welcome email: %s", exc)
     return user
 
 
@@ -171,9 +197,13 @@ def delete_user(db: Session, user_id: int) -> None:
 def _create_user(db: Session, command: UserCreate) -> User:
     _ensure_unique_user(db, username=command.username, email=command.email)
     from app.core.config import get_settings
+
     settings = get_settings()
     role = "customer"
-    if settings.bootstrap_admin_email and command.email.lower() == settings.bootstrap_admin_email.lower():
+    if (
+        settings.bootstrap_admin_email
+        and command.email.lower() == settings.bootstrap_admin_email.lower()
+    ):
         role = "admin"
     user = User(
         username=command.username,

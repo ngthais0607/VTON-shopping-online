@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
@@ -88,9 +87,7 @@ def test_status_change_refreshes_shared_stock_after_another_order_paid(db_sessio
     assert variant.reserved_quantity == 2
     assert variant.sold_quantity == 0
 
-    asyncio.run(
-        change_order_status(db_session, second_id, OrderStatus.PAID, AsyncMock())
-    )
+    change_order_status(db_session, second_id, OrderStatus.PAID, AsyncMock())
 
     db_session.refresh(variant)
     assert variant.reserved_quantity == 0
@@ -152,7 +149,7 @@ def test_checkout_rechecks_locked_product_when_identity_map_is_stale(db_session)
     )
 
     with pytest.raises(InsufficientStockError):
-        asyncio.run(checkout_cart(db_session, user, command, AsyncMock()))
+        checkout_cart(db_session, user, command, AsyncMock())
 
     db_session.refresh(variant)
     assert variant.reserved_quantity == 1
@@ -182,11 +179,7 @@ def test_status_change_locks_product_before_order_row(db_session):
     _, _, second_id = _two_pending_orders(db_session)
     locked_tables, record = _record_row_lock_order(db_session)
     try:
-        asyncio.run(
-            change_order_status(
-                db_session, second_id, OrderStatus.CANCELLED, AsyncMock()
-            )
-        )
+        change_order_status(db_session, second_id, OrderStatus.CANCELLED, AsyncMock())
     finally:
         event.remove(db_session, "do_orm_execute", record)
 
@@ -297,4 +290,3 @@ def test_expiration_rechecks_candidate_after_discovery(db_session, change):
     assert order.status == ("paid" if change == "paid" else "pending")
     assert variant.reserved_quantity == (0 if change == "paid" else 1)
     assert variant.sold_quantity == (1 if change == "paid" else 0)
-

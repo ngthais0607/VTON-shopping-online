@@ -278,7 +278,12 @@ def test_two_orders_sharing_product_preserve_both_transitions(
 
     setup.add_all([first, second])
     setup.commit()
-    _product_id, variant_id, first_id, second_id = product.id, variant.id, first.id, second.id
+    _product_id, variant_id, first_id, second_id = (
+        product.id,
+        variant.id,
+        first.id,
+        second.id,
+    )
     setup.close()
 
     start = Barrier(2)
@@ -291,7 +296,7 @@ def test_two_orders_sharing_product_preserve_both_transitions(
             if use_worker:
                 assert expire_orders(session) == 1
             else:
-                asyncio.run(change_order_status(session, order_id, status, AsyncMock()))
+                change_order_status(session, order_id, status, AsyncMock())
         finally:
             session.close()
 
@@ -397,7 +402,7 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
         session = session_factory()
         try:
             buyer = session.get(User, user_id)
-            return asyncio.run(checkout_cart(session, buyer, command, AsyncMock()))
+            return checkout_cart(session, buyer, command, AsyncMock())
         finally:
             session.close()
 

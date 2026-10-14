@@ -1,4 +1,3 @@
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -658,7 +657,7 @@ def test_invalid_item_rolls_back_all_orders_and_reservations(
     checkout = CheckoutCommand(**payload)
 
     with pytest.raises(ProductNotFoundError):
-        asyncio.run(checkout_cart(db_session, mock_user_auth, checkout, AsyncMock()))
+        checkout_cart(db_session, mock_user_auth, checkout, AsyncMock())
 
     assert db_session.query(Order).count() == 0
     assert product.reserved_quantity == 0
@@ -700,9 +699,7 @@ def test_checkout_enqueues_emails_only_after_commit(
         shipping_address="Address",
     )
     with patch.object(db_session, "commit", side_effect=record_commit):
-        response = asyncio.run(
-            checkout_cart(db_session, mock_user_auth, command, fake_order_queue)
-        )
+        response = checkout_cart(db_session, mock_user_auth, command, fake_order_queue)
 
     assert response.orders[0].product_id == product.id
     assert events == ["commit", "enqueue"]

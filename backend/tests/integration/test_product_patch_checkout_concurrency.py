@@ -1,6 +1,5 @@
 """MariaDB gate for product PATCH racing the cart's final unit."""
 
-import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
@@ -68,9 +67,9 @@ def test_product_patch_serializes_with_checkout():
             def hold_after_lock(
                 _conn, _cursor, statement, _parameters, _context, _executemany
             ):
-                if (
-                    "FOR UPDATE" in statement.upper()
-                    and ("products" in statement.lower() or "product_variants" in statement.lower())
+                if "FOR UPDATE" in statement.upper() and (
+                    "products" in statement.lower()
+                    or "product_variants" in statement.lower()
                 ):
                     patch_locked.set()
                     assert checkout_reading.wait(10), (
@@ -79,7 +78,9 @@ def test_product_patch_serializes_with_checkout():
 
             event.listen(session.bind, "after_cursor_execute", hold_after_lock)
             try:
-                update_product(session, product_id, ProductPatch(name="Updated Concurrently"))
+                update_product(
+                    session, product_id, ProductPatch(name="Updated Concurrently")
+                )
             finally:
                 event.remove(session.bind, "after_cursor_execute", hold_after_lock)
 
@@ -96,13 +97,16 @@ def test_product_patch_serializes_with_checkout():
             )
 
             def signal_read(state):
-                if state.is_select and (state.bind_mapper.class_ is Product or state.bind_mapper.class_ is ProductVariant):
+                if state.is_select and (
+                    state.bind_mapper.class_ is Product
+                    or state.bind_mapper.class_ is ProductVariant
+                ):
                     checkout_reading.set()
 
             event.listen(session, "do_orm_execute", signal_read)
             try:
                 with pytest.raises(InsufficientStockError):
-                    asyncio.run(checkout_cart(session, user, command, AsyncMock()))
+                    checkout_cart(session, user, command, AsyncMock())
             finally:
                 event.remove(session, "do_orm_execute", signal_read)
 

@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+from fastapi import BackgroundTasks
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -87,22 +88,21 @@ def order_to_response(order: Order) -> OrderResponse:
         for item in order_items
     ]
 
-
     if order_items:
         first_item = order_items[0]
         product_id = first_item.product_id
         if len(order_items) == 1:
             product_name = first_item.product_name
         else:
-            product_name = f"{first_item.product_name} và {len(order_items) - 1} sản phẩm khác"
+            product_name = (
+                f"{first_item.product_name} và {len(order_items) - 1} sản phẩm khác"
+            )
         unit_price = first_item.unit_price
         quantity = sum(i.quantity for i in order_items)
     else:
         product_id = order.product_id if order.product_id is not None else 0
         product_name = order.product_name or ""
-        unit_price = (
-            order.unit_price if order.unit_price is not None else Decimal(0)
-        )
+        unit_price = order.unit_price if order.unit_price is not None else Decimal(0)
         quantity = order.quantity if order.quantity is not None else 0
 
     public_code = getattr(order, "public_code", None)
@@ -162,21 +162,60 @@ async def _enqueue_best_effort(queue: TaskQueue, task_name: str, order_id: int) 
         )
 
 
-async def checkout_cart(
+def _dispatch_email(
+    queue: TaskQueue,
+    task_name: str,
+    order_id: int,
+    background_tasks: BackgroundTasks | None = None,
+) -> None:
+    if background_tasks is not None:
+        background_tasks.add_task(_enqueue_best_effort, queue, task_name, order_id)
+    else:
+        try:
+            import anyio
+
+            anyio.from_thread.run(_enqueue_best_effort, queue, task_name, order_id)
+        except Exception:
+            try:
+                import asyncio
+
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = None
+                if loop and loop.is_running():
+                    loop.create_task(_enqueue_best_effort(queue, task_name, order_id))
+                else:
+                    asyncio.run(_enqueue_best_effort(queue, task_name, order_id))
+            except Exception as exc:
+                logger.error(
+                    "Failed to enqueue email task %s for order %s: %s",
+                    task_name,
+                    order_id,
+                    exc,
+                )
+
+
+def checkout_cart(
     db: Session,
     user: User,
     command: CheckoutCommand,
     queue: TaskQueue,
     now: datetime | None = None,
+    background_tasks: BackgroundTasks | None = None,
 ) -> CheckoutResponse:
     # 1. Resolve variant ID for each cart item
     variant_quantities: dict[int, int] = {}
     for item in command.items:
         if item.quantity <= 0:
-            raise BusinessRuleError("Quantity must be greater than zero", code="invalid_cart_item")
+            raise BusinessRuleError(
+                "Quantity must be greater than zero", code="invalid_cart_item"
+            )
         vid = item.variant_id
         if vid is None:
-            raise BusinessRuleError("Each cart item must have a valid variant_id", code="missing_variant_id")
+            raise BusinessRuleError(
+                "Each cart item must have a valid variant_id", code="missing_variant_id"
+            )
         variant_quantities[vid] = variant_quantities.get(vid, 0) + item.quantity
 
     variant_ids = sorted(variant_quantities.keys())
@@ -209,7 +248,9 @@ async def checkout_cart(
             .first()
         )
         if parent_product is None:
-            raise ProductNotFoundError(f"Product for variant ID {vid} not found or inactive")
+            raise ProductNotFoundError(
+                f"Product for variant ID {vid} not found or inactive"
+            )
 
         variant.product = parent_product
         by_variant_id[vid] = variant
@@ -246,7 +287,14 @@ async def checkout_cart(
         v.reserved_quantity += quantity
 
     total_amount = sum(
-        Decimal(str(by_variant_id[vid].price if by_variant_id[vid].price is not None else by_variant_id[vid].product.price)) * qty
+        Decimal(
+            str(
+                by_variant_id[vid].price
+                if by_variant_id[vid].price is not None
+                else by_variant_id[vid].product.price
+            )
+        )
+        * qty
         for vid, qty in variant_quantities.items()
     )
 
@@ -258,9 +306,7 @@ async def checkout_cart(
         quantity=None,
         total_amount=total_amount,
         currency=currency,
-        status=OrderStatus.PENDING.value
-        if is_vietqr
-        else OrderStatus.CONFIRMED.value,
+        status=OrderStatus.PENDING.value if is_vietqr else OrderStatus.CONFIRMED.value,
         customer_name=command.customer_name,
         customer_phone=command.customer_phone,
         shipping_address=command.shipping_address,
@@ -297,8 +343,11 @@ async def checkout_cart(
     db.refresh(order)
     invalidate_dashboard_cache()
 
-    await _enqueue_best_effort(
-        queue, "send_order_confirmation_email_task", order.id
+    _dispatch_email(
+        queue,
+        "send_order_confirmation_email_task",
+        order.id,
+        background_tasks=background_tasks,
     )
 
     order_resp = order_to_response(order)
@@ -311,7 +360,6 @@ async def checkout_cart(
     if is_vietqr:
         response.vietqr = _vietqr_response([order])
     return response
-
 
 
 # Alias for centralized interface
@@ -360,11 +408,7 @@ def _lock_transition_variants(
 def _resolve_and_lock_order_inventory(
     db: Session, order_ids: list[int] | set[int]
 ) -> dict[int, ProductVariant]:
-    items = (
-        db.query(OrderItem)
-        .filter(OrderItem.order_id.in_(order_ids))
-        .all()
-    )
+    items = db.query(OrderItem).filter(OrderItem.order_id.in_(order_ids)).all()
     variant_ids: set[int] = set()
 
     for item in items:
@@ -375,11 +419,12 @@ def _resolve_and_lock_order_inventory(
     return _lock_transition_variants(db, variant_ids)
 
 
-async def change_order_status(
+def change_order_status(
     db: Session,
     order_id: int,
     new_status: OrderStatus,
     queue: TaskQueue,
+    background_tasks: BackgroundTasks | None = None,
 ) -> OrderResponse:
     order_exists = db.query(Order.id).filter(Order.id == order_id).scalar()
     if order_exists is None:
@@ -408,33 +453,57 @@ async def change_order_status(
     db.refresh(order)
     invalidate_dashboard_cache()
     if new_status == OrderStatus.PAID:
-        await _enqueue_best_effort(queue, "send_payment_received_email_task", order.id)
+        _dispatch_email(
+            queue,
+            "send_payment_received_email_task",
+            order.id,
+            background_tasks=background_tasks,
+        )
     return order_to_response(order)
 
 
-
-async def mark_paid(
-    db: Session, order_id: int, queue: TaskQueue
+def mark_paid(
+    db: Session,
+    order_id: int,
+    queue: TaskQueue,
+    background_tasks: BackgroundTasks | None = None,
 ) -> OrderResponse:
-    return await change_order_status(db, order_id, OrderStatus.PAID, queue)
+    return change_order_status(
+        db, order_id, OrderStatus.PAID, queue, background_tasks=background_tasks
+    )
 
 
-async def cancel_order(
-    db: Session, order_id: int, queue: TaskQueue
+def cancel_order(
+    db: Session,
+    order_id: int,
+    queue: TaskQueue,
+    background_tasks: BackgroundTasks | None = None,
 ) -> OrderResponse:
-    return await change_order_status(db, order_id, OrderStatus.CANCELLED, queue)
+    return change_order_status(
+        db, order_id, OrderStatus.CANCELLED, queue, background_tasks=background_tasks
+    )
 
 
-async def expire_order(
-    db: Session, order_id: int, queue: TaskQueue
+def expire_order(
+    db: Session,
+    order_id: int,
+    queue: TaskQueue,
+    background_tasks: BackgroundTasks | None = None,
 ) -> OrderResponse:
-    return await change_order_status(db, order_id, OrderStatus.EXPIRED, queue)
+    return change_order_status(
+        db, order_id, OrderStatus.EXPIRED, queue, background_tasks=background_tasks
+    )
 
 
-async def confirm_cod(
-    db: Session, order_id: int, queue: TaskQueue
+def confirm_cod(
+    db: Session,
+    order_id: int,
+    queue: TaskQueue,
+    background_tasks: BackgroundTasks | None = None,
 ) -> OrderResponse:
-    return await change_order_status(db, order_id, OrderStatus.CONFIRMED, queue)
+    return change_order_status(
+        db, order_id, OrderStatus.CONFIRMED, queue, background_tasks=background_tasks
+    )
 
 
 def list_user_orders(
@@ -458,7 +527,9 @@ def track_order_by_public_code(db: Session, public_code: str) -> TrackingRespons
     return _build_tracking_response(order)
 
 
-def track_order(db: Session, order_id: int, user: User | None = None) -> TrackingResponse:
+def track_order(
+    db: Session, order_id: int, user: User | None = None
+) -> TrackingResponse:
     order = db.get(Order, order_id)
     if order is None or (user and user.role != "admin" and order.user_id != user.id):
         raise OrderNotFoundError("Order not found")
@@ -568,7 +639,6 @@ def expire_pending_orders(
     if expired_count > 0:
         invalidate_dashboard_cache()
     return expired_count
-
 
 
 def process_vietqr_webhook(
