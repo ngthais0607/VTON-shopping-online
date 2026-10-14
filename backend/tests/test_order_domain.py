@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from app.core.errors import ConflictError
 from app.features.orders.constants import OrderStatus
 from app.features.orders.domain import (
     InvalidCartItemError,
@@ -128,4 +129,44 @@ def test_expiration_marks_pending_payments_expired():
     ]
     apply_order_transition(order, OrderStatus.EXPIRED)
     assert [payment.status for payment in order.payments] == ["expired", "paid"]
+
+
+def test_cod_pending_to_confirmed_preserves_reservation_and_available_stock():
+    order, _, variant = _order("cod", "pending")
+    # Initial: stock=7, reserved=2, sold=1 -> available=4
+    apply_order_transition(order, OrderStatus.CONFIRMED)
+    assert order.status == "confirmed"
+    assert variant.reserved_quantity == 2, "CONFIRMED must not release reservation!"
+    assert variant.sold_quantity == 1, "CONFIRMED must not increment sold quantity!"
+    assert available_stock(variant) == 4, "Available stock must stay exactly 4!"
+
+
+def test_inconsistent_negative_counters_raises_inventory_state_inconsistent():
+    order, _, variant = _order("vietqr", "pending")
+    variant.reserved_quantity = 1  # order quantity is 2, so reserved is insufficient
+    with pytest.raises(ConflictError) as exc_info:
+        apply_order_transition(order, OrderStatus.CANCELLED)
+    assert exc_info.value.code == "inventory_state_inconsistent"
+
+
+def test_is_order_paid_predicate():
+    from app.features.orders.domain import is_order_paid
+
+    order, _, _ = _order("vietqr", "pending")
+    assert is_order_paid(order) is False
+
+    order.paid_at = datetime.now(timezone.utc)
+    assert is_order_paid(order) is True
+
+    order.paid_at = None
+    order.status = "paid"
+    assert is_order_paid(order) is True
+
+    order.status = "pending"
+    order.payments = [Payment(status="paid", amount=40)]
+    assert is_order_paid(order) is True
+
+    order.payments = [Payment(status="pending", amount=40)]
+    assert is_order_paid(order) is False
+
 

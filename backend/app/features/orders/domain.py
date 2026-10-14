@@ -68,6 +68,19 @@ _ALLOWED_TRANSITIONS = {
 }
 
 
+def is_order_paid(order: Order) -> bool:
+    if getattr(order, "paid_at", None) is not None:
+        return True
+    status = getattr(order, "status", None)
+    if status == OrderStatus.PAID.value or status == OrderStatus.PAID:
+        return True
+    payments = getattr(order, "payments", None) or []
+    for payment in payments:
+        if getattr(payment, "status", None) == "paid":
+            return True
+    return False
+
+
 def apply_order_transition(
     order: Order, new_status: OrderStatus, now: datetime | None = None
 ) -> None:
@@ -90,16 +103,35 @@ def apply_order_transition(
         if target is None:
             raise RuntimeError(f"OrderItem {item.id} missing variant reference")
         qty = item.quantity or 0
+        current_reserved = getattr(target, "reserved_quantity", 0) or 0
+        current_sold = getattr(target, "sold_quantity", 0) or 0
+
         if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
-            target.reserved_quantity = max(
-                0, (getattr(target, "reserved_quantity", 0) or 0) - qty
-            )
-            if new_status == OrderStatus.PAID:
-                target.sold_quantity = (getattr(target, "sold_quantity", 0) or 0) + qty
+            if new_status == OrderStatus.CONFIRMED:
+                # COD pending -> confirmed: reservation stays intact until payment or cancellation
+                pass
+            elif new_status == OrderStatus.PAID:
+                if current_reserved < qty:
+                    raise ConflictError(
+                        f"Inconsistent inventory state: variant {getattr(target, 'id', None)} reserved {current_reserved} < {qty}",
+                        code="inventory_state_inconsistent",
+                    )
+                target.reserved_quantity = current_reserved - qty
+                target.sold_quantity = current_sold + qty
+            elif new_status in {OrderStatus.CANCELLED, OrderStatus.EXPIRED}:
+                if current_reserved < qty:
+                    raise ConflictError(
+                        f"Inconsistent inventory state: variant {getattr(target, 'id', None)} reserved {current_reserved} < {qty}",
+                        code="inventory_state_inconsistent",
+                    )
+                target.reserved_quantity = current_reserved - qty
         elif current_status == OrderStatus.PAID and new_status == OrderStatus.CANCELLED:
-            target.sold_quantity = max(
-                0, (getattr(target, "sold_quantity", 0) or 0) - qty
-            )
+            if current_sold < qty:
+                raise ConflictError(
+                    f"Inconsistent inventory state: variant {getattr(target, 'id', None)} sold {current_sold} < {qty}",
+                    code="inventory_state_inconsistent",
+                )
+            target.sold_quantity = current_sold - qty
 
     order.status = new_status.value
     current_time = now or datetime.now(timezone.utc)
@@ -112,3 +144,4 @@ def apply_order_transition(
         for payment in getattr(order, "payments", []):
             if payment.status == "pending":
                 payment.status = "expired"
+
