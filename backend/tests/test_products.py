@@ -639,3 +639,138 @@ def test_update_product_activation_requires_active_variant(
     )
     assert response.status_code == 409
     assert response.json()["code"] == "no_active_variants"
+
+
+def test_get_product_facets_cached_and_invalidated_on_mutation(
+    client, db_session, mock_admin_auth
+):
+    from app.core.cache import get_cache
+    from app.features.products.service import FACETS_CACHE_KEY
+
+    cache = get_cache()
+    cache.delete(FACETS_CACHE_KEY)
+
+    p = persist_product(
+        db_session, name="Facet Item", brand="FacetBrand", gender="unisex", price=300
+    )
+
+    # 1. First fetch populates Redis cache
+    res1 = client.get(f"{PRODUCTS_PATH}/facets")
+    assert res1.status_code == 200
+    assert "FacetBrand" in res1.json()["brands"]
+    cached_data = cache.get_json(FACETS_CACHE_KEY)
+    assert cached_data is not None
+    assert "FacetBrand" in cached_data["brands"]
+
+    # 2. Product mutation invalidates cache
+    patch_res = client.patch(f"{PRODUCTS_PATH}/{p.id}", json={"brand": "NewFacetBrand"})
+    assert patch_res.status_code == 200
+    assert cache.get_json(FACETS_CACHE_KEY) is None
+
+    # 3. Next fetch re-aggregates from DB and populates cache with new brand
+    res2 = client.get(f"{PRODUCTS_PATH}/facets")
+    assert res2.status_code == 200
+    assert "NewFacetBrand" in res2.json()["brands"]
+    assert cache.get_json(FACETS_CACHE_KEY) is not None
+
+
+def test_list_products_multi_value_filters(client, db_session):
+    from app.features.products.variant_model import ProductVariant
+
+    p1 = persist_product(
+        db_session, name="Nike Air", brand="Nike", gender="men", price=120
+    )
+    p2 = persist_product(
+        db_session, name="Adidas Boost", brand="Adidas", gender="women", price=150
+    )
+    p3 = persist_product(
+        db_session, name="Puma Suede", brand="Puma", gender="unisex", price=90
+    )
+
+    v1 = ProductVariant(
+        product_id=p1.id,
+        sku=f"MV-{p1.id}-S-RED",
+        size="S",
+        color_name="Red",
+        price=120,
+        stock_quantity=10,
+        is_active=True,
+    )
+    v2 = ProductVariant(
+        product_id=p2.id,
+        sku=f"MV-{p2.id}-M-BLU",
+        size="M",
+        color_name="Blue",
+        price=150,
+        stock_quantity=10,
+        is_active=True,
+    )
+    v3 = ProductVariant(
+        product_id=p3.id,
+        sku=f"MV-{p3.id}-L-BLK",
+        size="L",
+        color_name="Black",
+        price=90,
+        stock_quantity=10,
+        is_active=True,
+    )
+    db_session.add_all([v1, v2, v3])
+    db_session.commit()
+
+    # Multi-value size: ?size=S&size=M
+    res_size = client.get(PRODUCTS_PATH, params=[("size", "S"), ("size", "M")])
+    assert res_size.status_code == 200
+    size_ids = {item["id"] for item in res_size.json()["items"]}
+    assert p1.id in size_ids and p2.id in size_ids and p3.id not in size_ids
+
+    # Comma-separated size: ?size=S,M
+    res_comma = client.get(PRODUCTS_PATH, params={"size": "S,M"})
+    assert res_comma.status_code == 200
+    assert {item["id"] for item in res_comma.json()["items"]} == size_ids
+
+    # Multi-value brand: ?brand=Nike&brand=Puma
+    res_brand = client.get(PRODUCTS_PATH, params=[("brand", "Nike"), ("brand", "Puma")])
+    assert res_brand.status_code == 200
+    brand_ids = {item["id"] for item in res_brand.json()["items"]}
+    assert p1.id in brand_ids and p3.id in brand_ids and p2.id not in brand_ids
+
+    # Multi-value gender: ?gender=men&gender=women
+    res_gender = client.get(
+        PRODUCTS_PATH, params=[("gender", "men"), ("gender", "women")]
+    )
+    assert res_gender.status_code == 200
+    gender_ids = {item["id"] for item in res_gender.json()["items"]}
+    assert p1.id in gender_ids and p2.id in gender_ids and p3.id not in gender_ids
+
+    # Multi-value color: ?color=Red&color=Black
+    res_color = client.get(PRODUCTS_PATH, params=[("color", "Red"), ("color", "Black")])
+    assert res_color.status_code == 200
+    color_ids = {item["id"] for item in res_color.json()["items"]}
+    assert p1.id in color_ids and p3.id in color_ids and p2.id not in color_ids
+
+
+def test_low_stock_filter_respects_settings_threshold(client, db_session, monkeypatch):
+    from app.core import config
+    from app.features.products.variant_model import ProductVariant
+
+    # Set threshold to 5 via env
+    monkeypatch.setenv("LOW_STOCK_THRESHOLD", "5")
+    config.get_settings.cache_clear()
+
+    p = persist_product(db_session, name="Threshold Product", price=50)
+    # Available stock = 8 (which is >= 5, so NOT low stock under threshold=5, but WOULD be under default 20)
+    v = ProductVariant(
+        product_id=p.id,
+        sku=f"THRESH-{p.id}",
+        size="M",
+        color_name="White",
+        stock_quantity=8,
+        is_active=True,
+    )
+    db_session.add(v)
+    db_session.commit()
+
+    res = client.get(PRODUCTS_PATH, params={"stock_status": "low_stock"})
+    assert res.status_code == 200
+    found_ids = {item["id"] for item in res.json()["items"]}
+    assert p.id not in found_ids

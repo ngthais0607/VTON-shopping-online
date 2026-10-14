@@ -33,6 +33,7 @@ class Settings(BaseSettings):
 
     bootstrap_admin_email: str | None = None
     order_expire_minutes: int = Field(default=15, gt=0)
+    low_stock_threshold: int = Field(default=20, ge=1)
 
     redis_url: str = "memory://"
     cors_origins: Annotated[

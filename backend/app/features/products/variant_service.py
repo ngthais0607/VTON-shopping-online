@@ -12,6 +12,7 @@ from app.core.errors import (
     ResourceNotFoundError,
 )
 from app.features.products.model import Product
+from app.features.products.service import invalidate_catalog_cache
 from app.features.products.variant_model import (
     InventoryAdjustment,
     ProductVariant,
@@ -41,13 +42,10 @@ def bulk_create_variants(
         )
 
     existing = (
-        db.query(ProductVariant)
-        .filter(ProductVariant.product_id == product_id)
-        .all()
+        db.query(ProductVariant).filter(ProductVariant.product_id == product_id).all()
     )
     existing_pairs = {
-        (v.size.strip().lower(), v.color_name.strip().lower()): v
-        for v in existing
+        (v.size.strip().lower(), v.color_name.strip().lower()): v for v in existing
     }
     existing_skus = set(s[0] for s in db.query(ProductVariant.sku).all())
 
@@ -105,6 +103,7 @@ def bulk_create_variants(
 
     try:
         db.commit()
+        invalidate_catalog_cache()
     except IntegrityError as e:
         db.rollback()
         raise ConflictError(
@@ -125,11 +124,7 @@ def update_variant(
     variant_id: int,
     command: VariantPatch,
 ) -> ProductVariant:
-    variant = (
-        db.query(ProductVariant)
-        .filter(ProductVariant.id == variant_id)
-        .first()
-    )
+    variant = db.query(ProductVariant).filter(ProductVariant.id == variant_id).first()
     if variant is None:
         raise ResourceNotFoundError(
             f"Variant {variant_id} was not found",
@@ -155,6 +150,7 @@ def update_variant(
 
     try:
         db.commit()
+        invalidate_catalog_cache()
     except IntegrityError as e:
         db.rollback()
         raise ConflictError(
@@ -217,6 +213,7 @@ def adjust_variant_stock(
     variant.stock_quantity = new_stock
     variant.updated_at = datetime.now(timezone.utc)
     db.commit()
+    invalidate_catalog_cache()
     db.refresh(variant)
     return variant
 
@@ -225,11 +222,7 @@ def get_variant_adjustments(
     db: Session,
     variant_id: int,
 ) -> list[InventoryAdjustment]:
-    variant = (
-        db.query(ProductVariant)
-        .filter(ProductVariant.id == variant_id)
-        .first()
-    )
+    variant = db.query(ProductVariant).filter(ProductVariant.id == variant_id).first()
     if variant is None:
         raise ResourceNotFoundError(
             f"Variant {variant_id} was not found",
@@ -264,6 +257,8 @@ def delete_variant(db: Session, variant_id: int) -> None:
         variant.is_active = False
         variant.updated_at = datetime.now(timezone.utc)
         db.commit()
+        invalidate_catalog_cache()
     else:
         db.delete(variant)
         db.commit()
+        invalidate_catalog_cache()

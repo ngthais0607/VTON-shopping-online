@@ -41,13 +41,33 @@ class ProductFilters(BaseModel):
     max_price: float | None = Field(default=None, ge=0)
     is_active: bool | None = None
     stock_status: StockStatus | None = None
-    gender: str | None = None
-    brand: str | None = None
-    size: str | None = None
-    color: str | None = None
+    gender: list[str] | None = None
+    brand: list[str] | None = None
+    size: list[str] | None = None
+    color: list[str] | None = None
     sort: ProductSort = ProductSort.LATEST
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+
+    @field_validator("gender", "brand", "size", "color", mode="before")
+    @classmethod
+    def normalize_multi_filter(cls, v: Any) -> list[str] | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            parts = [p.strip() for p in v.split(",") if p.strip()]
+            return parts if parts else None
+        if isinstance(v, (list, tuple, set)):
+            res = []
+            for item in v:
+                if isinstance(item, str):
+                    for p in item.split(","):
+                        if p.strip():
+                            res.append(p.strip())
+                elif item is not None:
+                    res.append(str(item))
+            return res if res else None
+        return v
 
 
 class ProductCreate(BaseModel):
@@ -286,7 +306,9 @@ class ReviewCreate(BaseModel):
     rating: int = Field(ge=1, le=5)
     title: str | None = Field(default=None, max_length=255)
     comment: str | None = Field(default=None, max_length=1000)
-    fit_feedback: str | None = Field(default=None, pattern="^(small|true_to_size|large)$")
+    fit_feedback: str | None = Field(
+        default=None, pattern="^(small|true_to_size|large)$"
+    )
 
 
 class ReviewResponse(BaseModel):

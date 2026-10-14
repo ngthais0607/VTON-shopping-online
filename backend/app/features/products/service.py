@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Query, Session, joinedload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
+from app.core.cache import get_cache
 from app.core.config import get_settings
 from app.core.errors import BusinessRuleError, ConflictError, ResourceNotFoundError
 from app.core.schemas import Page
@@ -118,6 +119,7 @@ def create_product(db: Session, command: ProductCreate) -> Product:
 
     product_id = product.id
     db.commit()
+    invalidate_catalog_cache()
     return _get_active_product(db, product_id, is_admin=True)
 
 
@@ -146,24 +148,28 @@ def list_products(
     if is_admin and filters.is_active is not None:
         query = query.filter(Product.is_active.is_(filters.is_active))
     if filters.gender:
-        query = query.filter(Product.gender == filters.gender)
+        query = query.filter(Product.gender.in_(filters.gender))
     if filters.brand:
-        query = query.filter(Product.brand.ilike(f"%{filters.brand}%"))
+        query = query.filter(
+            or_(*(Product.brand.ilike(f"%{b}%") for b in filters.brand))
+        )
     if filters.size:
         query = query.filter(
             Product.variants.any(
-                (ProductVariant.size == filters.size)
+                (ProductVariant.size.in_(filters.size))
                 & (ProductVariant.is_active.is_(True))
             )
         )
     if filters.color:
         query = query.filter(
             Product.variants.any(
-                (ProductVariant.color_name.ilike(filters.color))
+                or_(*(ProductVariant.color_name.ilike(f"%{c}%") for c in filters.color))
                 & (ProductVariant.is_active.is_(True))
             )
         )
 
+    settings = get_settings()
+    low_stock_threshold = settings.low_stock_threshold
     variant_available = (
         ProductVariant.stock_quantity
         - ProductVariant.reserved_quantity
@@ -180,7 +186,7 @@ def list_products(
             Product.variants.any(
                 (ProductVariant.is_active.is_(True))
                 & (variant_available > 0)
-                & (variant_available < 20)
+                & (variant_available < low_stock_threshold)
             )
         )
     elif filters.stock_status == StockStatus.OUT_OF_STOCK:
@@ -326,43 +332,129 @@ def lookup_variants(
     return items
 
 
-def get_product_facets(db: Session) -> ProductFacetsResponse:
-    products = _active_products_query(db, is_admin=False).all()
+FACETS_CACHE_KEY = "catalog:facets:v1"
+FACETS_CACHE_TTL = 60
 
-    genders_set = set()
-    brands_set = set()
-    sizes_set = set()
-    colors_map: dict[str, str | None] = {}
-    all_prices: list[float] = []
 
-    for p in products:
-        if p.gender:
-            genders_set.add(p.gender)
-        if p.brand:
-            brands_set.add(p.brand)
-        all_prices.append(float(p.price))
+def invalidate_catalog_cache() -> None:
+    get_cache().delete(FACETS_CACHE_KEY)
 
-        for v in p.variants:
-            if v.is_active:
-                sizes_set.add(v.size)
-                if v.color_name not in colors_map:
-                    colors_map[v.color_name] = v.color_hex
-                if v.price is not None:
-                    all_prices.append(float(v.price))
 
+def get_product_facets(db: Session, use_cache: bool = True) -> ProductFacetsResponse:
+    cache = get_cache() if use_cache else None
+    if cache is not None:
+        cached = cache.get_json(FACETS_CACHE_KEY)
+        if cached is not None:
+            try:
+                return ProductFacetsResponse(**cached)
+            except Exception:
+                pass
+
+    active_prod_subq = (
+        db.query(Product.id)
+        .outerjoin(Category, Product.category_id == Category.id)
+        .filter(
+            Product.is_deleted.is_(False),
+            Product.is_active.is_(True),
+            or_(
+                Product.category_id.is_(None),
+                Category.is_deleted.is_(False),
+            ),
+            Product.variants.any(ProductVariant.is_active.is_(True)),
+        )
+        .subquery()
+    )
+
+    genders_raw = (
+        db.query(Product.gender)
+        .filter(
+            Product.id.in_(select(active_prod_subq.c.id)),
+            Product.gender.isnot(None),
+        )
+        .distinct()
+        .order_by(Product.gender.asc())
+        .all()
+    )
+    genders = [r[0] for r in genders_raw if r[0]]
+
+    brands_raw = (
+        db.query(Product.brand)
+        .filter(
+            Product.id.in_(select(active_prod_subq.c.id)),
+            Product.brand.isnot(None),
+        )
+        .distinct()
+        .order_by(Product.brand.asc())
+        .all()
+    )
+    brands = [r[0] for r in brands_raw if r[0]]
+
+    sizes_raw = (
+        db.query(ProductVariant.size)
+        .filter(
+            ProductVariant.product_id.in_(select(active_prod_subq.c.id)),
+            ProductVariant.is_active.is_(True),
+            ProductVariant.size.isnot(None),
+        )
+        .distinct()
+        .order_by(ProductVariant.size.asc())
+        .all()
+    )
+    sizes = [r[0] for r in sizes_raw if r[0]]
+
+    colors_raw = (
+        db.query(ProductVariant.color_name, ProductVariant.color_hex)
+        .filter(
+            ProductVariant.product_id.in_(select(active_prod_subq.c.id)),
+            ProductVariant.is_active.is_(True),
+            ProductVariant.color_name.isnot(None),
+        )
+        .distinct()
+        .order_by(ProductVariant.color_name.asc())
+        .all()
+    )
+    seen_colors: dict[str, str | None] = {}
+    for name, hex_val in colors_raw:
+        if name and name not in seen_colors:
+            seen_colors[name] = hex_val
     colors = [
         FacetColor(name=name, hex=hex_val)
-        for name, hex_val in sorted(colors_map.items(), key=lambda x: x[0])
+        for name, hex_val in sorted(seen_colors.items(), key=lambda x: x[0])
     ]
 
-    return ProductFacetsResponse(
-        genders=sorted(list(genders_set)),
-        brands=sorted(list(brands_set)),
-        sizes=sorted(list(sizes_set)),
-        colors=colors,
-        price_min=min(all_prices) if all_prices else 0.0,
-        price_max=max(all_prices) if all_prices else 0.0,
+    price_expr = func.coalesce(ProductVariant.price, Product.price)
+    price_stats = (
+        db.query(
+            func.min(price_expr),
+            func.max(price_expr),
+        )
+        .join(Product, ProductVariant.product_id == Product.id)
+        .filter(
+            Product.id.in_(select(active_prod_subq.c.id)),
+            ProductVariant.is_active.is_(True),
+        )
+        .first()
     )
+    price_min = (
+        float(price_stats[0]) if price_stats and price_stats[0] is not None else 0.0
+    )
+    price_max = (
+        float(price_stats[1]) if price_stats and price_stats[1] is not None else 0.0
+    )
+
+    response = ProductFacetsResponse(
+        genders=genders,
+        brands=brands,
+        sizes=sizes,
+        colors=colors,
+        price_min=price_min,
+        price_max=price_max,
+    )
+
+    if cache is not None:
+        cache.set_json(FACETS_CACHE_KEY, response.model_dump(), ex=FACETS_CACHE_TTL)
+
+    return response
 
 
 def update_product(
@@ -445,6 +537,7 @@ def update_product(
         product.category = category
 
     db.commit()
+    invalidate_catalog_cache()
     return _get_active_product(db, product_id, is_admin=True)
 
 
@@ -454,6 +547,7 @@ def delete_product(db: Session, product_id: int) -> None:
     product.is_active = False
     product.deleted_at = datetime.now(timezone.utc)
     db.commit()
+    invalidate_catalog_cache()
 
 
 def _active_products_query(db: Session, is_admin: bool = False) -> Query:

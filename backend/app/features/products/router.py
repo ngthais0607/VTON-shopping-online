@@ -19,10 +19,12 @@ from app.features.products.schemas import (
     ProductPatch,
     ProductPublicResponse,
     ProductResponse,
+    ProductSort,
     ProductVariantPublicResponse,
     ReviewCreate,
     ReviewResponse,
     ReviewSummary,
+    StockStatus,
     VariantLookupAdminItem,
     VariantLookupPublicItem,
 )
@@ -30,6 +32,38 @@ from app.features.users.model import User
 from app.integrations.storage import ProductStorage, get_product_storage
 
 router = APIRouter(prefix="/api/v1/products", tags=["Products"])
+
+
+def get_product_filters(
+    category_id: int | None = None,
+    search: str | None = None,
+    min_price: float | None = Query(default=None, ge=0),
+    max_price: float | None = Query(default=None, ge=0),
+    is_active: bool | None = None,
+    stock_status: StockStatus | None = None,
+    gender: Annotated[list[str] | None, Query()] = None,
+    brand: Annotated[list[str] | None, Query()] = None,
+    size: Annotated[list[str] | None, Query()] = None,
+    color: Annotated[list[str] | None, Query()] = None,
+    sort: ProductSort = ProductSort.LATEST,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> ProductFilters:
+    return ProductFilters(
+        category_id=category_id,
+        search=search,
+        min_price=min_price,
+        max_price=max_price,
+        is_active=is_active,
+        stock_status=stock_status,
+        gender=gender,
+        brand=brand,
+        size=size,
+        color=color,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(
@@ -52,7 +86,7 @@ def create_product(
     summary="Get products",
 )
 def list_products(
-    filters: Annotated[ProductFilters, Depends()],
+    filters: Annotated[ProductFilters, Depends(get_product_filters)],
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_optional_user),
 ):
@@ -88,7 +122,9 @@ def lookup_variants(
         try:
             id_list = [int(i.strip()) for i in ids.split(",") if i.strip()]
         except ValueError:
-            raise BusinessRuleError("Invalid variant ID in query list", code="invalid_variant_id")
+            raise BusinessRuleError(
+                "Invalid variant ID in query list", code="invalid_variant_id"
+            )
     is_admin = bool(current_user and current_user.role == "admin")
     return service.lookup_variants(db, id_list, is_admin=is_admin)
 
@@ -118,7 +154,9 @@ def get_product_by_slug(
         return ProductDetailAdminResponse.model_validate(product)
     active_variants = [v for v in product.variants if v.is_active]
     dto = ProductDetailPublicResponse.model_validate(product)
-    dto.variants = [ProductVariantPublicResponse.model_validate(v) for v in active_variants]
+    dto.variants = [
+        ProductVariantPublicResponse.model_validate(v) for v in active_variants
+    ]
     return dto
 
 
@@ -151,7 +189,6 @@ def update_product(
     _current_admin: User = Depends(get_current_admin),
 ):
     return service.update_product(db, product_id, command)
-
 
 
 @router.delete(
