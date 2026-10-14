@@ -13,12 +13,20 @@ def get_client_ip(request: Request) -> str:
     is within the configured forwarded_allow_ips.
     Otherwise, rate limit by request.client.host directly.
     """
-    client_host = request.client.host if request.client and request.client.host else "127.0.0.1"
+    client_host = (
+        request.client.host if request.client and request.client.host else "127.0.0.1"
+    )
 
-    app = request.scope.get("app") if hasattr(request, "scope") and isinstance(request.scope, dict) else None
+    app = (
+        request.scope.get("app")
+        if hasattr(request, "scope") and isinstance(request.scope, dict)
+        else None
+    )
     app_state = getattr(app, "state", None)
     settings = getattr(app_state, "settings", None)
-    raw_trusted = getattr(settings, "forwarded_allow_ips", None) if settings is not None else None
+    raw_trusted = (
+        getattr(settings, "forwarded_allow_ips", None) if settings is not None else None
+    )
     if raw_trusted is None:
         raw_trusted = get_settings().forwarded_allow_ips
 
@@ -52,7 +60,9 @@ def get_client_ip(request: Request) -> str:
     if not is_trusted:
         return client_host
 
-    xff = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For")
+    xff = request.headers.get("x-forwarded-for") or request.headers.get(
+        "X-Forwarded-For"
+    )
     if not xff:
         return client_host
 

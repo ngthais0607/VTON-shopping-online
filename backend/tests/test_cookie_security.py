@@ -19,14 +19,26 @@ def _make_auth_settings(**overrides) -> Settings:
 
 def test_refresh_cookie_samesite_validation():
     # Valid values
-    assert _make_auth_settings(refresh_cookie_samesite="lax").refresh_cookie_samesite == "lax"
-    assert _make_auth_settings(refresh_cookie_samesite="strict").refresh_cookie_samesite == "strict"
-    assert _make_auth_settings(
-        refresh_cookie_samesite="none", refresh_cookie_secure=True
-    ).refresh_cookie_samesite == "none"
+    assert (
+        _make_auth_settings(refresh_cookie_samesite="lax").refresh_cookie_samesite
+        == "lax"
+    )
+    assert (
+        _make_auth_settings(refresh_cookie_samesite="strict").refresh_cookie_samesite
+        == "strict"
+    )
+    assert (
+        _make_auth_settings(
+            refresh_cookie_samesite="none", refresh_cookie_secure=True
+        ).refresh_cookie_samesite
+        == "none"
+    )
 
     # Case-insensitive
-    assert _make_auth_settings(refresh_cookie_samesite="LAX").refresh_cookie_samesite == "lax"
+    assert (
+        _make_auth_settings(refresh_cookie_samesite="LAX").refresh_cookie_samesite
+        == "lax"
+    )
 
     # Invalid value
     with pytest.raises(ValidationError):

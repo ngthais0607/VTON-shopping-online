@@ -1,4 +1,3 @@
-
 from app.features.categories.model import Category
 from app.features.orders.model import OrderItem
 from app.features.products.model import Product, ProductImage, ProductReview

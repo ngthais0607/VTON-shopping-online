@@ -46,10 +46,10 @@ def test_checkout_command_phone_formats_accepted(raw_phone, expected):
     "invalid_phone",
     [
         "0123456789",  # obsolete 11-digit prefix 01
-        "091234567",   # 9 digits
-        "091234567890", # 12 digits
+        "091234567",  # 9 digits
+        "091234567890",  # 12 digits
         "091234567a",  # contains letter
-        "+83912345678", # wrong country code
+        "+83912345678",  # wrong country code
         "letters_only",
         "",
         "   ",
@@ -105,8 +105,12 @@ def test_checkout_command_rejects_invalid_address(invalid_address):
         )
 
 
-def test_checkout_api_validates_and_normalizes_inputs(client, db_session, mock_user_auth):
-    product = make_product(db_session, name="Checkout Validation Item", price=100.0, stock_quantity=10)
+def test_checkout_api_validates_and_normalizes_inputs(
+    client, db_session, mock_user_auth
+):
+    product = make_product(
+        db_session, name="Checkout Validation Item", price=100.0, stock_quantity=10
+    )
     db_session.commit()
 
     # 1. Successful checkout with raw unnormalized inputs

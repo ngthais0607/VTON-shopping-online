@@ -9,7 +9,9 @@ from app.core.config import Settings
 from app.core.rate_limiter import get_client_ip
 
 
-def _make_mock_request(client_ip: str, xff: str | None = None, forwarded_allow_ips: str = "") -> Request:
+def _make_mock_request(
+    client_ip: str, xff: str | None = None, forwarded_allow_ips: str = ""
+) -> Request:
     mock_app = MagicMock()
     mock_settings = MagicMock(spec=Settings)
     mock_settings.forwarded_allow_ips = forwarded_allow_ips

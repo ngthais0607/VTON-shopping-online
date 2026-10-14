@@ -36,6 +36,8 @@ def test_vietqr_builder_fails_fast_when_credentials_missing():
         vietqr_account_name="TrueLook",
     )
     import pytest
-    with pytest.raises(ValueError, match="VietQR bank_id and account_no must be configured"):
-        build_vietqr_instructions(Decimal("100"), "TRUELOOK_1", settings)
 
+    with pytest.raises(
+        ValueError, match="VietQR bank_id and account_no must be configured"
+    ):
+        build_vietqr_instructions(Decimal("100"), "TRUELOOK_1", settings)

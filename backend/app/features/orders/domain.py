@@ -145,7 +145,11 @@ def apply_order_transition(
                         code="inventory_state_inconsistent",
                     )
                 target.reserved_quantity = current_reserved - qty
-        elif current_status in {OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED}:
+        elif current_status in {
+            OrderStatus.PAID,
+            OrderStatus.SHIPPED,
+            OrderStatus.DELIVERED,
+        }:
             if new_status in {OrderStatus.SHIPPED, OrderStatus.DELIVERED}:
                 # Delivery lifecycle progression leaves inventory counts intact
                 pass
@@ -174,4 +178,3 @@ def apply_order_transition(
         for payment in getattr(order, "payments", []):
             if payment.status == "pending":
                 payment.status = "cancelled"
-

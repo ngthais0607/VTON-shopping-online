@@ -84,7 +84,9 @@ def test_optional_auth_with_expired_token(db_session):
     db_session.add(user)
     db_session.commit()
 
-    token = create_access_token({"sub": str(user.id)}, expires_delta=timedelta(seconds=-60))
+    token = create_access_token(
+        {"sub": str(user.id)}, expires_delta=timedelta(seconds=-60)
+    )
 
     @test_app.get("/optional-auth")
     def _test_endpoint(user: User | None = Depends(get_current_user_optional)):
@@ -128,7 +130,9 @@ def test_optional_auth_with_soft_deleted_user(db_session):
 
 def test_optional_auth_dependency_override():
     test_app = _make_test_app()
-    fake_user = User(id=999, username="fake_override", email="fake@example.com", role="customer")
+    fake_user = User(
+        id=999, username="fake_override", email="fake@example.com", role="customer"
+    )
     test_app.dependency_overrides[get_current_user_optional] = lambda: fake_user
 
     @test_app.get("/optional-auth")

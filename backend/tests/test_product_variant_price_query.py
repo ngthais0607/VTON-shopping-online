@@ -82,7 +82,9 @@ def test_variant_price_filtering_matches_minimum_active_variant(db_session):
     assert p3.id not in [p.id for p in page_inactive.items]
 
 
-def test_variant_price_sorting_orders_by_effective_price_with_stable_tie_break(db_session):
+def test_variant_price_sorting_orders_by_effective_price_with_stable_tie_break(
+    db_session,
+):
     p_cheap_var = _make_product_with_variants(
         db_session,
         "Cheap Variant Prod",
@@ -105,13 +107,17 @@ def test_variant_price_sorting_orders_by_effective_price_with_stable_tie_break(d
     # Sort asc: should be p_cheap_var (40k), p_mid (60k), p_high (90k)
     filters_asc = ProductFilters(sort=ProductSort.PRICE_ASC)
     page_asc = list_products(db_session, filters_asc, is_admin=False)
-    page_asc_ids = [p.id for p in page_asc.items if p.id in (p_cheap_var.id, p_mid.id, p_high.id)]
+    page_asc_ids = [
+        p.id for p in page_asc.items if p.id in (p_cheap_var.id, p_mid.id, p_high.id)
+    ]
     assert page_asc_ids == [p_cheap_var.id, p_mid.id, p_high.id]
 
     # Sort desc: should be p_high (90k), p_mid (60k), p_cheap_var (40k)
     filters_desc = ProductFilters(sort=ProductSort.PRICE_DESC)
     page_desc = list_products(db_session, filters_desc, is_admin=False)
-    page_desc_ids = [p.id for p in page_desc.items if p.id in (p_cheap_var.id, p_mid.id, p_high.id)]
+    page_desc_ids = [
+        p.id for p in page_desc.items if p.id in (p_cheap_var.id, p_mid.id, p_high.id)
+    ]
     assert page_desc_ids == [p_high.id, p_mid.id, p_cheap_var.id]
 
 

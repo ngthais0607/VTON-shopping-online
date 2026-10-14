@@ -8,7 +8,10 @@ def test_slugify_converts_vietnamese_diacritics():
 
 
 def test_slugify_handles_special_characters_and_whitespace():
-    assert slugify("  T-Shirt & Jeans (Special Edition)!  ") == "t-shirt-jeans-special-edition"
+    assert (
+        slugify("  T-Shirt & Jeans (Special Edition)!  ")
+        == "t-shirt-jeans-special-edition"
+    )
     assert slugify("---Multiple---Hyphens---") == "multiple-hyphens"
     assert slugify("100% Cotton") == "100-cotton"
 

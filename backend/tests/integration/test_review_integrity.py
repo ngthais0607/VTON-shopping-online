@@ -197,7 +197,9 @@ def test_concurrent_review_first_submission_upsert():
     verify_session = session_factory()
     reviews = (
         verify_session.query(ProductReview)
-        .filter(ProductReview.user_id == user_id, ProductReview.product_id == product_id)
+        .filter(
+            ProductReview.user_id == user_id, ProductReview.product_id == product_id
+        )
         .all()
     )
     assert len(reviews) == 1

@@ -77,17 +77,31 @@ def seed_database(db=None, force: bool = False):
             print(f"[OK] Created Customer User: user@example.com / {cust_pwd}")
 
         # 3. Clean up legacy non-fashion categories & products (Electronics, Furniture, etc.)
-        legacy_cat_names = ["Electronics", "Home & Living", "Beauty & Care", "Sports & Outdoor"]
-        legacy_cats = db.query(Category).filter(Category.name.in_(legacy_cat_names)).all()
+        legacy_cat_names = [
+            "Electronics",
+            "Home & Living",
+            "Beauty & Care",
+            "Sports & Outdoor",
+        ]
+        legacy_cats = (
+            db.query(Category).filter(Category.name.in_(legacy_cat_names)).all()
+        )
         for lcat in legacy_cats:
-            legacy_prods = db.query(Product).filter(Product.category_id == lcat.id).all()
+            legacy_prods = (
+                db.query(Product).filter(Product.category_id == lcat.id).all()
+            )
             for lp in legacy_prods:
-                has_orders = db.query(OrderItem).filter(OrderItem.product_id == lp.id).count() > 0
+                has_orders = (
+                    db.query(OrderItem).filter(OrderItem.product_id == lp.id).count()
+                    > 0
+                )
                 if has_orders:
                     lp.is_active = False
                     lp.category_id = None
                 else:
-                    db.query(ProductImage).filter(ProductImage.product_id == lp.id).delete()
+                    db.query(ProductImage).filter(
+                        ProductImage.product_id == lp.id
+                    ).delete()
                     db.delete(lp)
             lcat.is_deleted = True
         db.commit()
@@ -99,9 +113,21 @@ def seed_database(db=None, force: bool = False):
                 "slug": "ao",
                 "description": "Bộ sưu tập áo nam, nữ, unisex thời thượng",
                 "children": [
-                    {"name": "Áo thun", "slug": "ao-thun", "description": "Áo thun T-shirt cotton, oversize thoáng mát"},
-                    {"name": "Áo sơ mi", "slug": "ao-so-mi", "description": "Áo sơ mi oxford, lụa công sở và dạo phố"},
-                    {"name": "Áo polo", "slug": "ao-polo", "description": "Áo polo pique lịch lãm thể thao"},
+                    {
+                        "name": "Áo thun",
+                        "slug": "ao-thun",
+                        "description": "Áo thun T-shirt cotton, oversize thoáng mát",
+                    },
+                    {
+                        "name": "Áo sơ mi",
+                        "slug": "ao-so-mi",
+                        "description": "Áo sơ mi oxford, lụa công sở và dạo phố",
+                    },
+                    {
+                        "name": "Áo polo",
+                        "slug": "ao-polo",
+                        "description": "Áo polo pique lịch lãm thể thao",
+                    },
                 ],
             },
             {
@@ -109,9 +135,21 @@ def seed_database(db=None, force: bool = False):
                 "slug": "quan",
                 "description": "Quần jeans, quần tây, quần short phom chuẩn",
                 "children": [
-                    {"name": "Quần jeans", "slug": "quan-jeans", "description": "Quần jeans denim co giãn, đứng phom"},
-                    {"name": "Quần tây", "slug": "quan-tay", "description": "Quần tây âu xếp ly thanh lịch"},
-                    {"name": "Quần short", "slug": "quan-short", "description": "Quần short kaki, thun năng động"},
+                    {
+                        "name": "Quần jeans",
+                        "slug": "quan-jeans",
+                        "description": "Quần jeans denim co giãn, đứng phom",
+                    },
+                    {
+                        "name": "Quần tây",
+                        "slug": "quan-tay",
+                        "description": "Quần tây âu xếp ly thanh lịch",
+                    },
+                    {
+                        "name": "Quần short",
+                        "slug": "quan-short",
+                        "description": "Quần short kaki, thun năng động",
+                    },
                 ],
             },
             {
@@ -119,9 +157,21 @@ def seed_database(db=None, force: bool = False):
                 "slug": "vay-dam",
                 "description": "Đầm dạ tiệc, đầm xòe và chân váy nữ tính",
                 "children": [
-                    {"name": "Đầm dáng xòe", "slug": "dam-dang-xoe", "description": "Đầm xòe hoa nhí, vintage duyên dáng"},
-                    {"name": "Chân váy chữ A", "slug": "chan-vay-chu-a", "description": "Chân váy chữ A tôn dáng thanh thoát"},
-                    {"name": "Đầm dạ hội", "slug": "dam-da-hoi", "description": "Đầm dạ hội satin sang trọng quý phái"},
+                    {
+                        "name": "Đầm dáng xòe",
+                        "slug": "dam-dang-xoe",
+                        "description": "Đầm xòe hoa nhí, vintage duyên dáng",
+                    },
+                    {
+                        "name": "Chân váy chữ A",
+                        "slug": "chan-vay-chu-a",
+                        "description": "Chân váy chữ A tôn dáng thanh thoát",
+                    },
+                    {
+                        "name": "Đầm dạ hội",
+                        "slug": "dam-da-hoi",
+                        "description": "Đầm dạ hội satin sang trọng quý phái",
+                    },
                 ],
             },
             {
@@ -129,9 +179,21 @@ def seed_database(db=None, force: bool = False):
                 "slug": "ao-khoac",
                 "description": "Blazer, bomber, hoodie giữ ấm phong cách",
                 "children": [
-                    {"name": "Áo blazer", "slug": "ao-blazer", "description": "Áo khoác blazer thanh lịch hiện đại"},
-                    {"name": "Áo hoodie", "slug": "ao-hoodie", "description": "Áo hoodie nỉ bông streetwear năng động"},
-                    {"name": "Áo khoác bomber", "slug": "ao-khoac-bomber", "description": "Áo khoác bomber kaki cá tính"},
+                    {
+                        "name": "Áo blazer",
+                        "slug": "ao-blazer",
+                        "description": "Áo khoác blazer thanh lịch hiện đại",
+                    },
+                    {
+                        "name": "Áo hoodie",
+                        "slug": "ao-hoodie",
+                        "description": "Áo hoodie nỉ bông streetwear năng động",
+                    },
+                    {
+                        "name": "Áo khoác bomber",
+                        "slug": "ao-khoac-bomber",
+                        "description": "Áo khoác bomber kaki cá tính",
+                    },
                 ],
             },
             {
@@ -139,9 +201,21 @@ def seed_database(db=None, force: bool = False):
                 "slug": "giay",
                 "description": "Sneaker, cao gót, loafer da thật cao cấp",
                 "children": [
-                    {"name": "Giày sneaker", "slug": "giay-sneaker", "description": "Sneaker đế êm ái linh hoạt mọi địa hình"},
-                    {"name": "Giày cao gót", "slug": "giay-cao-got", "description": "Giày cao gót mũi nhọn quý phái"},
-                    {"name": "Giày loafer", "slug": "giay-loafer", "description": "Giày loafer lười da bò phong cách cổ điển"},
+                    {
+                        "name": "Giày sneaker",
+                        "slug": "giay-sneaker",
+                        "description": "Sneaker đế êm ái linh hoạt mọi địa hình",
+                    },
+                    {
+                        "name": "Giày cao gót",
+                        "slug": "giay-cao-got",
+                        "description": "Giày cao gót mũi nhọn quý phái",
+                    },
+                    {
+                        "name": "Giày loafer",
+                        "slug": "giay-loafer",
+                        "description": "Giày loafer lười da bò phong cách cổ điển",
+                    },
                 ],
             },
             {
@@ -149,16 +223,30 @@ def seed_database(db=None, force: bool = False):
                 "slug": "phu-kien",
                 "description": "Túi xách, thắt lưng da và kính mát thời trang",
                 "children": [
-                    {"name": "Túi xách", "slug": "tui-xach", "description": "Túi tote, túi đeo chéo da và canvas"},
-                    {"name": "Thắt lưng", "slug": "that-lung", "description": "Thắt lưng da khóa kim loại bền bỉ"},
-                    {"name": "Kính mát", "slug": "kinh-mat", "description": "Kính mát phân cực chống tia UV400"},
+                    {
+                        "name": "Túi xách",
+                        "slug": "tui-xach",
+                        "description": "Túi tote, túi đeo chéo da và canvas",
+                    },
+                    {
+                        "name": "Thắt lưng",
+                        "slug": "that-lung",
+                        "description": "Thắt lưng da khóa kim loại bền bỉ",
+                    },
+                    {
+                        "name": "Kính mát",
+                        "slug": "kinh-mat",
+                        "description": "Kính mát phân cực chống tia UV400",
+                    },
                 ],
             },
         ]
 
         category_map = {}
         for parent_data in fashion_categories_tree:
-            p_cat = db.query(Category).filter(Category.slug == parent_data["slug"]).first()
+            p_cat = (
+                db.query(Category).filter(Category.slug == parent_data["slug"]).first()
+            )
             if not p_cat:
                 p_cat = Category(
                     name=parent_data["name"],
@@ -172,7 +260,11 @@ def seed_database(db=None, force: bool = False):
             category_map[parent_data["slug"]] = p_cat
 
             for child_data in parent_data.get("children", []):
-                c_cat = db.query(Category).filter(Category.slug == child_data["slug"]).first()
+                c_cat = (
+                    db.query(Category)
+                    .filter(Category.slug == child_data["slug"])
+                    .first()
+                )
                 if not c_cat:
                     c_cat = Category(
                         name=child_data["name"],
@@ -660,7 +752,11 @@ def seed_database(db=None, force: bool = False):
                 db.commit()
 
             # Seed Image if not existing
-            img = db.query(ProductImage).filter(ProductImage.product_id == prod.id).first()
+            img = (
+                db.query(ProductImage)
+                .filter(ProductImage.product_id == prod.id)
+                .first()
+            )
             if not img:
                 img = ProductImage(
                     id=f"img_{prod.id}_1",
@@ -703,7 +799,9 @@ def seed_database(db=None, force: bool = False):
 
             created_products.append(prod)
 
-        print(f"[OK] Seeded {len(created_products)} fashion products with variant matrices.")
+        print(
+            f"[OK] Seeded {len(created_products)} fashion products with variant matrices."
+        )
 
         # 6. Seed Historical Orders across 30 Days (Idempotent: only if count < 15)
         existing_orders_count = db.query(Order).count()
@@ -712,14 +810,24 @@ def seed_database(db=None, force: bool = False):
             now = datetime.now(timezone.utc)
 
             # Gather all active variants across products
-            all_variants = db.query(ProductVariant).filter(ProductVariant.is_active.is_(True)).all()
+            all_variants = (
+                db.query(ProductVariant)
+                .filter(ProductVariant.is_active.is_(True))
+                .all()
+            )
             if all_variants:
                 for i in range(35):
                     days_ago = random.randint(0, 28)
-                    created_date = now - timedelta(days=days_ago, hours=random.randint(1, 12))
+                    created_date = now - timedelta(
+                        days=days_ago, hours=random.randint(1, 12)
+                    )
 
                     selected_var = random.choice(all_variants)
-                    selected_prod = db.query(Product).filter(Product.id == selected_var.product_id).first()
+                    selected_prod = (
+                        db.query(Product)
+                        .filter(Product.id == selected_var.product_id)
+                        .first()
+                    )
                     qty = random.randint(1, 2)
                     unit_price = float(selected_var.price or selected_prod.price)
                     total = unit_price * qty
@@ -734,14 +842,20 @@ def seed_database(db=None, force: bool = False):
                         total_amount=total,
                         currency="VND",
                         status=status,
-                        customer_name=customer.full_name if customer else "Khách Hàng Mẫu",
+                        customer_name=customer.full_name
+                        if customer
+                        else "Khách Hàng Mẫu",
                         customer_phone="0912345678",
                         shipping_address="72 Lê Thánh Tôn, Bến Nghé, Quận 1, TP. Hồ Chí Minh",
                         notes="Đơn hàng mẫu thử nghiệm",
                         payment_method="vietqr",
                         created_at=created_date,
-                        paid_at=created_date + timedelta(minutes=5) if status == "paid" else None,
-                        expires_at=created_date + timedelta(minutes=30) if status == "pending" else None,
+                        paid_at=created_date + timedelta(minutes=5)
+                        if status == "paid"
+                        else None,
+                        expires_at=created_date + timedelta(minutes=30)
+                        if status == "pending"
+                        else None,
                     )
                     db.add(order)
                     db.commit()

@@ -84,13 +84,17 @@ class Settings(BaseSettings):
     def validate_refresh_cookie_samesite(cls, value: str) -> str:
         val = value.lower()
         if val not in {"lax", "strict", "none"}:
-            raise ValueError("refresh_cookie_samesite must be one of 'lax', 'strict', or 'none'")
+            raise ValueError(
+                "refresh_cookie_samesite must be one of 'lax', 'strict', or 'none'"
+            )
         return val
 
     @model_validator(mode="after")
     def validate_cookie_security(self) -> "Settings":
         if self.refresh_cookie_samesite == "none" and not self.refresh_cookie_secure:
-            raise ValueError("refresh_cookie_secure must be True when refresh_cookie_samesite is 'none'")
+            raise ValueError(
+                "refresh_cookie_secure must be True when refresh_cookie_samesite is 'none'"
+            )
         return self
 
 

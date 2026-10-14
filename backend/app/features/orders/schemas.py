@@ -61,7 +61,6 @@ class OrderPatchStatus(BaseModel):
     status: OrderStatus
 
 
-
 class VietQRResponse(BaseModel):
     qr_url: str
     bank_id: str
@@ -217,4 +216,3 @@ class PublicTrackingResponse(BaseModel):
     vietqr: VietQRResponse | None = None
     customer_name: str
     customer_phone: str
-

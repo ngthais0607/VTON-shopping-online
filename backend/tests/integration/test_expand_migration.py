@@ -80,7 +80,11 @@ def test_expand_migration_data_backfill():
         assert c2.slug == "ao-so-mi-nam-2"
 
         # Verify default variants created
-        v1 = verify_session.query(ProductVariant).filter(ProductVariant.product_id == 99991).first()
+        v1 = (
+            verify_session.query(ProductVariant)
+            .filter(ProductVariant.product_id == 99991)
+            .first()
+        )
         assert v1 is not None
         assert v1.sku == "P99991-DEFAULT"
         assert v1.size == "ONE_SIZE"
@@ -100,9 +104,13 @@ def test_expand_migration_data_backfill():
         cleanup_conn = verify_session.connection()
         cleanup_conn.exec_driver_sql("DELETE FROM order_items WHERE id = 99991")
         cleanup_conn.exec_driver_sql("DELETE FROM orders WHERE id = 99991")
-        cleanup_conn.exec_driver_sql("DELETE FROM product_variants WHERE product_id IN (99991, 99992)")
+        cleanup_conn.exec_driver_sql(
+            "DELETE FROM product_variants WHERE product_id IN (99991, 99992)"
+        )
         cleanup_conn.exec_driver_sql("DELETE FROM products WHERE id IN (99991, 99992)")
-        cleanup_conn.exec_driver_sql("DELETE FROM categories WHERE id IN (99991, 99992)")
+        cleanup_conn.exec_driver_sql(
+            "DELETE FROM categories WHERE id IN (99991, 99992)"
+        )
         cleanup_conn.exec_driver_sql("DELETE FROM users WHERE id = 99991")
         verify_session.commit()
         verify_session.close()
@@ -144,10 +152,16 @@ def test_expand_migration_preflight_aborts_on_dirty_data():
         # Verify product_variants table does NOT exist and alembic_version is still f7c2a1b9e8d3
         inspector_session = session_factory()
         insp_conn = inspector_session.connection()
-        tables = insp_conn.exec_driver_sql("SHOW TABLES LIKE 'product_variants'").fetchall()
-        assert len(tables) == 0, "product_variants table should not exist after preflight abort"
+        tables = insp_conn.exec_driver_sql(
+            "SHOW TABLES LIKE 'product_variants'"
+        ).fetchall()
+        assert len(tables) == 0, (
+            "product_variants table should not exist after preflight abort"
+        )
 
-        ver = insp_conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
+        ver = insp_conn.exec_driver_sql(
+            "SELECT version_num FROM alembic_version"
+        ).scalar()
         assert ver == "f7c2a1b9e8d3"
 
         inspector_session.close()
@@ -194,7 +208,11 @@ def test_expand_migration_clamp_oversold():
         command.upgrade(alembic_cfg, "head")
 
         verify_session = session_factory()
-        variant = verify_session.query(ProductVariant).filter(ProductVariant.product_id == 99994).first()
+        variant = (
+            verify_session.query(ProductVariant)
+            .filter(ProductVariant.product_id == 99994)
+            .first()
+        )
         assert variant is not None
         # Clamped stock should be reserved (3) + sold (4) = 7
         assert variant.stock_quantity == 7
@@ -204,7 +222,9 @@ def test_expand_migration_clamp_oversold():
     finally:
         os.environ.pop("MIGRATION_CLAMP_OVERSOLD", None)
         clean_s = session_factory()
-        clean_s.connection().exec_driver_sql("DELETE FROM product_variants WHERE product_id = 99994")
+        clean_s.connection().exec_driver_sql(
+            "DELETE FROM product_variants WHERE product_id = 99994"
+        )
         clean_s.connection().exec_driver_sql("DELETE FROM products WHERE id = 99994")
         clean_s.commit()
         clean_s.close()

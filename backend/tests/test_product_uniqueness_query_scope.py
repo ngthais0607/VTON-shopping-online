@@ -17,7 +17,9 @@ def test_create_product_slug_query_is_scoped_not_full_table(db_session):
 
     captured_statements = []
 
-    def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    def before_cursor_execute(
+        conn, cursor, statement, parameters, context, executemany
+    ):
         if "products.slug" in statement and "SELECT" in statement.upper():
             captured_statements.append((statement, parameters))
 
@@ -91,7 +93,9 @@ def test_create_product_variant_sku_query_is_scoped(db_session):
 
     captured_statements = []
 
-    def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    def before_cursor_execute(
+        conn, cursor, statement, parameters, context, executemany
+    ):
         if "product_variants.sku" in statement and "SELECT" in statement.upper():
             captured_statements.append((statement, parameters))
 
@@ -103,7 +107,9 @@ def test_create_product_variant_sku_query_is_scoped(db_session):
             currency="VND",
             variants=[
                 VariantItem(size="M", color_name="Red", stock_quantity=5),
-                VariantItem(size="L", color_name="Red", sku="CUSTOM-KIMONO-L", stock_quantity=5),
+                VariantItem(
+                    size="L", color_name="Red", sku="CUSTOM-KIMONO-L", stock_quantity=5
+                ),
             ],
         )
         p = service.create_product(db_session, cmd)
@@ -126,7 +132,9 @@ def test_create_product_race_condition_raises_conflict_error(db_session, monkeyp
     )
 
     def mock_commit():
-        raise IntegrityError("mock unique violation", orig=Exception("duplicate key"), params={})
+        raise IntegrityError(
+            "mock unique violation", orig=Exception("duplicate key"), params={}
+        )
 
     monkeypatch.setattr(db_session, "commit", mock_commit)
 

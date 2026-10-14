@@ -148,7 +148,9 @@ def test_list_user_orders_returns_page_and_constant_queries(db_session):
     assert len(page.items) == 2
 
 
-def test_get_user_orders_endpoint_returns_paginated_response(client: TestClient, db_session):
+def test_get_user_orders_endpoint_returns_paginated_response(
+    client: TestClient, db_session
+):
     user = User(
         email="api_pg_user@example.com",
         username="api_pg_user",
@@ -165,7 +167,9 @@ def test_get_user_orders_endpoint_returns_paginated_response(client: TestClient,
     token = create_access_token({"sub": str(user.id), "role": user.role})
     headers = {"Authorization": f"Bearer {token}"}
 
-    response = client.get(f"/api/v1/orders/user/{user.id}?limit=1&offset=0", headers=headers)
+    response = client.get(
+        f"/api/v1/orders/user/{user.id}?limit=1&offset=0", headers=headers
+    )
     assert response.status_code == 200
     data = response.json()
     assert "items" in data

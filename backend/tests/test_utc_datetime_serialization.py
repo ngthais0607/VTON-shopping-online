@@ -20,6 +20,7 @@ def test_serialize_utc_datetime_handles_naive_and_aware():
 
     # Aware non-UTC datetime (+7 hours)
     from datetime import timedelta
+
     tz_plus_7 = timezone(timedelta(hours=7))
     aware_plus_7 = datetime(2026, 10, 14, 22, 30, 45, tzinfo=tz_plus_7)
     assert serialize_utc_datetime(aware_plus_7) == "2026-10-14T15:30:45Z"

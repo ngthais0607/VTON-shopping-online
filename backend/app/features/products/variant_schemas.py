@@ -1,4 +1,3 @@
-
 from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
@@ -50,13 +49,19 @@ class BulkVariantCreate(BaseModel):
 
         # Check partial matrix (even alongside explicit variants)
         if has_sizes and not has_colors:
-            raise ValueError("Matrix variant generation requires colors when sizes are specified")
+            raise ValueError(
+                "Matrix variant generation requires colors when sizes are specified"
+            )
         if has_colors and not has_sizes:
-            raise ValueError("Matrix variant generation requires sizes when colors are specified")
+            raise ValueError(
+                "Matrix variant generation requires sizes when colors are specified"
+            )
 
         # Check completely empty payload
         if not (has_sizes and has_colors) and not has_variants:
-            raise ValueError("Payload must contain either explicit variants or a complete size and color matrix")
+            raise ValueError(
+                "Payload must contain either explicit variants or a complete size and color matrix"
+            )
 
         return self
 

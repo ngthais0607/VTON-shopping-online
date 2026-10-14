@@ -18,9 +18,7 @@ from app.features.products.variant_model import ProductVariant
 
 
 def _order(method: str, status: str) -> tuple[Order, Product, ProductVariant]:
-    product = Product(
-        name="Watch", price=20
-    )
+    product = Product(name="Watch", price=20)
     variant = ProductVariant(
         id=1,
         product=product,
@@ -77,7 +75,9 @@ def test_duplicate_cart_lines_aggregate_before_stock_check():
 @pytest.mark.parametrize("quantity", [0, -1])
 def test_non_positive_cart_quantity_is_rejected(quantity):
     with pytest.raises(InvalidCartItemError):
-        aggregate_cart_items([CartItemRequest.model_construct(variant_id=5, quantity=quantity)])
+        aggregate_cart_items(
+            [CartItemRequest.model_construct(variant_id=5, quantity=quantity)]
+        )
 
 
 @pytest.mark.parametrize(
@@ -168,5 +168,3 @@ def test_is_order_paid_predicate():
 
     order.payments = [Payment(status="pending", amount=40)]
     assert is_order_paid(order) is False
-
-

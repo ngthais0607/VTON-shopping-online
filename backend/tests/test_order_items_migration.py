@@ -51,9 +51,15 @@ def test_order_items_and_reviews_migration(tmp_path):
     # 3. Verify data backfill in order_items and product_reviews existence
     engine = create_engine(database_url)
     with engine.connect() as connection:
-        order_item = connection.execute(
-            text("SELECT order_id, product_id, product_name, unit_price, quantity, subtotal FROM order_items WHERE order_id = 1")
-        ).mappings().one()
+        order_item = (
+            connection.execute(
+                text(
+                    "SELECT order_id, product_id, product_name, unit_price, quantity, subtotal FROM order_items WHERE order_id = 1"
+                )
+            )
+            .mappings()
+            .one()
+        )
 
         assert order_item["order_id"] == 1
         assert order_item["product_id"] == 1

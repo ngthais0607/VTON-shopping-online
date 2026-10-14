@@ -28,4 +28,7 @@ async def test_enqueue_best_effort_logs_structured_error_on_failure(caplog):
     assert record.order_id == order_id
     assert record.task_name == task_name
     assert "Redis connection dropped" in record.error
-    assert f"Failed to enqueue email task {task_name} for order {order_id}" in record.message
+    assert (
+        f"Failed to enqueue email task {task_name} for order {order_id}"
+        in record.message
+    )

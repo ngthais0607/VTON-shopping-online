@@ -1,4 +1,3 @@
-
 import uuid
 
 from app.features.orders.model import Order, OrderItem
@@ -189,7 +188,9 @@ def test_public_tracking_strictly_uses_public_code(client, db_session):
     assert num_resp.json()["customer_phone"] == "09******78"
 
 
-def test_private_order_endpoint_preserves_full_order(client, db_session, mock_user_auth):
+def test_private_order_endpoint_preserves_full_order(
+    client, db_session, mock_user_auth
+):
     order = persist_order(
         db_session,
         user_id=mock_user_auth.id,

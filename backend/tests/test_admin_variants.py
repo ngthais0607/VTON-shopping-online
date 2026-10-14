@@ -492,7 +492,12 @@ def test_bulk_create_variants_supports_explicit_and_mixed_complete_payloads(
             "colors": [{"name": "Black", "hex": "#000000"}],
             "default_stock": 20,
             "variants": [
-                {"size": "XL", "color_name": "Black", "color_hex": "#000000", "stock_quantity": 8}
+                {
+                    "size": "XL",
+                    "color_name": "Black",
+                    "color_hex": "#000000",
+                    "stock_quantity": 8,
+                }
             ],
         },
     )

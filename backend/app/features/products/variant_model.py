@@ -23,23 +23,17 @@ class ProductVariant(Base):
         UniqueConstraint(
             "product_id", "size", "color_name", name="uq_variants_product_size_color"
         ),
-        CheckConstraint(
-            "stock_quantity >= 0", name="ck_variants_stock_non_negative"
-        ),
+        CheckConstraint("stock_quantity >= 0", name="ck_variants_stock_non_negative"),
         CheckConstraint(
             "reserved_quantity >= 0", name="ck_variants_reserved_non_negative"
         ),
-        CheckConstraint(
-            "sold_quantity >= 0", name="ck_variants_sold_non_negative"
-        ),
+        CheckConstraint("sold_quantity >= 0", name="ck_variants_sold_non_negative"),
         Index("ix_product_variants_product_active", "product_id", "is_active"),
         Index("ix_product_variants_sku", "sku"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(
-        Integer, ForeignKey("products.id"), nullable=False, index=True
-    )
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
     sku = Column(String(64), unique=True, nullable=False)
     size = Column(String(20), nullable=False, default="ONE_SIZE")
     color_name = Column(String(50), nullable=False, default="Default")
@@ -52,7 +46,12 @@ class ProductVariant(Base):
 
     @property
     def available_stock(self) -> int:
-        return max(0, (self.stock_quantity or 0) - (self.reserved_quantity or 0) - (self.sold_quantity or 0))
+        return max(
+            0,
+            (self.stock_quantity or 0)
+            - (self.reserved_quantity or 0)
+            - (self.sold_quantity or 0),
+        )
 
     @property
     def in_stock(self) -> bool:
@@ -107,4 +106,3 @@ class InventoryAdjustment(Base):
 
     variant = relationship("ProductVariant", back_populates="adjustments")
     user = relationship("User")
-

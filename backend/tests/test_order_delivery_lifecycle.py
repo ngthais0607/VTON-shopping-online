@@ -110,7 +110,9 @@ def test_invalid_lifecycle_transitions():
         apply_order_transition(order, OrderStatus.SHIPPED)
 
 
-def test_customer_can_cancel_pending_order_and_restores_inventory(client: TestClient, db_session):
+def test_customer_can_cancel_pending_order_and_restores_inventory(
+    client: TestClient, db_session
+):
     user = User(
         email="customer_cancel@example.com",
         username="cust_cancel",
@@ -186,7 +188,9 @@ def test_customer_can_cancel_pending_order_and_restores_inventory(client: TestCl
     assert variant.reserved_quantity == 0
 
 
-def test_customer_cannot_cancel_already_paid_or_other_user_order(client: TestClient, db_session):
+def test_customer_cannot_cancel_already_paid_or_other_user_order(
+    client: TestClient, db_session
+):
     user1 = User(
         email="user1_cancel@example.com",
         username="user1_cancel",
@@ -255,11 +259,17 @@ def test_customer_cannot_cancel_already_paid_or_other_user_order(client: TestCli
 
     # 1. User1 attempts to cancel already PAID order -> rejected
     token1 = create_access_token({"sub": str(user1.id), "role": user1.role})
-    res1 = client.post(f"/api/v1/orders/{paid_order.id}/cancel", headers={"Authorization": f"Bearer {token1}"})
+    res1 = client.post(
+        f"/api/v1/orders/{paid_order.id}/cancel",
+        headers={"Authorization": f"Bearer {token1}"},
+    )
     assert res1.status_code == 400
     assert res1.json()["code"] == "order_not_cancellable"
 
     # 2. User2 attempts to cancel User1's order -> forbidden
     token2 = create_access_token({"sub": str(user2.id), "role": user2.role})
-    res2 = client.post(f"/api/v1/orders/{paid_order.id}/cancel", headers={"Authorization": f"Bearer {token2}"})
+    res2 = client.post(
+        f"/api/v1/orders/{paid_order.id}/cancel",
+        headers={"Authorization": f"Bearer {token2}"},
+    )
     assert res2.status_code == 403

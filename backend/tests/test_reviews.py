@@ -446,5 +446,3 @@ def test_list_product_reviews_pagination_and_whole_dataset_summary(
     assert p3["offset"] == 4
     assert p3["summary"]["total_reviews"] == 5
     assert p3["summary"]["average_rating"] == 3.0
-
-

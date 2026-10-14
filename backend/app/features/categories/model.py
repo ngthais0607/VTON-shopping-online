@@ -30,9 +30,7 @@ class Category(Base):
         index=True,
         default=_generate_default_category_slug,
     )
-    parent_id = Column(
-        Integer, ForeignKey("categories.id"), nullable=True, index=True
-    )
+    parent_id = Column(Integer, ForeignKey("categories.id"), nullable=True, index=True)
     description = Column(String(1000), nullable=True)
 
     parent = relationship("Category", remote_side=[id], back_populates="children")

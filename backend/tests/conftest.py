@@ -66,6 +66,7 @@ def setup_db():
 def db_session():
     from app.features.dashboard.service import invalidate_dashboard_cache
     from app.features.products.service import invalidate_catalog_cache
+
     invalidate_dashboard_cache()
     invalidate_catalog_cache()
 

@@ -6,10 +6,17 @@ from app.core.config import Settings, get_settings
 
 def test_settings_rejects_short_or_missing_secret_key():
     with pytest.raises(ValidationError):
-        Settings(_env_file=None, secret_key="", vietqr_bank_id="MB", vietqr_account_no="123")
+        Settings(
+            _env_file=None, secret_key="", vietqr_bank_id="MB", vietqr_account_no="123"
+        )
 
     with pytest.raises(ValidationError):
-        Settings(_env_file=None, secret_key="short-secret-under-32-chars", vietqr_bank_id="MB", vietqr_account_no="123")
+        Settings(
+            _env_file=None,
+            secret_key="short-secret-under-32-chars",
+            vietqr_bank_id="MB",
+            vietqr_account_no="123",
+        )
 
 
 def test_settings_rejects_missing_vietqr_credentials(monkeypatch):

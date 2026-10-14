@@ -294,4 +294,3 @@ def test_create_product_with_explicit_initial_variant_stock(
     assert resp.status_code == 201
     data = resp.json()
     assert data["stock_quantity"] == 40
-

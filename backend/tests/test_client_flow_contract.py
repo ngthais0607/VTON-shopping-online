@@ -61,7 +61,9 @@ def test_customer_checkout_tracking_and_admin_payment_contract(
         )
         assert response.status_code == 201
         slug = response.json()["slug"]
-        detail = client.get(f"/api/v1/products/by-slug/{slug}", headers=admin_headers).json()
+        detail = client.get(
+            f"/api/v1/products/by-slug/{slug}", headers=admin_headers
+        ).json()
         variant_ids.append(detail["variants"][0]["id"])
     checkout = client.post(
         "/api/v1/orders/checkout-cart",
@@ -84,7 +86,9 @@ def test_customer_checkout_tracking_and_admin_payment_contract(
     order_id = body["orders"][0]["id"]
     public_code = body["orders"][0]["public_code"]
     assert (
-        client.get(f"/api/v1/orders/track/{public_code}", headers=headers).json()["status"]
+        client.get(f"/api/v1/orders/track/{public_code}", headers=headers).json()[
+            "status"
+        ]
         == "confirmed"
     )
     assert (

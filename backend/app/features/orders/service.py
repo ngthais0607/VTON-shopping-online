@@ -67,7 +67,9 @@ def order_to_response(order: Order) -> OrderResponse:
     payment = payments[-1] if payments else None
     if payment and payment.status == "paid":
         payment_status = "paid"
-    elif order.status == OrderStatus.PAID.value or (hasattr(order, "paid_at") and order.paid_at is not None):
+    elif order.status == OrderStatus.PAID.value or (
+        hasattr(order, "paid_at") and order.paid_at is not None
+    ):
         payment_status = "paid"
     elif order.status == OrderStatus.CANCELLED.value:
         payment_status = "cancelled"
@@ -184,7 +186,6 @@ def _vietqr_response(orders: list[Order]) -> VietQRResponse:
         memo = f"TL{'X'.join(str(order.id) for order in orders)}"
     instructions = build_vietqr_instructions(total, memo)
     return VietQRResponse(**vars(instructions))
-
 
 
 async def _enqueue_best_effort(queue: TaskQueue, task_name: str, order_id: int) -> None:
@@ -721,7 +722,6 @@ def track_order_by_public_code(db: Session, public_code: str) -> PublicTrackingR
     if order is None:
         raise OrderNotFoundError("Order not found")
     return _build_public_tracking_response(order)
-
 
 
 def track_order(

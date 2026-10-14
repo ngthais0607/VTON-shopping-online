@@ -108,9 +108,7 @@ def update_category(
     if "slug" in updates and updates["slug"]:
         existing_slugs = set(
             s[0]
-            for s in db.query(Category.slug)
-            .filter(Category.id != category_id)
-            .all()
+            for s in db.query(Category.slug).filter(Category.id != category_id).all()
         )
         updates["slug"] = generate_unique_slug(
             slugify(updates["slug"]) or "category", existing_slugs

@@ -623,7 +623,9 @@ def test_customer_cannot_delete_user(client, db_session, mock_user_auth):
     assert response.json()["code"] == "admin_required"
 
 
-def test_soft_delete_releases_identifiers_and_invalidates_tokens(client, db_session, mock_admin_auth):
+def test_soft_delete_releases_identifiers_and_invalidates_tokens(
+    client, db_session, mock_admin_auth
+):
     # Create customer
     customer = User(
         username="alice_original",
@@ -636,7 +638,9 @@ def test_soft_delete_releases_identifiers_and_invalidates_tokens(client, db_sess
     customer_id = customer.id
 
     access_token = create_access_token({"sub": str(customer_id)})
-    refresh_token = create_refresh_token({"sub": str(customer_id), "ver": customer.refresh_version})
+    refresh_token = create_refresh_token(
+        {"sub": str(customer_id), "ver": customer.refresh_version}
+    )
 
     # Admin deletes customer
     del_res = client.delete(f"/api/v1/users/{customer_id}")
@@ -666,11 +670,13 @@ def test_soft_delete_releases_identifiers_and_invalidates_tokens(client, db_sess
     assert new_user["email"] == "alice_original@example.com"
 
     # Old tokens of deleted user are rejected
-    me_res = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {access_token}"})
+    me_res = client.get(
+        "/api/v1/users/me", headers={"Authorization": f"Bearer {access_token}"}
+    )
     assert me_res.status_code == 401
 
     limiter.reset()
-    refresh_res = client.post("/api/v1/users/refresh", json={"refresh_token": refresh_token})
+    refresh_res = client.post(
+        "/api/v1/users/refresh", json={"refresh_token": refresh_token}
+    )
     assert refresh_res.status_code == 401
-
-

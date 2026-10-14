@@ -3,7 +3,9 @@ from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 
 
-def test_inactive_product_hidden_from_public_and_customer(client, db_session, mock_user_auth):
+def test_inactive_product_hidden_from_public_and_customer(
+    client, db_session, mock_user_auth
+):
     # Setup Category
     cat = Category(name="Fashion Category", slug="fashion-cat")
     db_session.add(cat)
@@ -96,7 +98,9 @@ def test_inactive_product_hidden_from_public_and_customer(client, db_session, mo
 
     # By Slug
     assert client.get(f"/api/v1/products/by-slug/{p_inactive.slug}").status_code == 404
-    assert client.get(f"/api/v1/products/by-slug/{p_no_variant.slug}").status_code == 404
+    assert (
+        client.get(f"/api/v1/products/by-slug/{p_no_variant.slug}").status_code == 404
+    )
     assert client.get(f"/api/v1/products/by-slug/{p_active.slug}").status_code == 200
 
     # Verify sensitive business metrics are NOT leaked to public
@@ -111,7 +115,9 @@ def test_inactive_product_hidden_from_public_and_customer(client, db_session, mo
         assert "available_stock" in v
 
     # Lookup endpoint returns minimal inactive entry for inactive product / variant
-    lookup_resp = client.get(f"/api/v1/products/variants/lookup?ids={v1.id},{v2.id},{v3.id}")
+    lookup_resp = client.get(
+        f"/api/v1/products/variants/lookup?ids={v1.id},{v2.id},{v3.id}"
+    )
     assert lookup_resp.status_code == 200
     lookup_data = {item["id"]: item for item in lookup_resp.json()}
     assert lookup_data[v1.id]["is_active"] is True
@@ -122,7 +128,9 @@ def test_inactive_product_hidden_from_public_and_customer(client, db_session, mo
     assert lookup_data[v3.id]["available_stock"] == 0
 
 
-def test_admin_can_view_inactive_and_sees_full_stock_metrics(client, db_session, mock_admin_auth):
+def test_admin_can_view_inactive_and_sees_full_stock_metrics(
+    client, db_session, mock_admin_auth
+):
     cat = Category(name="Admin Category", slug="admin-cat")
     db_session.add(cat)
     db_session.flush()
@@ -274,4 +282,3 @@ def test_facets_only_reflect_public_active_catalog(client, db_session):
     facet_color_names = [c["name"] for c in facets["colors"]]
     assert "Navy" in facet_color_names
     assert "SecretMagenta" not in facet_color_names
-

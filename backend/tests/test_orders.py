@@ -278,7 +278,9 @@ def _create_trackable_order(client, db_session, mock_user_auth):
     return resp_create.json()["orders"][0]["id"]
 
 
-def test_track_order_by_id_returns_404_on_public_endpoint(client, db_session, mock_user_auth):
+def test_track_order_by_id_returns_404_on_public_endpoint(
+    client, db_session, mock_user_auth
+):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_current_user_optional, None)
@@ -308,7 +310,9 @@ def test_track_order_public_by_public_code(client, db_session, mock_user_auth):
     assert "administrator" in timeline_copy
 
 
-def test_private_order_by_id_requires_auth_and_ownership(client, db_session, mock_user_auth):
+def test_private_order_by_id_requires_auth_and_ownership(
+    client, db_session, mock_user_auth
+):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
 
     # 1. Unauthenticated -> 401
@@ -398,7 +402,9 @@ def test_checkout_persists_fulfillment_fields(client, db_session, mock_user_auth
     order = db_session.query(Order).filter(Order.id == data["id"]).one()
     assert data["customer_name"] == order.customer_name == "Test Customer"
     assert data["customer_phone"] == order.customer_phone == "0912345678"
-    assert data["shipping_address"] == order.shipping_address == "123 Test Street, Hanoi"
+    assert (
+        data["shipping_address"] == order.shipping_address == "123 Test Street, Hanoi"
+    )
     assert data["notes"] == order.notes == "Leave at reception"
     assert data["payment_method"] == order.payment_method == "vietqr"
 

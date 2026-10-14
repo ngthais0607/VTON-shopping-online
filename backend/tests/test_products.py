@@ -651,7 +651,9 @@ def test_update_product_activation_requires_active_variant(
 def test_update_product_activation_succeeds_with_active_variant(
     client, db_session, mock_admin_auth
 ):
-    p = persist_product(db_session, name="Inactive Item With Active Variant", is_active=False)
+    p = persist_product(
+        db_session, name="Inactive Item With Active Variant", is_active=False
+    )
     for v in p.variants:
         v.is_active = True
     db_session.commit()

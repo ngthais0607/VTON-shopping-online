@@ -124,9 +124,13 @@ def create_product(db: Session, command: ProductCreate) -> Product:
                 )
                 clean_color = re.sub(r"[^A-Za-z0-9]+", "", c_name).upper() or "DEF"
                 clean_size = re.sub(r"[^A-Za-z0-9]+", "", c_size).upper() or "STD"
-                generated_base_skus.append(f"{product.slug}-{clean_color}-{clean_size}"[:55])
+                generated_base_skus.append(
+                    f"{product.slug}-{clean_color}-{clean_size}"[:55]
+                )
 
-        existing_skus = _get_scoped_existing_skus(db, explicit_skus, generated_base_skus)
+        existing_skus = _get_scoped_existing_skus(
+            db, explicit_skus, generated_base_skus
+        )
         for cand in variants_input:
             sku = (
                 cand.get("sku")
@@ -185,7 +189,9 @@ def create_product(db: Session, command: ProductCreate) -> Product:
             created_variants.append(v)
         db.flush()
 
-    has_active_variant = bool(created_variants and any(v.is_active for v in created_variants))
+    has_active_variant = bool(
+        created_variants and any(v.is_active for v in created_variants)
+    )
     if requested_active:
         if not has_active_variant:
             raise BusinessRuleError(

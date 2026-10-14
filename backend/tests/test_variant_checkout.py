@@ -19,7 +19,9 @@ def test_checkout_rejects_payload_with_only_product_id(client, mock_user_auth):
     assert response.status_code == 422
 
 
-def test_checkout_multi_variant_allocates_exact_variant(client, db_session, mock_user_auth):
+def test_checkout_multi_variant_allocates_exact_variant(
+    client, db_session, mock_user_auth
+):
     product = Product(
         name="Multi Size Jacket",
         slug="multi-size-jacket",

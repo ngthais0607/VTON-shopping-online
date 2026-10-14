@@ -28,9 +28,17 @@ def test_cli_create_admin_help(capsys):
 
 
 def test_cli_create_admin_success(db_session: Session, capsys):
-    with patch.object(getpass, "getpass", side_effect=["AdminPassword123", "AdminPassword123"]):
+    with patch.object(
+        getpass, "getpass", side_effect=["AdminPassword123", "AdminPassword123"]
+    ):
         exit_code = cli.main(
-            ["create-admin", "--email", "admin_new@example.com", "--username", "admin_new"],
+            [
+                "create-admin",
+                "--email",
+                "admin_new@example.com",
+                "--username",
+                "admin_new",
+            ],
             session=db_session,
         )
 
@@ -38,7 +46,10 @@ def test_cli_create_admin_success(db_session: Session, capsys):
     captured = capsys.readouterr()
     assert "AdminPassword123" not in captured.out
     assert "AdminPassword123" not in captured.err
-    assert "successfully created" in captured.out.lower() or "created successfully" in captured.out.lower()
+    assert (
+        "successfully created" in captured.out.lower()
+        or "created successfully" in captured.out.lower()
+    )
 
     user = db_session.query(User).filter(User.email == "admin_new@example.com").first()
     assert user is not None
@@ -47,9 +58,17 @@ def test_cli_create_admin_success(db_session: Session, capsys):
 
 
 def test_cli_create_admin_password_mismatch(db_session: Session, capsys):
-    with patch.object(getpass, "getpass", side_effect=["Password12345", "Mismatch54321"]):
+    with patch.object(
+        getpass, "getpass", side_effect=["Password12345", "Mismatch54321"]
+    ):
         exit_code = cli.main(
-            ["create-admin", "--email", "mismatch@example.com", "--username", "mismatch_user"],
+            [
+                "create-admin",
+                "--email",
+                "mismatch@example.com",
+                "--username",
+                "mismatch_user",
+            ],
             session=db_session,
         )
 
@@ -74,9 +93,17 @@ def test_cli_create_admin_duplicate_email(db_session: Session, capsys):
         ),
     )
 
-    with patch.object(getpass, "getpass", side_effect=["AdminPassword123", "AdminPassword123"]):
+    with patch.object(
+        getpass, "getpass", side_effect=["AdminPassword123", "AdminPassword123"]
+    ):
         exit_code = cli.main(
-            ["create-admin", "--email", "duplicate@example.com", "--username", "new_admin_user"],
+            [
+                "create-admin",
+                "--email",
+                "duplicate@example.com",
+                "--username",
+                "new_admin_user",
+            ],
             session=db_session,
         )
 
@@ -84,7 +111,9 @@ def test_cli_create_admin_duplicate_email(db_session: Session, capsys):
     user = db_session.query(User).filter(User.username == "new_admin_user").first()
     assert user is None
     # Existing user's role remains customer
-    existing = db_session.query(User).filter(User.email == "duplicate@example.com").one()
+    existing = (
+        db_session.query(User).filter(User.email == "duplicate@example.com").one()
+    )
     assert existing.role == "customer"
 
 
@@ -98,9 +127,17 @@ def test_cli_create_admin_duplicate_username(db_session: Session, capsys):
         ),
     )
 
-    with patch.object(getpass, "getpass", side_effect=["AdminPassword123", "AdminPassword123"]):
+    with patch.object(
+        getpass, "getpass", side_effect=["AdminPassword123", "AdminPassword123"]
+    ):
         exit_code = cli.main(
-            ["create-admin", "--email", "different@example.com", "--username", "taken_username"],
+            [
+                "create-admin",
+                "--email",
+                "different@example.com",
+                "--username",
+                "taken_username",
+            ],
             session=db_session,
         )
 
@@ -112,7 +149,13 @@ def test_cli_create_admin_duplicate_username(db_session: Session, capsys):
 def test_cli_create_admin_short_password(db_session: Session, capsys):
     with patch.object(getpass, "getpass", side_effect=["short", "short"]):
         exit_code = cli.main(
-            ["create-admin", "--email", "shortpass@example.com", "--username", "shortpass_user"],
+            [
+                "create-admin",
+                "--email",
+                "shortpass@example.com",
+                "--username",
+                "shortpass_user",
+            ],
             session=db_session,
         )
 
@@ -125,7 +168,13 @@ def test_cli_create_admin_oversized_password(db_session: Session, capsys):
     oversized = "A" * 75
     with patch.object(getpass, "getpass", side_effect=[oversized, oversized]):
         exit_code = cli.main(
-            ["create-admin", "--email", "overpass@example.com", "--username", "overpass_user"],
+            [
+                "create-admin",
+                "--email",
+                "overpass@example.com",
+                "--username",
+                "overpass_user",
+            ],
             session=db_session,
         )
 
@@ -135,7 +184,9 @@ def test_cli_create_admin_oversized_password(db_session: Session, capsys):
 
 
 def test_cli_create_admin_invalid_email(db_session: Session, capsys):
-    with patch.object(getpass, "getpass", side_effect=["AdminPassword123", "AdminPassword123"]):
+    with patch.object(
+        getpass, "getpass", side_effect=["AdminPassword123", "AdminPassword123"]
+    ):
         exit_code = cli.main(
             ["create-admin", "--email", "not-an-email", "--username", "valid_username"],
             session=db_session,
