@@ -137,11 +137,46 @@ def order_to_response(order: Order) -> OrderResponse:
     )
 
 
+def generate_order_payment_memo(order_id: int) -> str:
+    if order_id <= 0:
+        raise ValueError("order_id must be a positive integer")
+    return f"TL{order_id}"
+
+
+_MEMO_TOKEN_REGEX = re.compile(
+    r"(?i)(?<![A-Za-z0-9])(?:TL|TRUELOOK|LUXESTORE)[\s_-]*([1-9]\d*(?:(?:[xX]|_)[1-9]\d*)*)(?![A-Za-z0-9])"
+)
+
+_ANY_PREFIX_REGEX = re.compile(
+    r"(?i)(?<![A-Za-z0-9])(?:TL|TRUELOOK|LUXESTORE)[\s_-]*([A-Za-z0-9_-]+)"
+)
+
+
+def parse_order_ids_from_memo(content: str) -> list[int]:
+    if not content or not content.strip():
+        return []
+
+    all_prefix_matches = _ANY_PREFIX_REGEX.findall(content)
+    valid_matches = _MEMO_TOKEN_REGEX.findall(content)
+
+    if len(all_prefix_matches) != len(valid_matches) or len(valid_matches) != 1:
+        return []
+
+    token_body = valid_matches[0]
+    raw_ids = re.split(r"[xX_]", token_body)
+    ids = sorted(list({int(i) for i in raw_ids if i and int(i) > 0}))
+    return ids
+
+
 def _vietqr_response(orders: list[Order]) -> VietQRResponse:
     total = sum(order.total_amount for order in orders)
-    memo = f"TRUELOOK_{'_'.join(str(order.id) for order in orders)}"
+    if len(orders) == 1:
+        memo = generate_order_payment_memo(orders[0].id)
+    else:
+        memo = f"TL{'X'.join(str(order.id) for order in orders)}"
     instructions = build_vietqr_instructions(total, memo)
     return VietQRResponse(**vars(instructions))
+
 
 
 async def _enqueue_best_effort(queue: TaskQueue, task_name: str, order_id: int) -> None:
@@ -667,15 +702,13 @@ def process_vietqr_webhook(
             "Invalid or missing webhook secret", code="unauthorized_webhook"
         )
 
-    pattern = re.compile(r"(?:TRUELOOK|LUXESTORE)_(\d+(?:_\d+)*)", re.IGNORECASE)
-    match = pattern.search(payload.content)
-    if not match:
+    distinct_order_ids = parse_order_ids_from_memo(payload.content)
+    if not distinct_order_ids:
         logger.warning(
             "VietQR webhook memo does not match pattern: %s", payload.content
         )
         raise BusinessRuleError("Invalid memo content", code="invalid_webhook_memo")
 
-    distinct_order_ids = sorted(list({int(i) for i in match.group(1).split("_")}))
     if len(distinct_order_ids) > 1:
         raise BusinessRuleError(
             "Multi-order payments are not supported in this version",
