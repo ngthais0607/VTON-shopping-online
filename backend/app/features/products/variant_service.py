@@ -3,11 +3,19 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.errors import BusinessRuleError, ResourceNotFoundError
+from app.core.errors import (
+    BusinessRuleError,
+    ConflictError,
+    ResourceNotFoundError,
+)
 from app.features.products.model import Product
-from app.features.products.variant_model import ProductVariant
+from app.features.products.variant_model import (
+    InventoryAdjustment,
+    ProductVariant,
+)
 from app.features.products.variant_schemas import (
     BulkVariantCreate,
     VariantItem,
@@ -64,6 +72,11 @@ def bulk_create_variants(
 
         if cand.sku:
             sku = cand.sku
+            if sku in existing_skus:
+                raise ConflictError(
+                    f"Variant with SKU '{sku}' already exists",
+                    code="duplicate_sku",
+                )
         else:
             clean_color = re.sub(r"[^A-Za-z0-9]+", "", cand.color_name).upper() or "DEF"
             clean_size = re.sub(r"[^A-Za-z0-9]+", "", cand.size).upper() or "STD"
@@ -90,7 +103,15 @@ def bulk_create_variants(
         db.add(new_variant)
         existing_pairs[pair_key] = new_variant
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise ConflictError(
+            "Variant with specified SKU or options already exists",
+            code="duplicate_sku",
+        ) from e
+
     return (
         db.query(ProductVariant)
         .filter(ProductVariant.product_id == product_id)
@@ -115,11 +136,32 @@ def update_variant(
             code="variant_not_found",
         )
 
-    for field, value in command.model_dump(exclude_unset=True).items():
+    patch_data = command.model_dump(exclude_unset=True)
+    if "sku" in patch_data and patch_data["sku"] and patch_data["sku"] != variant.sku:
+        existing_with_sku = (
+            db.query(ProductVariant)
+            .filter(ProductVariant.sku == patch_data["sku"])
+            .first()
+        )
+        if existing_with_sku is not None:
+            raise ConflictError(
+                f"Variant with SKU '{patch_data['sku']}' already exists",
+                code="duplicate_sku",
+            )
+
+    for field, value in patch_data.items():
         setattr(variant, field, value)
     variant.updated_at = datetime.now(timezone.utc)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise ConflictError(
+            "Variant with specified SKU already exists",
+            code="duplicate_sku",
+        ) from e
+
     db.refresh(variant)
     return variant
 
@@ -128,6 +170,7 @@ def adjust_variant_stock(
     db: Session,
     variant_id: int,
     command: VariantStockAdjustment,
+    user_id: int | None = None,
 ) -> ProductVariant:
     variant = (
         db.query(ProductVariant)
@@ -141,18 +184,67 @@ def adjust_variant_stock(
             code="variant_not_found",
         )
 
+    old_stock = variant.stock_quantity or 0
+    if command.stock_quantity is not None:
+        new_stock = command.stock_quantity
+        delta = new_stock - old_stock
+    elif command.delta is not None:
+        new_stock = old_stock + command.delta
+        delta = command.delta
+    else:
+        raise BusinessRuleError(
+            "Either stock_quantity or delta must be provided",
+            code="invalid_variant_inventory",
+        )
+
     committed_stock = (variant.reserved_quantity or 0) + (variant.sold_quantity or 0)
-    if command.stock_quantity < committed_stock:
+    if new_stock < committed_stock:
         raise BusinessRuleError(
             "Stock cannot be set lower than reserved and sold quantities",
             code="invalid_variant_inventory",
         )
 
-    variant.stock_quantity = command.stock_quantity
+    adjustment = InventoryAdjustment(
+        variant_id=variant.id,
+        old_stock=old_stock,
+        new_stock=new_stock,
+        delta=delta,
+        reason=command.reason,
+        user_id=user_id,
+    )
+    db.add(adjustment)
+
+    variant.stock_quantity = new_stock
     variant.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(variant)
     return variant
+
+
+def get_variant_adjustments(
+    db: Session,
+    variant_id: int,
+) -> list[InventoryAdjustment]:
+    variant = (
+        db.query(ProductVariant)
+        .filter(ProductVariant.id == variant_id)
+        .first()
+    )
+    if variant is None:
+        raise ResourceNotFoundError(
+            f"Variant {variant_id} was not found",
+            code="variant_not_found",
+        )
+
+    return (
+        db.query(InventoryAdjustment)
+        .filter(InventoryAdjustment.variant_id == variant_id)
+        .order_by(
+            InventoryAdjustment.created_at.desc(),
+            InventoryAdjustment.id.desc(),
+        )
+        .all()
+    )
 
 
 def delete_variant(db: Session, variant_id: int) -> None:

@@ -7,6 +7,7 @@ from app.features.products import variant_service
 from app.features.products.schemas import ProductVariantResponse
 from app.features.products.variant_schemas import (
     BulkVariantCreate,
+    InventoryAdjustmentResponse,
     VariantPatch,
     VariantStockAdjustment,
 )
@@ -55,7 +56,22 @@ def adjust_variant_stock(
     db: Session = Depends(get_db),
     _current_admin: User = Depends(get_current_admin),
 ):
-    return variant_service.adjust_variant_stock(db, variant_id, command)
+    return variant_service.adjust_variant_stock(
+        db, variant_id, command, user_id=_current_admin.id
+    )
+
+
+@router.get(
+    "/api/v1/variants/{variant_id}/adjustments",
+    response_model=list[InventoryAdjustmentResponse],
+    summary="Get variant inventory adjustment history",
+)
+def get_variant_adjustments(
+    variant_id: int,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(get_current_admin),
+):
+    return variant_service.get_variant_adjustments(db, variant_id)
 
 
 @router.delete(

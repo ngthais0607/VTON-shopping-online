@@ -71,3 +71,40 @@ class ProductVariant(Base):
 
     product = relationship("Product", back_populates="variants")
     order_items = relationship("OrderItem", back_populates="variant")
+    adjustments = relationship(
+        "InventoryAdjustment",
+        back_populates="variant",
+        cascade="all, delete-orphan",
+        order_by="desc(InventoryAdjustment.created_at)",
+    )
+
+
+class InventoryAdjustment(Base):
+    __tablename__ = "inventory_adjustments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    variant_id = Column(
+        Integer,
+        ForeignKey("product_variants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    old_stock = Column(Integer, nullable=False)
+    new_stock = Column(Integer, nullable=False)
+    delta = Column(Integer, nullable=False)
+    reason = Column(String(500), nullable=False)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+    variant = relationship("ProductVariant", back_populates="adjustments")
+    user = relationship("User")
+

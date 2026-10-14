@@ -1,4 +1,4 @@
-from __future__ import annotations
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -26,12 +26,31 @@ class BulkVariantCreate(BaseModel):
 
 
 class VariantPatch(BaseModel):
+    model_config = {"extra": "forbid"}
+
     price: float | None = Field(default=None, ge=0)
-    stock_quantity: int | None = Field(default=None, ge=0)
     is_active: bool | None = None
     color_hex: str | None = Field(default=None, max_length=7)
+    sku: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class VariantStockAdjustment(BaseModel):
-    stock_quantity: int = Field(ge=0)
+    model_config = {"extra": "forbid"}
+
+    stock_quantity: int | None = Field(default=None, ge=0)
+    delta: int | None = None
     reason: str = Field(min_length=1, max_length=500)
+
+
+class InventoryAdjustmentResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    variant_id: int
+    old_stock: int
+    new_stock: int
+    delta: int
+    reason: str
+    user_id: int | None = None
+    created_at: datetime
+

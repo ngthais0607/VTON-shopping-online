@@ -199,3 +199,132 @@ def test_delete_variant_hard_deletes_if_no_orders(client, db_session, mock_admin
     assert res.status_code in (200, 204)
 
     assert db_session.get(ProductVariant, variant_id) is None
+
+
+def test_adjust_stock_records_audit_trail_and_can_be_queried(
+    client, db_session, mock_admin_auth
+):
+    product = Product(
+        name="Linen Shirt",
+        slug="linen-shirt",
+        price=250000,
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.flush()
+
+    variant = ProductVariant(
+        product_id=product.id,
+        sku="linen-shirt-WHT-L",
+        size="L",
+        color_name="White",
+        stock_quantity=10,
+        is_active=True,
+    )
+    db_session.add(variant)
+    db_session.commit()
+
+    # Perform stock adjustment
+    res = client.post(
+        f"/api/v1/variants/{variant.id}/adjust-stock",
+        json={"stock_quantity": 25, "reason": "Restock shipment #1042"},
+    )
+    assert res.status_code == 200
+    assert res.json()["stock_quantity"] == 25
+
+    # Query adjustment history
+    adj_res = client.get(f"/api/v1/variants/{variant.id}/adjustments")
+    assert adj_res.status_code == 200
+    history = adj_res.json()
+    assert len(history) == 1
+    assert history[0]["variant_id"] == variant.id
+    assert history[0]["old_stock"] == 10
+    assert history[0]["new_stock"] == 25
+    assert history[0]["delta"] == 15
+    assert history[0]["reason"] == "Restock shipment #1042"
+    assert "created_at" in history[0]
+
+
+def test_patch_variant_forbids_stock_quantity(client, db_session, mock_admin_auth):
+    product = Product(
+        name="Chino Pants",
+        slug="chino-pants",
+        price=350000,
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.flush()
+
+    variant = ProductVariant(
+        product_id=product.id,
+        sku="chino-pants-KHA-32",
+        size="32",
+        color_name="Khaki",
+        stock_quantity=12,
+        is_active=True,
+    )
+    db_session.add(variant)
+    db_session.commit()
+
+    # Attempting to update stock_quantity directly via PATCH should be rejected (422)
+    res = client.patch(
+        f"/api/v1/variants/{variant.id}",
+        json={"stock_quantity": 99},
+    )
+    assert res.status_code == 422
+
+
+def test_sku_collision_returns_409_duplicate_sku(client, db_session, mock_admin_auth):
+    product = Product(
+        name="Silk Scarf",
+        slug="silk-scarf",
+        price=180000,
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.flush()
+
+    v1 = ProductVariant(
+        product_id=product.id,
+        sku="scarf-RED",
+        size="ONE_SIZE",
+        color_name="Red",
+        stock_quantity=5,
+        is_active=True,
+    )
+    v2 = ProductVariant(
+        product_id=product.id,
+        sku="scarf-BLU",
+        size="ONE_SIZE",
+        color_name="Blue",
+        stock_quantity=5,
+        is_active=True,
+    )
+    db_session.add_all([v1, v2])
+    db_session.commit()
+
+    # Bulk create attempting to use existing SKU "scarf-RED"
+    res_bulk = client.post(
+        f"/api/v1/products/{product.id}/variants/bulk",
+        json={
+            "variants": [
+                {
+                    "sku": "scarf-RED",
+                    "size": "L",
+                    "color_name": "Crimson",
+                    "stock_quantity": 10,
+                }
+            ]
+        },
+    )
+    assert res_bulk.status_code == 409
+    assert res_bulk.json()["code"] == "duplicate_sku"
+
+    # Patch attempting to rename v2 SKU to v1 SKU
+    res_patch = client.patch(
+        f"/api/v1/variants/{v2.id}",
+        json={"sku": "scarf-RED"},
+    )
+    assert res_patch.status_code == 409
+    assert res_patch.json()["code"] == "duplicate_sku"
+
