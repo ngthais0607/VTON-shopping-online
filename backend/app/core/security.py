@@ -69,10 +69,6 @@ def decode_refresh_token(token: str) -> RefreshTokenClaims:
     return RefreshTokenClaims(subject=payload["sub"], version=version)
 
 
-def verify_refresh_token(token: str) -> str:
-    return decode_refresh_token(token).subject
-
-
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
     db: Session = Depends(get_db),
