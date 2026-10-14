@@ -135,10 +135,11 @@ def list_products(
                 Product.description.ilike(f"%{filters.search}%"),
             )
         )
+    effective_price = _effective_product_price()
     if filters.min_price is not None:
-        query = query.filter(Product.price >= filters.min_price)
+        query = query.filter(effective_price >= filters.min_price)
     if filters.max_price is not None:
-        query = query.filter(Product.price <= filters.max_price)
+        query = query.filter(effective_price <= filters.max_price)
     if filters.category_id is not None:
         category_service.get_category(db, filters.category_id)
         cat_ids = category_service.get_category_and_descendant_ids(
@@ -602,7 +603,20 @@ def _get_active_product(
     return product
 
 
+def _effective_product_price():
+    variant_min_price = (
+        select(func.min(func.coalesce(ProductVariant.price, Product.price)))
+        .where(
+            ProductVariant.product_id == Product.id,
+            ProductVariant.is_active.is_(True),
+        )
+        .scalar_subquery()
+    )
+    return func.coalesce(variant_min_price, Product.price)
+
+
 def _apply_sort(query: Query, sort: ProductSort) -> Query:
+    effective_price = _effective_product_price()
     stock_sum = func.coalesce(
         select(func.sum(ProductVariant.stock_quantity))
         .where(
@@ -622,8 +636,8 @@ def _apply_sort(query: Query, sort: ProductSort) -> Query:
 
     sort_columns = {
         ProductSort.LATEST: (Product.created_at.desc(), Product.id.desc()),
-        ProductSort.PRICE_ASC: (Product.price.asc(), Product.id.desc()),
-        ProductSort.PRICE_DESC: (Product.price.desc(), Product.id.desc()),
+        ProductSort.PRICE_ASC: (effective_price.asc(), Product.id.asc()),
+        ProductSort.PRICE_DESC: (effective_price.desc(), Product.id.desc()),
         ProductSort.STOCK_ASC: (stock_sum.asc(), Product.id.desc()),
         ProductSort.STOCK_DESC: (stock_sum.desc(), Product.id.desc()),
         ProductSort.SOLD_DESC: (sold_sum.desc(), Product.id.desc()),
