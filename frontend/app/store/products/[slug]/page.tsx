@@ -117,7 +117,7 @@ export default function ProductDetailPage() {
       toast.error("Phiên bản này hiện đã hết hàng!");
       return;
     }
-    addToCart(product, quantity);
+    addToCart(product, quantity, selectedVariant?.id);
     toast.success("Đã thêm vào giỏ hàng thành công!");
   };
 
@@ -127,7 +127,7 @@ export default function ProductDetailPage() {
       toast.error("Phiên bản này hiện đã hết hàng!");
       return;
     }
-    addToCart(product, quantity);
+    addToCart(product, quantity, selectedVariant?.id);
     router.push("/store/checkout");
   };
 

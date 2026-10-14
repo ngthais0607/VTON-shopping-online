@@ -188,7 +188,7 @@ export interface CartItemV2 {
 }
 
 export interface CheckoutCommand {
-  items: { product_id?: number; variant_id?: number; quantity: number }[];
+  items: { variant_id: number; quantity: number }[];
   customer_name: string;
   customer_phone: string;
   shipping_address: string;

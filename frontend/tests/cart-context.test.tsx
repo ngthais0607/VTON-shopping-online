@@ -18,6 +18,20 @@ const mockProduct: Product = {
   updated_at: "2026-01-01T00:00:00Z",
   category: null,
   images: [],
+  variants: [
+    {
+      id: 1001,
+      product_id: 101,
+      sku: "WATCH-DEF",
+      size: "ONE_SIZE",
+      color_name: "Default",
+      price: 299,
+      stock_quantity: 20,
+      reserved_quantity: 0,
+      sold_quantity: 0,
+      is_active: true,
+    } as any,
+  ],
 };
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -57,12 +71,12 @@ describe("CartContext", () => {
     });
 
     act(() => {
-      result.current.updateQuantity(mockProduct.id, 5);
+      result.current.updateQuantity(1001, 5);
     });
     expect(result.current.totalCount).toBe(5);
 
     act(() => {
-      result.current.updateQuantity(mockProduct.id, 0);
+      result.current.updateQuantity(1001, 0);
     });
     expect(result.current.cartItems.length).toBe(0);
   });
@@ -96,7 +110,7 @@ describe("CartContext", () => {
     act(()=>result.current.addToCart(mockProduct,1.5));
     expect(result.current.cartItems).toEqual([]);
     act(()=>result.current.addToCart(mockProduct,1));
-    act(()=>result.current.updateQuantity(mockProduct.id,99));
+    act(()=>result.current.updateQuantity(1001,99));
     expect(result.current.totalCount).toBe(20);
   });
 });

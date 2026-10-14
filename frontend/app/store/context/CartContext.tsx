@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
+import { toast } from "sonner";
 import { swrFetcher } from "@/lib/swr-config";
 import type { Product, CartItemV2, VariantLookupItem } from "@/lib/types";
 import { getAvailableStock } from "@/lib/inventory";
@@ -22,8 +23,8 @@ interface CartContextType {
     quantity?: number,
     variantId?: number
   ) => void;
-  removeFromCart: (id: number) => void;
-  updateQuantity: (id: number, quantity: number) => void;
+  removeFromCart: (variantId: number) => void;
+  updateQuantity: (variantId: number, quantity: number) => void;
   clearCart: () => void;
   totalAmount: number;
   totalCount: number;
@@ -34,7 +35,6 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CART_STORAGE_KEY_V2 = "truelook_cart_v2";
-const LEGACY_STORAGE_KEY = "fastapi_store_cart";
 
 function restoreCartV2(value: unknown): CartItemV2[] {
   if (!Array.isArray(value)) return [];
@@ -64,66 +64,22 @@ function restoreCartV2(value: unknown): CartItemV2[] {
   return items;
 }
 
-function restoreLegacyCart(value: unknown, setCache: (p: Product) => void): CartItemV2[] {
-  if (!Array.isArray(value)) return [];
-  const items: CartItemV2[] = [];
-  for (const item of value) {
-    const p = item?.product;
-    if (
-      !p ||
-      !Number.isInteger(p.id) ||
-      p.id <= 0 ||
-      typeof p.name !== "string" ||
-      !Number.isFinite(p.price) ||
-      p.price <= 0 ||
-      typeof p.currency !== "string" ||
-      !Array.isArray(p.images) ||
-      !p.images.every(
-        (image: unknown) =>
-          !!image && typeof image === "object" && typeof (image as { url?: unknown }).url === "string"
-      ) ||
-      (p.image_url != null && typeof p.image_url !== "string") ||
-      (p.category != null && (typeof p.category !== "object" || typeof p.category.name !== "string")) ||
-      p.is_active !== true ||
-      ![p.stock_quantity, p.reserved_quantity, p.sold_quantity].every(
-        (n: unknown) => Number.isInteger(n) && (n as number) >= 0
-      ) ||
-      !Number.isInteger(item.quantity) ||
-      item.quantity <= 0
-    ) {
-      continue;
-    }
-    const variantId = p.variants?.[0]?.id ?? p.id;
-    const available = Math.max(0, (p.stock_quantity ?? 0) - (p.reserved_quantity ?? 0) - (p.sold_quantity ?? 0));
-    const qty = Math.min(item.quantity, available);
-    if (qty > 0 && !items.some((existing) => existing.variantId === variantId)) {
-      setCache(p);
-      items.push({ variantId, productId: p.id, quantity: qty });
-    }
-  }
-  return items;
-}
-
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [rawItems, setRawItems] = useState<CartItemV2[]>([]);
   const [productCache, setProductCache] = useState<Map<number, Product>>(new Map());
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load cart on mount: check truelook_cart_v2 first, fallback to valid legacy if present
+  // Load cart on mount: check truelook_cart_v2; clear and notify if legacy key exists
   useEffect(() => {
     try {
+      if (typeof window !== "undefined" && localStorage.getItem("fastapi_store_cart")) {
+        localStorage.removeItem("fastapi_store_cart");
+        toast.info("Giỏ hàng cũ đã được làm mới theo hệ thống phiên bản mới.");
+      }
       const savedV2 = localStorage.getItem(CART_STORAGE_KEY_V2);
       if (savedV2) {
         setRawItems(restoreCartV2(JSON.parse(savedV2)));
-      } else {
-        const savedLegacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-        if (savedLegacy) {
-          const cacheUpdater = (p: Product) => {
-            setProductCache((prev) => new Map(prev).set(p.id, p));
-          };
-          setRawItems(restoreLegacyCart(JSON.parse(savedLegacy), cacheUpdater));
-        }
       }
     } catch (e) {
       console.error("Failed to load cart from localStorage", e);
@@ -137,21 +93,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (isLoaded) {
       try {
         localStorage.setItem(CART_STORAGE_KEY_V2, JSON.stringify(rawItems));
-        if (localStorage.getItem(LEGACY_STORAGE_KEY) !== null) {
-          const legacyItems = rawItems.map((raw) => {
-            const cached = productCache.get(raw.productId);
-            return {
-              product: cached || { id: raw.productId, name: "Product", price: 0, is_active: true },
-              quantity: raw.quantity,
-            };
-          });
-          localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(legacyItems));
-        }
       } catch (e) {
         console.error("Failed to save cart to localStorage", e);
       }
     }
-  }, [rawItems, isLoaded, productCache]);
+  }, [rawItems, isLoaded]);
 
   // SWR Live lookup for variant metadata (price, stock, sku, size, color)
   const variantIds = useMemo(
@@ -240,7 +186,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (typeof productOrItem === "object" && productOrItem !== null) {
       if (productOrItem.is_active === false) return; // ignore inactive
 
-      if ("variantId" in productOrItem) {
+      if ("variantId" in productOrItem && productOrItem.variantId) {
         variantId = productOrItem.variantId;
         productId = productOrItem.productId;
       } else if (
@@ -248,14 +194,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         Array.isArray(productOrItem.variants) &&
         productOrItem.variants.length > 0
       ) {
-        const activeV = productOrItem.variants.find((v: any) => v.is_active !== false);
-        variantId = activeV?.id ?? productOrItem.variants[0]?.id;
+        const activeVariants = productOrItem.variants.filter((v: any) => v.is_active !== false);
+        if (activeVariants.length === 1) {
+          variantId = activeVariants[0].id;
+        } else if (activeVariants.length > 1) {
+          // Multi-variant product: redirect to detail page if slug available
+          if (typeof window !== "undefined" && productOrItem.slug) {
+            window.location.href = `/store/products/${productOrItem.slug}`;
+            return;
+          }
+        }
       }
     }
 
-    if (!variantId) {
-      variantId = productId;
-    }
     if (!variantId || !productId) return;
 
     // Cache product object if passed
@@ -304,19 +255,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setIsCartOpen(true);
   };
 
-  const removeFromCart = (id: number) => {
-    setRawItems((prev) => prev.filter((item) => item.variantId !== id && item.productId !== id));
+  const removeFromCart = (variantId: number) => {
+    setRawItems((prev) => prev.filter((item) => item.variantId !== variantId));
   };
 
-  const updateQuantity = (id: number, quantity: number) => {
+  const updateQuantity = (variantId: number, quantity: number) => {
     if (!Number.isInteger(quantity)) return;
     if (quantity <= 0) {
-      removeFromCart(id);
+      removeFromCart(variantId);
       return;
     }
     setRawItems((prev) =>
       prev.map((item) => {
-        if (item.variantId === id || item.productId === id) {
+        if (item.variantId === variantId) {
           const v = variantMap.get(item.variantId);
           const cached = productCache.get(item.productId);
           let maxStock = 999;
@@ -341,9 +292,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setRawItems([]);
     try {
       localStorage.setItem(CART_STORAGE_KEY_V2, "[]");
-      if (localStorage.getItem(LEGACY_STORAGE_KEY) !== null) {
-        localStorage.setItem(LEGACY_STORAGE_KEY, "[]");
-      }
     } catch {}
   };
 

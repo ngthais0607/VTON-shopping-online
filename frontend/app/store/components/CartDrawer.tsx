@@ -75,7 +75,7 @@ export function CartDrawer() {
               ) : (
                 cartItems.map(({ product, quantity, variant, variantId }) => (
                   <div
-                    key={variantId || product.id}
+                    key={variantId}
                     className="flex gap-4 p-3 rounded-2xl border border-sky-100 hover:border-sky-200 transition-all bg-white shadow-xs"
                   >
                     {/* Image */}
@@ -100,7 +100,7 @@ export function CartDrawer() {
                         <div className="flex justify-between items-start gap-2">
                           <h4 className="font-semibold text-slate-900 text-sm line-clamp-1">{product.name}</h4>
                           <button
-                            onClick={() => removeFromCart(variantId || product.id)}
+                            onClick={() => removeFromCart(variantId)}
                             className="text-slate-400 hover:text-rose-500 transition-colors p-0.5 cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -141,14 +141,14 @@ export function CartDrawer() {
                         {/* Quantity Controls */}
                         <div className="flex items-center gap-1 bg-sky-50/80 rounded-lg p-1 border border-sky-100">
                           <button
-                            onClick={() => updateQuantity(variantId || product.id, quantity - 1)}
+                            onClick={() => updateQuantity(variantId, quantity - 1)}
                             className="w-5 h-5 rounded-md bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 shadow-xs cursor-pointer"
                           >
                             <Minus className="w-3 h-3" />
                           </button>
                           <span className="w-6 text-center text-xs font-bold text-slate-800">{quantity}</span>
                           <button
-                            onClick={() => updateQuantity(variantId || product.id, quantity + 1)}
+                            onClick={() => updateQuantity(variantId, quantity + 1)}
                             className="w-5 h-5 rounded-md bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 shadow-xs cursor-pointer"
                           >
                             <Plus className="w-3 h-3" />

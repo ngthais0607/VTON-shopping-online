@@ -96,7 +96,6 @@ export default function CheckoutPage() {
     try {
       const payload: CheckoutCommand = {
         items: cartItems.map((item) => ({
-          product_id: item.product.id,
           variant_id: item.variantId,
           quantity: item.quantity,
         })),

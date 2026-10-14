@@ -179,4 +179,48 @@ describe("CartContext V2 (truelook_cart_v2)", () => {
     expect(result.current.cartItems).toHaveLength(0);
     expect(localStorage.getItem("truelook_cart_v2")).toBe("[]");
   });
+
+  it("strictly removes and updates by variantId without colliding with productId", () => {
+    const { result } = renderHook(() => useCart(), { wrapper });
+
+    act(() => {
+      // Item 1: variantId 1, productId 101
+      result.current.addToCart({ id: 101, variants: [{ id: 1, is_active: true }] } as any, 2, 1);
+      // Item 2: variantId 101, productId 2
+      result.current.addToCart({ id: 2, variants: [{ id: 101, is_active: true }] } as any, 3, 101);
+    });
+
+    expect(result.current.cartItems).toHaveLength(2);
+
+    // Removing variantId 1 must NOT remove item 2 even though item 2 has productId: 2 and item 1 has productId: 101
+    act(() => {
+      result.current.removeFromCart(1);
+    });
+
+    expect(result.current.cartItems).toHaveLength(1);
+    expect(result.current.cartItems[0].variantId).toBe(101);
+
+    // Updating variantId 101 must only update item 2
+    act(() => {
+      result.current.updateQuantity(101, 5);
+    });
+    expect(result.current.cartItems[0].quantity).toBe(5);
+  });
+
+  it("auto-selects variant when product has a single active variant", () => {
+    const { result } = renderHook(() => useCart(), { wrapper });
+
+    act(() => {
+      result.current.addToCart({
+        id: 99,
+        name: "Single Variant Item",
+        price: 150000,
+        variants: [{ id: 555, is_active: true }],
+      } as any, 1);
+    });
+
+    expect(result.current.cartItems).toHaveLength(1);
+    expect(result.current.cartItems[0].variantId).toBe(555);
+    expect(result.current.cartItems[0].productId).toBe(99);
+  });
 });

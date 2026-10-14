@@ -74,7 +74,8 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   }, [fetchReviews]);
 
   const handleAddToCart = () => {
-    addToCart(product, quantity);
+    if (isOutOfStock) return;
+    addToCart(product, quantity, selectedVariant?.id);
     setAdded(true);
     setTimeout(() => {
       setAdded(false);
