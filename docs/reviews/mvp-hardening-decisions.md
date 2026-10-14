@@ -169,4 +169,45 @@
 
 ---
 
+### 6. Phase 5: Catalog Workflow & Release Packaging (Tasks 24 - 31)
+- **Item 5.1 (Active-Variant Precondition for Product Activation):**
+  - Enforced business rule in `create_product` and `update_product` (`service.py`): attempting to set `is_active=True` without active variants raises HTTP 400 (`cannot_activate_product_without_variants`).
+  - Added storefront guidance in `frontend/app/admin/products/ProductForm.tsx` ("Thêm biến thể rồi kích hoạt") and visual status warning badge on admin products page.
+  - Added regression test `backend/tests/test_product_activation_precondition.py` (5 passed) and frontend tests in `frontend/tests/product-flows.test.tsx`.
+  - Commit: `a1b29fe` (`fix(products): explain and enforce active-variant activation requirements`).
+- **Item 5.2 (Strict Matrix Validation in `bulk_create_variants`):**
+  - Added `model_validator` in `backend/app/features/products/schemas.py` rejecting partial matrices, blank attributes, and empty payloads with HTTP 422 while preserving explicit and mixed variant creation.
+  - Added regression tests in `backend/tests/test_variants_matrix_validation.py` (6 passed).
+  - Commit: `0a6efa0` (`fix(variants): reject incomplete matrices without breaking explicit creation`).
+- **Item 5.3 (RAM-Optimized Product & Variant Generation):**
+  - Replaced unindexed full-table scans in slug generation and SKU lookup with scoped candidate and prefix queries (`LIKE 'slug-%'`).
+  - Added collision race handling catching database unique violations and translating them to HTTP 409 `ConflictError`.
+  - Added regression test `backend/tests/test_product_uniqueness_query_scope.py` asserting bounded query generation.
+  - Commit: `6335558` (`perf(products): scope slug and SKU uniqueness lookups`).
+- **Item 5.4 (Disallow Numeric-ID in Public Tracking Dispatch):**
+  - Removed ambiguous `isdigit()` fallback branch from `/api/v1/orders/track/{public_code}`, querying exclusively by `Order.public_code`.
+  - Integer order IDs query `public_code` directly and return 404 for internal IDs. Authenticated internal order lookups remain on `GET /orders/{order_id}`.
+  - Commit: `e1e033c` (`fix(tracking): resolve public tracking exclusively by public code`).
+- **Item 5.5a (Runnable Compose Packaging and Aligned Runtime):**
+  - Modernized `backend/Dockerfile` to `python:3.12-slim`, aligned `backend/pyproject.toml` to `py312`, added `backend/.dockerignore`.
+  - Created production multi-stage `frontend/Dockerfile` (`node:22-alpine`, non-root `nextjs` user, pinned `pnpm@10.33.4`, built-in Node healthcheck) and `frontend/.dockerignore`.
+  - Configured `docker-compose.yml` with `api`, `frontend`, one-shot `migrate` with healthcheck ordering (`mariadb`, `redis`, `minio` -> `migrate` -> `api`, `arq_worker` -> `frontend`).
+  - Created root `.env.example` documenting all orchestration environment variables.
+  - Commit: `74198ac` (`build(docker): package healthy commerce services with migration ordering`).
+- **Item 5.5b (Documentation Sync & Migration Alignment):**
+  - Synchronized `MIGRATION_NOTES.md`, `docs/MIGRATION_NOTES.md`, `docs/VTON_READINESS.md`, `README.md`, and decisions log.
+  - Corrected stock adjustment endpoint to `POST /api/v1/variants/{id}/adjust-stock`.
+  - Documented migration `d4e5f6a7b8c9` with irreversible deduplication warning.
+  - Documented background expiration row locking hierarchy (`SKIP LOCKED` on orders, `FOR UPDATE` on variants).
+  - Aligned Alembic head to `d4e5f6a7b8c9` across all reference documentation.
+  - Updated live verified test metrics: Pytest (455 passed, 22 skipped), Vitest (26 files, 102 passed).
+- **Phase 5 Test Suite Gate:**
+  - Full backend unit test suite: 455 passed, 22 skipped, 0 failed.
+  - Full backend imports and `ruff check app tests`: 0 errors.
+  - Full frontend Vitest suite: 26 test files passed, 102 tests passed.
+  - Full frontend ESLint: 0 warnings, 0 errors.
+  - Full frontend TypeScript typecheck: 0 errors (`tsc --noEmit`).
+  - Full frontend Next.js production build: 26 routes compiled cleanly.
+
+
 

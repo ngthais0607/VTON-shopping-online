@@ -8,7 +8,7 @@ This document provides a comprehensive evaluation of the TrueLook platform's arc
 
 | Area | Status | Notes |
 |---|---|---|
-| **(a) CI & Test Suite Integrity** | ✅ **READY** | Full green test suites across Backend (Pytest 328/328 tests) and Frontend (Vitest 21/21 files, 86/86 tests). Expand-and-contract migrations verified across round-trip cycles up to head `c3d4e5f6a7b8`. |
+| **(a) CI & Test Suite Integrity** | ✅ **READY** | Full green test suites across Backend (Pytest 455 passed, 22 skipped) and Frontend (Vitest 26/26 files, 102/102 tests). Expand-and-contract migrations verified across round-trip cycles up to head `d4e5f6a7b8c9`. |
 | **(b) Variant Data Model Stabilization** | ✅ **READY** | Normalized `ProductVariant` entity with size, color, SKU, and MariaDB concurrency safety. Cart and order items strictly key by `variant_id`. Audit history recorded in `inventory_adjustments`. |
 | **(c) Garment Imagery Specification** | ⚠️ **CONDITIONAL** | Support for `kind` (`model_photo`, `flat_lay`, `detail`, `size_chart`, `catalog`) and `color_name` tagging exists in `ProductImage`. Product photography guidelines must enforce transparent/neutral flat-lay images for ML warp models. |
 | **(d) Category Classification Mappings** | ✅ **READY** | Hierarchical category system (`Áo`, `Quần`, `Váy & Đầm`, `Áo khoác`, `Giày`, `Phụ kiện`) maps 1:1 to VTON engine garment classes (upper-body, lower-body, dresses/full-body). |
@@ -21,9 +21,9 @@ This document provides a comprehensive evaluation of the TrueLook platform's arc
 ## 2. Detailed Technical Readiness Assessment
 
 ### (a) CI & Test Suite Stability
-- **Backend:** 100% test pass rate with Pytest (328 tests) against MariaDB 10.11+ and SQLite fallback. Concurrency tests guarantee deadlock-free inventory reservation (`ORDER BY product_id ASC, id ASC FOR UPDATE`).
-- **Frontend:** 100% Vitest pass rate across 21 test files (86 passing tests) and clean TypeScript type-checking (`tsc --noEmit` exits code 0).
-- **Alembic:** Expand-and-contract migration pipeline (`a1b2c3d4e5f6`, `b2c3d4e5f6a7`, `c3d4e5f6a7b8`) tested with full round-trip upgrade/downgrade consistency.
+- **Backend:** 100% test pass rate with Pytest (455 passed, 22 skipped) against MariaDB 10.11+ and SQLite fallback. Concurrency tests guarantee deadlock-free inventory reservation (`ORDER BY product_id ASC, id ASC FOR UPDATE`).
+- **Frontend:** 100% Vitest pass rate across 26 test files (102 passing tests) and clean TypeScript type-checking (`tsc --noEmit` exits code 0).
+- **Alembic:** Expand-and-contract migration pipeline (`a1b2c3d4e5f6`, `b2c3d4e5f6a7`, `c3d4e5f6a7b8`, `d4e5f6a7b8c9`) tested with full round-trip upgrade/downgrade consistency.
 
 ### (b) Variant Data Model (`ProductVariant`)
 - VTON engines require exact garment specifications (e.g., trying on a "Red Size M" vs. "White Size S").
@@ -36,7 +36,7 @@ This document provides a comprehensive evaluation of the TrueLook platform's arc
 ### (c) Flat-Lay vs. On-Model Photography
 - **VTON Input Requirements:** Diffusion-based virtual try-on pipelines (such as IDM-VTON, OOTDiffusion, or CatVTON) require high-resolution flat-lay garment cutouts (white or transparent background, no human model overlapping the clothing).
 - **Database Schema Support:** `ProductImage` includes:
-  - `kind`: `model_photo` vs. `flat_lay` vs. `back_view`.
+  - `kind`: `model_photo`, `flat_lay`, `detail`, `size_chart`, `catalog` (note: `back_view` is not supported).
   - `color_name`: Associates specific photos with corresponding variant colors.
 - **Action Needed:** When catalog merchants upload garments, the admin portal should require at least one `flat_lay` image per variant color to feed into the warp segmentation pre-processor.
 

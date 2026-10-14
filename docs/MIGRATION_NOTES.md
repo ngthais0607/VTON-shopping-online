@@ -6,7 +6,7 @@ This document describes the database migration architecture, zero-downtime expan
 
 ## 1. Migration Chain Overview
 
-The current migration head is `c3d4e5f6a7b8`:
+The current migration head is `d4e5f6a7b8c9`:
 
 ```text
 <base>
@@ -65,7 +65,19 @@ d4e5f6a7b8c9_dedupe_and_add_unique_review_constraint (Integrity phase: Deduplica
 
 ---
 
-## 3. Operational Verification Procedures
+## 3. Concurrency & Inventory Operations
+
+### Variant Stock Adjustments
+- Manual inventory modifications are performed via `POST /api/v1/variants/{id}/adjust-stock` requiring a mandatory audit reason (`set`, `restock`, `damage`, `correction`).
+- Every adjustment creates an immutable audit row in `inventory_adjustments`.
+
+### Order Expiration & Locking Hierarchy
+- Background order expiration sweeps query expired pending orders using `SELECT ... FOR UPDATE SKIP LOCKED` with a batch size limit (default `50`), ensuring long-running cron sweeps never block or wait on active checkout transactions.
+- Inventory restoration for expired orders locks affected `ProductVariant` rows strictly in ascending order by ID with `FOR UPDATE` to release reserved stock safely and prevent database deadlocks.
+
+---
+
+## 4. Operational Verification Procedures
 
 ### Alembic 2-Cycle Roundtrip
 To verify schema reversibility and migration integrity against a clean MariaDB test database:
@@ -83,7 +95,7 @@ $env:DATABASE_URL="mysql+pymysql://root:password123@127.0.0.1:3307/fastapi_found
 
 # Check current revision
 .\.venv\Scripts\alembic.exe current
-# Expected: c3d4e5f6a7b8 (head)
+# Expected: d4e5f6a7b8c9 (head)
 ```
 
 ### Seed Data Idempotency
@@ -99,6 +111,6 @@ Verify that running the seed process multiple times does not produce duplicate r
 
 ---
 
-## 4. Zero VTON Boundary Commitment
+## 5. Zero VTON Boundary Commitment
 - **Zero VTON Schema Objects:** No `vton_*` tables, columns, or foreign keys exist in migrations.
 - **Future Integration:** All VTON deep learning inference pipelines must be integrated in future feature branches behind isolated workers and tables as outlined in `docs/VTON_READINESS.md`.

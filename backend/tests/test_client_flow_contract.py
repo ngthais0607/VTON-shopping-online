@@ -82,8 +82,9 @@ def test_customer_checkout_tracking_and_admin_payment_contract(
     assert len(body["orders"]) == 1
     assert len(body["orders"][0]["items"]) == 2
     order_id = body["orders"][0]["id"]
+    public_code = body["orders"][0]["public_code"]
     assert (
-        client.get(f"/api/v1/orders/track/{order_id}", headers=headers).json()["status"]
+        client.get(f"/api/v1/orders/track/{public_code}", headers=headers).json()["status"]
         == "confirmed"
     )
     assert (
@@ -100,7 +101,7 @@ def test_customer_checkout_tracking_and_admin_payment_contract(
         json={"status": "paid"},
     )
     assert paid.status_code == 200
-    tracked = client.get(f"/api/v1/orders/track/{order_id}", headers=headers).json()
+    tracked = client.get(f"/api/v1/orders/track/{public_code}", headers=headers).json()
     assert tracked["status"] == "paid"
     assert tracked["paid_at"] is not None
     assert (

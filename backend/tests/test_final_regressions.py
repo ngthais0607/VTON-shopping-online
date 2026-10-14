@@ -270,7 +270,7 @@ def test_vietqr_amount_matches_rounded_url_and_canonical_currency(
     assert body["orders"][0]["currency"] == "VND"
     for payment in [
         body["vietqr"],
-        client.get(f"/api/v1/orders/track/{body['orders'][0]['id']}").json()["vietqr"],
+        client.get(f"/api/v1/orders/track/{body['orders'][0]['public_code']}").json()["vietqr"],
     ]:
         assert payment["amount"] == 11
         assert parse_qs(urlparse(payment["qr_url"]).query)["amount"] == ["11"]

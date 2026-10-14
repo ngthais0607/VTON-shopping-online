@@ -62,7 +62,7 @@ alembic downgrade -1
 - **Cart Keying (`truelook_cart_v2`):** Frontend cart now stores items uniquely keyed by `variant_id` (`{ variantId: number, productId: number, quantity: number }`). Legacy `luxestore_cart` and `fastapi_store_cart` keys are safely upgraded or ignored.
 - **Cart Checkout (`POST /api/v1/orders/checkout-cart`):** Checkout payload requires `variant_id` on each item. Server validates stock and creates `OrderItem` referencing `variant_id`, preserving size, color, and SKU snapshots.
 - **Catalog Computed Projections:** `ProductResponse` dynamically computes `price_min`, `price_max`, `available_sizes`, and `available_colors` across active variants.
-- **Variant Inventory Management:** Product stock updates are performed via `POST /api/v1/products/variants/{id}/stock` with mandatory audit reason (`set`, `restock`, `damage`, `correction`).
+- **Variant Inventory Management:** Product stock updates are performed via `POST /api/v1/variants/{id}/adjust-stock` with mandatory audit reason (`set`, `restock`, `damage`, `correction`).
 - **Variant Lookup Endpoint:** `GET /api/v1/products/variants/lookup?ids=1,2,3` allows clients to fetch live pricing and stock status for cached cart items in a single HTTP roundtrip.
 
 ---
@@ -72,9 +72,9 @@ alembic downgrade -1
 ### Row Locking Hierarchy
 To prevent database deadlocks under high-concurrency checkouts and expiration sweeps:
 1. All candidate product IDs are discovered first without locks.
-2. `Product` rows are locked with `FOR UPDATE` strictly in ascending order by `id`.
+2. `Product` and `ProductVariant` rows are locked with `FOR UPDATE` strictly in ascending order by `id`.
 3. `Order` rows are locked with `FOR UPDATE` strictly after product rows.
-4. Background order expiration uses `SELECT ... FOR UPDATE SKIP LOCKED` with a batch size limit (default `50`), ensuring long-running cron jobs never block or wait on active checkout transactions.
+4. Background order expiration uses `SELECT ... FOR UPDATE SKIP LOCKED` with a batch size limit (default `50`), ensuring long-running cron jobs never block or wait on active checkout transactions. Inventory restoration locks affected `ProductVariant` rows strictly in ascending order with `FOR UPDATE` to release reserved quantities without deadlocks.
 
 ---
 
@@ -143,3 +143,4 @@ To prevent database deadlocks under high-concurrency checkouts and expiration sw
 - **VietQR Webhook Verification:** Merchant payment notification authentication uses timing-safe static secret verification (`hmac.compare_digest`) provided in the `X-Webhook-Secret` HTTP header. The webhook payload body is not cryptographically signed with HMAC-SHA256 and does not include timestamp replay defense. This aligns with standard Vietnamese banking webhook aggregators which push static shared secrets.
 - **Asynchronous Email Queue Reliability:** Outbound order confirmation emails are dispatched using ARQ over Redis via best-effort enqueue. While enqueue failures log structured errors with associated `order_id` and metadata, there is currently no persistent database dead-letter queue table for automated resending.
 - **Irreversible Migration Rollback:** Downgrading past migration `d4a7c8e91f23` drops the `order_items` and `product_reviews` tables. Order-item line records and review content will be permanently lost unless restored from a pre-downgrade database snapshot.
+- **Irreversible Review Deduplication (`d4e5f6a7b8c9`):** Upgrading through `d4e5f6a7b8c9` permanently deletes older duplicate reviews per `(user_id, product_id)` to enforce the `uq_product_reviews_user_product` unique constraint. Downgrading removes the constraint but cannot restore the deleted duplicate review records.
