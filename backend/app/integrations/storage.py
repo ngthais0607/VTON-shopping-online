@@ -25,12 +25,16 @@ class ProductStorage(Protocol):
 class MinioProductStorage:
     def __init__(self, settings: Settings) -> None:
         self._bucket = settings.minio_bucket
-        self._external_url = settings.minio_external_url.rstrip("/")
+        if settings.minio_external_url and settings.minio_external_url.strip():
+            self._external_url = settings.minio_external_url.rstrip("/")
+        else:
+            scheme = "https" if settings.minio_secure else "http"
+            self._external_url = f"{scheme}://{settings.minio_endpoint.rstrip('/')}"
         self._client = Minio(
             endpoint=settings.minio_endpoint,
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
-            secure=False,
+            secure=settings.minio_secure,
         )
 
     def ensure_bucket(self) -> None:

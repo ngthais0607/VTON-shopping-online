@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     minio_access_key: str = Field(min_length=1)
     minio_secret_key: str = Field(min_length=1)
     minio_bucket: str = "product-images"
+    minio_secure: bool = False
     minio_external_url: str = ""
 
     vietqr_bank_id: str = Field(min_length=1)
@@ -67,7 +68,9 @@ class Settings(BaseSettings):
     def derive_minio_external_url(cls, value: Any, info: ValidationInfo) -> str:
         if isinstance(value, str) and value.strip():
             return value
-        return f"http://{info.data['minio_endpoint']}"
+        endpoint = info.data.get("minio_endpoint", "localhost:9000")
+        scheme = "https" if info.data.get("minio_secure", False) else "http"
+        return f"{scheme}://{endpoint}"
 
 
 @lru_cache
