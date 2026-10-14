@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.features.orders.model import Order
+from app.features.orders.model import Order, OrderItem
 from app.features.products.model import Product
 from app.features.users.model import User
 from app.worker import (
@@ -175,10 +175,10 @@ def test_expiration_only_changes_expired_vietqr_pending_orders(db_session):
     db_session.add(product)
     db_session.commit()
     expired_vietqr = Order(
-        product_id=product.id,
-        product_name=product.name,
-        unit_price=100,
-        quantity=1,
+        product_id=None,
+        product_name=None,
+        unit_price=None,
+        quantity=None,
         total_amount=100,
         currency="USD",
         status="pending",
@@ -189,10 +189,10 @@ def test_expiration_only_changes_expired_vietqr_pending_orders(db_session):
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
     confirmed_cod = Order(
-        product_id=product.id,
-        product_name=product.name,
-        unit_price=100,
-        quantity=1,
+        product_id=None,
+        product_name=None,
+        unit_price=None,
+        quantity=None,
         total_amount=100,
         currency="USD",
         status="confirmed",
@@ -203,6 +203,34 @@ def test_expiration_only_changes_expired_vietqr_pending_orders(db_session):
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
     db_session.add_all([expired_vietqr, confirmed_cod])
+    db_session.flush()
+
+    variant = product.variants[0]
+    item1 = OrderItem(
+        order_id=expired_vietqr.id,
+        product_id=product.id,
+        product_name=product.name,
+        variant_id=variant.id,
+        sku=variant.sku,
+        size=variant.size,
+        color_name=variant.color_name,
+        quantity=1,
+        unit_price=100,
+        subtotal=100,
+    )
+    item2 = OrderItem(
+        order_id=confirmed_cod.id,
+        product_id=product.id,
+        product_name=product.name,
+        variant_id=variant.id,
+        sku=variant.sku,
+        size=variant.size,
+        color_name=variant.color_name,
+        quantity=1,
+        unit_price=100,
+        subtotal=100,
+    )
+    db_session.add_all([item1, item2])
     db_session.commit()
     expired_vietqr_id = expired_vietqr.id
     confirmed_cod_id = confirmed_cod.id

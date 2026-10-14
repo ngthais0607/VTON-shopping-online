@@ -40,7 +40,7 @@ def test_customer_checkout_tracking_and_admin_payment_contract(
     admin_headers = {
         "Authorization": f"Bearer {create_access_token({'sub': str(admin.id)})}"
     }
-    product_ids = []
+    variant_ids = []
     for name in ("Flow shirt", "Flow jacket"):
         response = client.post(
             "/api/v1/products",
@@ -48,13 +48,15 @@ def test_customer_checkout_tracking_and_admin_payment_contract(
             json={"name": name, "price": 25, "stock_quantity": 3, "currency": "VND"},
         )
         assert response.status_code == 201
-        product_ids.append(response.json()["id"])
+        slug = response.json()["slug"]
+        detail = client.get(f"/api/v1/products/by-slug/{slug}", headers=admin_headers).json()
+        variant_ids.append(detail["variants"][0]["id"])
     checkout = client.post(
         "/api/v1/orders/checkout-cart",
         headers=headers,
         json={
             "items": [
-                {"product_id": product_id, "quantity": 1} for product_id in product_ids
+                {"variant_id": variant_id, "quantity": 1} for variant_id in variant_ids
             ],
             "customer_name": "Flow Customer",
             "customer_phone": "0987654321",

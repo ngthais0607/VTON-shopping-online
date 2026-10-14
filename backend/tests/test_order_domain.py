@@ -76,7 +76,7 @@ def test_duplicate_cart_lines_aggregate_before_stock_check():
 @pytest.mark.parametrize("quantity", [0, -1])
 def test_non_positive_cart_quantity_is_rejected(quantity):
     with pytest.raises(InvalidCartItemError):
-        aggregate_cart_items([CartItemRequest(variant_id=5, quantity=quantity)])
+        aggregate_cart_items([CartItemRequest.model_construct(variant_id=5, quantity=quantity)])
 
 
 @pytest.mark.parametrize(

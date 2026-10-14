@@ -57,12 +57,11 @@ def test_checkout_final_unit_cannot_be_oversold():
     setup_session.commit()
 
     user_id = user.id
-    product_id = product.id
     variant_id = variant.id
     setup_session.close()
 
     checkout = CheckoutCommand(
-        items=[{"product_id": product_id, "variant_id": variant_id, "quantity": 1}],
+        items=[{"variant_id": variant_id, "quantity": 1}],
         customer_name="Concurrent Buyer",
         customer_phone="0123456789",
         shipping_address="123 Concurrency Street",
@@ -152,14 +151,14 @@ def test_multi_item_checkout_atomicity_under_concurrency():
     setup_session.commit()
 
     user_id = user.id
-    pid_a, vid_a = product_a.id, variant_a.id
-    pid_b, vid_b = product_b.id, variant_b.id
+    vid_a = variant_a.id
+    vid_b = variant_b.id
     setup_session.close()
 
     checkout = CheckoutCommand(
         items=[
-            {"product_id": pid_a, "variant_id": vid_a, "quantity": 1},
-            {"product_id": pid_b, "variant_id": vid_b, "quantity": 2},
+            {"variant_id": vid_a, "quantity": 1},
+            {"variant_id": vid_b, "quantity": 2},
         ],
         customer_name="Multi Item Buyer",
         customer_phone="0987654321",

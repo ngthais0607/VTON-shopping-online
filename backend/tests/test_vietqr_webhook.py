@@ -1,4 +1,4 @@
-from app.features.orders.model import Order, Payment
+from app.features.orders.model import Order, OrderItem, Payment
 from app.features.products.model import Product
 
 SECRET = "test-webhook-secret-32-chars-long-abc"
@@ -18,11 +18,12 @@ def setup_test_order(db_session, total_amount=100.0, status="pending", reserved=
     db_session.refresh(product)
 
     order = Order(
-        product_id=product.id,
-        product_name=product.name,
-        unit_price=total_amount,
-        quantity=1,
+        product_id=None,
+        product_name=None,
+        unit_price=None,
+        quantity=None,
         total_amount=total_amount,
+        currency="VND",
         status=status,
         customer_name="Buyer",
         customer_phone="0123456789",
@@ -30,6 +31,22 @@ def setup_test_order(db_session, total_amount=100.0, status="pending", reserved=
         payment_method="vietqr",
     )
     db_session.add(order)
+    db_session.flush()
+
+    variant = product.variants[0]
+    item = OrderItem(
+        order_id=order.id,
+        product_id=product.id,
+        product_name=product.name,
+        unit_price=total_amount,
+        quantity=1,
+        subtotal=total_amount,
+        variant_id=variant.id,
+        sku=variant.sku,
+        size=variant.size,
+        color_name=variant.color_name,
+    )
+    db_session.add(item)
     db_session.commit()
     db_session.refresh(order)
     return order, product

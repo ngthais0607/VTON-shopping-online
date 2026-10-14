@@ -44,7 +44,7 @@ def test_order_lookup_hides_another_customers_order(client, db_session, mock_use
     created = client.post(
         "/api/v1/orders/checkout-cart",
         json={
-            "items": [{"product_id": product.id, "quantity": 1}],
+            "items": [{"variant_id": product.variants[0].id, "quantity": 1}],
             "customer_name": "Buyer",
             "customer_phone": "123",
             "shipping_address": "Address",
@@ -72,7 +72,7 @@ def test_checkout_reports_typed_stock_conflict(client, db_session, mock_user_aut
     response = client.post(
         "/api/v1/orders/checkout-cart",
         json={
-            "items": [{"product_id": product.id, "quantity": 2}],
+            "items": [{"variant_id": product.variants[0].id, "quantity": 2}],
             "customer_name": "Buyer",
             "customer_phone": "123",
             "shipping_address": "Address",
@@ -87,8 +87,8 @@ def test_order_list_paginates_newest_first(
 ):
     product = Product(name="Page order", price=12, currency="VND", stock_quantity=4)
     persist(db_session, product)
-    first = _checkout(client, product.id)
-    second = _checkout(client, product.id)
+    first = _checkout(client, product)
+    second = _checkout(client, product)
     assert first.status_code == second.status_code == 201
     first_id = first.json()["orders"][0]["id"]
     second_id = second.json()["orders"][0]["id"]
@@ -117,9 +117,15 @@ def test_missing_order_uses_common_not_found_body(client, db_session, mock_user_
     assert response.json()["code"] == "order_not_found"
 
 
-def _checkout(client, product_id, quantity=1, payment_method="vietqr", **overrides):
+def _checkout(client, target, quantity=1, payment_method="vietqr", **overrides):
+    if hasattr(target, "variants") and target.variants:
+        variant_id = target.variants[0].id
+    elif hasattr(target, "id"):
+        variant_id = target.id
+    else:
+        variant_id = target
     payload = {
-        "items": [{"product_id": product_id, "quantity": quantity}],
+        "items": [{"variant_id": variant_id, "quantity": quantity}],
         "customer_name": "Test Customer",
         "customer_phone": "0123456789",
         "shipping_address": "123 Test Street",
@@ -145,7 +151,7 @@ def test_create_order_success(client, db_session, mock_user_auth):
     persist(db_session, product)
 
     # 2. Gửi yêu cầu đặt hàng sản phẩm này với số lượng là 2
-    response = _checkout(client, product.id, quantity=2)
+    response = _checkout(client, product, quantity=2)
 
     # 3. Kiểm tra kết quả trả về
     assert response.status_code == 201
@@ -174,7 +180,7 @@ def test_create_order_out_of_stock(client, db_session, mock_user_auth):
     persist(db_session, product)
 
     # Cố tình mua 2 sản phẩm (vượt quá tồn kho 1)
-    response = _checkout(client, product.id, quantity=2)
+    response = _checkout(client, product, quantity=2)
 
     # Hệ thống phải báo lỗi 400 Bad Request do hết hàng
     assert response.status_code == 409
@@ -199,7 +205,7 @@ def test_update_order_status_to_paid(
     persist(db_session, product)
 
     # 2. User đặt hàng (sẽ giữ chỗ 2 sản phẩm trong kho)
-    resp_create = _checkout(client, product.id, quantity=2)
+    resp_create = _checkout(client, product, quantity=2)
     order_id = resp_create.json()["orders"][0]["id"]
 
     # 3. Admin cập nhật trạng thái đơn hàng sang "paid"
@@ -234,7 +240,7 @@ def test_update_order_status_to_cancelled(
     persist(db_session, product)
 
     # 2. Đặt hàng 3 đôi giày (reserved = 3)
-    resp_create = _checkout(client, product.id, quantity=3)
+    resp_create = _checkout(client, product, quantity=3)
     order_id = resp_create.json()["orders"][0]["id"]
 
     # 3. Admin cập nhật đơn hàng thành "cancelled"
@@ -254,7 +260,7 @@ def _create_trackable_order(client, db_session, mock_user_auth):
     product = Product(name="Track Watch", price=150.0, currency="VND", stock_quantity=5)
     persist(db_session, product)
 
-    resp_create = _checkout(client, product.id)
+    resp_create = _checkout(client, product)
     assert resp_create.status_code == 201
     return resp_create.json()["orders"][0]["id"]
 
@@ -354,7 +360,7 @@ def test_checkout_persists_fulfillment_fields(client, db_session, mock_user_auth
     )
     persist(db_session, product)
 
-    response = _checkout(client, product.id)
+    response = _checkout(client, product)
 
     assert response.status_code == 201
     data = response.json()["orders"][0]
@@ -370,7 +376,7 @@ def test_vietqr_checkout_is_pending_and_expires(client, db_session, mock_user_au
     product = Product(name="VietQR Test", price=25.0, currency="VND", stock_quantity=5)
     persist(db_session, product)
 
-    response = _checkout(client, product.id, payment_method="vietqr")
+    response = _checkout(client, product, payment_method="vietqr")
 
     data = response.json()["orders"][0]
     assert data["status"] == "pending"
@@ -383,7 +389,7 @@ def test_cod_checkout_is_confirmed_without_expiration(
     product = Product(name="COD Test", price=25.0, currency="USD", stock_quantity=5)
     persist(db_session, product)
 
-    response = _checkout(client, product.id, payment_method="cod")
+    response = _checkout(client, product, payment_method="cod")
 
     data = response.json()["orders"][0]
     assert data["status"] == "confirmed"
@@ -403,7 +409,7 @@ def test_checkout_rejects_unknown_payment_method_with_422(
     )
     persist(db_session, product)
 
-    response = _checkout(client, product.id, payment_method="cashapp")
+    response = _checkout(client, product, payment_method="cashapp")
 
     assert response.status_code == 422
 
@@ -430,7 +436,7 @@ def test_enqueue_failure_does_not_rollback_committed_order(
     persist(db_session, product)
 
     fake_order_queue.enqueue.side_effect = RuntimeError("redis down")
-    response = _checkout(client, product.id)
+    response = _checkout(client, product)
 
     assert response.status_code == 201
     # Under F0.4, legacy Order.product_id is NULL; verify committed order via OrderItem
@@ -471,7 +477,7 @@ def test_allowed_order_transitions_update_inventory(
         stock_quantity=5,
     )
     persist(db_session, product)
-    checkout = _checkout(client, product.id, quantity=2, payment_method=payment_method)
+    checkout = _checkout(client, product, quantity=2, payment_method=payment_method)
     order_id = checkout.json()["orders"][0]["id"]
 
     response = client.put(
@@ -510,7 +516,7 @@ def test_rejected_order_transitions_do_not_mutate_inventory(
         stock_quantity=5,
     )
     persist(db_session, product)
-    checkout = _checkout(client, product.id, quantity=2, payment_method=payment_method)
+    checkout = _checkout(client, product, quantity=2, payment_method=payment_method)
     order_id = checkout.json()["orders"][0]["id"]
     if initial_terminal:
         assert (
@@ -561,7 +567,7 @@ def test_unknown_order_status_returns_422(
 ):
     product = Product(name="Unknown status", price=30, currency="VND", stock_quantity=5)
     persist(db_session, product)
-    checkout = _checkout(client, product.id)
+    checkout = _checkout(client, product)
     order_id = checkout.json()["orders"][0]["id"]
 
     response = client.put(
@@ -578,8 +584,8 @@ def test_duplicate_cart_items_are_aggregated(client, db_session, mock_user_auth)
     persist(db_session, product)
     payload = {
         "items": [
-            {"product_id": product.id, "quantity": 2},
-            {"product_id": product.id, "quantity": 3},
+            {"variant_id": product.variants[0].id, "quantity": 2},
+            {"variant_id": product.variants[0].id, "quantity": 3},
         ],
         "customer_name": "Duplicate Buyer",
         "customer_phone": "0123456789",
@@ -603,8 +609,8 @@ def test_invalid_item_rolls_back_all_orders_and_reservations(
     persist(db_session, product)
     payload = {
         "items": [
-            {"product_id": product.id, "quantity": 2},
-            {"product_id": 999999, "quantity": 1},
+            {"variant_id": product.variants[0].id, "quantity": 2},
+            {"variant_id": 999999, "quantity": 1},
         ],
         "customer_name": "Atomic Buyer",
         "customer_phone": "0123456789",
@@ -617,7 +623,7 @@ def test_invalid_item_rolls_back_all_orders_and_reservations(
     with pytest.raises(ProductNotFoundError):
         asyncio.run(checkout_cart(db_session, mock_user_auth, checkout, AsyncMock()))
 
-    assert db_session.query(Order).filter(Order.product_id == product.id).count() == 0
+    assert db_session.query(Order).count() == 0
     assert product.reserved_quantity == 0
 
 
@@ -625,7 +631,7 @@ def test_out_of_stock_returns_409(client, db_session, mock_user_auth):
     product = Product(name="Stock conflict", price=20, currency="VND", stock_quantity=1)
     persist(db_session, product)
 
-    response = _checkout(client, product.id, quantity=2)
+    response = _checkout(client, product, quantity=2)
 
     assert response.status_code == 409
 
@@ -649,7 +655,7 @@ def test_checkout_enqueues_emails_only_after_commit(
 
     fake_order_queue.enqueue.side_effect = record_enqueue
     command = CheckoutCommand(
-        items=[{"product_id": product.id, "quantity": 1}],
+        items=[{"variant_id": product.variants[0].id, "quantity": 1}],
         customer_name="Buyer",
         customer_phone="123",
         shipping_address="Address",
@@ -674,7 +680,7 @@ def test_payment_email_failure_does_not_fail_committed_status_update(
         name="Payment queue failure", price=20, currency="VND", stock_quantity=2
     )
     persist(db_session, product)
-    checkout = _checkout(client, product.id)
+    checkout = _checkout(client, product)
     order_id = checkout.json()["orders"][0]["id"]
 
     fake_order_queue.enqueue.side_effect = RuntimeError("redis down")
@@ -690,7 +696,7 @@ def test_orders_created_with_unique_public_code_and_trackable(client, db_session
     res = client.post(
         "/api/v1/orders/checkout-cart",
         json={
-            "items": [{"product_id": product.id, "quantity": 1}],
+            "items": [{"variant_id": product.variants[0].id, "quantity": 1}],
             "customer_name": "Buyer",
             "customer_phone": "0987654321",
             "shipping_address": "Test Address",
@@ -737,8 +743,8 @@ def test_new_order_leaves_legacy_product_columns_null(client, db_session, mock_u
         "/api/v1/orders/checkout-cart",
         json={
             "items": [
-                {"product_id": product1.id, "quantity": 1},
-                {"product_id": product2.id, "quantity": 2},
+                {"variant_id": product1.variants[0].id, "quantity": 1},
+                {"variant_id": product2.variants[0].id, "quantity": 2},
             ],
             "customer_name": "Buyer",
             "customer_phone": "0987654321",

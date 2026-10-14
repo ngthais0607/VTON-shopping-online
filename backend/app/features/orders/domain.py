@@ -11,8 +11,7 @@ from app.features.orders.model import Order
 
 class CartLine(Protocol):
     quantity: int
-    variant_id: int | None
-    product_id: int | None
+    variant_id: int
 
 
 class InvalidCartItemError(BusinessRuleError):
@@ -35,16 +34,13 @@ def aggregate_cart_items(items: Sequence[CartLine]) -> dict[int, int]:
         raise InvalidCartItemError("Cart items cannot be empty")
     aggregated: dict[int, int] = {}
     for item in items:
-        if item.quantity <= 0:
-            target_id = getattr(item, "variant_id", None) or getattr(item, "product_id", None)
-            raise InvalidCartItemError(
-                f"Invalid quantity {item.quantity} for item ID {target_id}"
-            )
         target_id = getattr(item, "variant_id", None)
-        if target_id is None:
-            target_id = getattr(item, "product_id", None)
-        if target_id is None:
-            raise InvalidCartItemError("Cart item must specify variant_id or product_id")
+        if target_id is None or target_id <= 0:
+            raise InvalidCartItemError("Cart item must specify valid variant_id")
+        if item.quantity <= 0:
+            raise InvalidCartItemError(
+                f"Invalid quantity {item.quantity} for variant ID {target_id}"
+            )
         aggregated[target_id] = aggregated.get(target_id, 0) + item.quantity
     return aggregated
 
@@ -85,38 +81,24 @@ def apply_order_transition(
             f"{current_status.value} to {new_status.value}"
         )
 
-    # If the order has OrderItem lines, adjust each item's variant or product stock
     items = getattr(order, "items", None)
-    if items:
-        for item in items:
-            target = getattr(item, "variant", None)
-            if target is None:
-                target = getattr(item, "product", None)
-            qty = item.quantity or 0
-            if target is not None and getattr(target, "reserved_quantity", None) is not None:
-                if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
-                    target.reserved_quantity = max(0, target.reserved_quantity - qty)
-                    if new_status == OrderStatus.PAID:
-                        target.sold_quantity = (getattr(target, "sold_quantity", 0) or 0) + qty
-                elif (
-                    current_status == OrderStatus.PAID
-                    and new_status == OrderStatus.CANCELLED
-                ):
-                    target.sold_quantity = max(0, (getattr(target, "sold_quantity", 0) or 0) - qty)
-    elif getattr(order, "product", None) is not None:
-        prod = order.product
-        qty = order.quantity or 0
+    if not items:
+        raise RuntimeError(f"Order {order.id} has no order items")
+
+    for item in items:
+        target = getattr(item, "variant", None)
+        if target is None:
+            raise RuntimeError(f"OrderItem {item.id} missing variant reference")
+        qty = item.quantity or 0
         if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
-            if getattr(prod, "reserved_quantity", None) is not None:
-                prod.reserved_quantity = max(0, prod.reserved_quantity - qty)
-            if new_status == OrderStatus.PAID and getattr(prod, "sold_quantity", None) is not None:
-                prod.sold_quantity = (getattr(prod, "sold_quantity", 0) or 0) + qty
+            target.reserved_quantity = max(0, (getattr(target, "reserved_quantity", 0) or 0) - qty)
+            if new_status == OrderStatus.PAID:
+                target.sold_quantity = (getattr(target, "sold_quantity", 0) or 0) + qty
         elif (
             current_status == OrderStatus.PAID
             and new_status == OrderStatus.CANCELLED
         ):
-            if getattr(prod, "sold_quantity", None) is not None:
-                prod.sold_quantity = max(0, (getattr(prod, "sold_quantity", 0) or 0) - qty)
+            target.sold_quantity = max(0, (getattr(target, "sold_quantity", 0) or 0) - qty)
 
 
     order.status = new_status.value

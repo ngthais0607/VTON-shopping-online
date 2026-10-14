@@ -88,7 +88,7 @@ def test_product_patch_serializes_with_checkout():
         with sessions() as session:
             user = session.get(User, user_id)
             command = CheckoutCommand(
-                items=[{"product_id": product_id, "variant_id": variant_id, "quantity": 1}],
+                items=[{"variant_id": variant_id, "quantity": 1}],
                 customer_name="Buyer",
                 customer_phone="123",
                 shipping_address="Home",

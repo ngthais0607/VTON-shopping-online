@@ -375,13 +375,13 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
     expiring_order.items = [item]
     setup.add(expiring_order)
     setup.commit()
-    user_id, product_id, variant_id, expiring_id = user.id, product.id, variant.id, expiring_order.id
+    user_id, variant_id, expiring_id = user.id, variant.id, expiring_order.id
     setup.close()
 
     checkout_locked = Event()
     expiration_discovered = Event()
     command = CheckoutCommand(
-        items=[{"product_id": product_id, "variant_id": variant_id, "quantity": 1}],
+        items=[{"variant_id": variant_id, "quantity": 1}],
         customer_name="Later Buyer",
         customer_phone="456",
         shipping_address="Address",

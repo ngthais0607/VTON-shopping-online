@@ -122,7 +122,7 @@ def test_create_review_verified_buyer(client, mock_user_auth, db_session):
     order_resp = client.post(
         "/api/v1/orders/checkout-cart",
         json={
-            "items": [{"product_id": product.id, "quantity": 1}],
+            "items": [{"variant_id": product.variants[0].id, "quantity": 1}],
             "customer_name": "Verified Buyer",
             "customer_phone": "0123456789",
             "shipping_address": "123 Review Street",

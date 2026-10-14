@@ -48,9 +48,10 @@ def product_row(db, **kwargs):
     return product
 
 
-def checkout_payload(product_id, **kwargs):
+def checkout_payload(variant_or_product, **kwargs):
+    variant_id = variant_or_product.variants[0].id if hasattr(variant_or_product, "variants") and variant_or_product.variants else variant_or_product
     return dict(
-        items=[dict(product_id=product_id, quantity=1)],
+        items=[dict(variant_id=variant_id, quantity=1)],
         customer_name="Buyer",
         customer_phone="123",
         shipping_address="Home",
@@ -163,7 +164,7 @@ def test_checkout_hides_deleted_category(client, db_session, mock_user_auth):
     db_session.flush()
     product = product_row(db_session, category_id=category.id)
     response = client.post(
-        "/api/v1/orders/checkout-cart", json=checkout_payload(product.id)
+        "/api/v1/orders/checkout-cart", json=checkout_payload(product)
     )
     assert response.status_code == 404
     assert response.json()["code"] == "product_not_found"
@@ -187,7 +188,7 @@ def test_checkout_storage_bounds(
 ):
     client.app.dependency_overrides[get_task_queue] = lambda: AsyncMock()
     product = product_row(db_session)
-    payload = checkout_payload(product.id)
+    payload = checkout_payload(product)
     payload[field] = "x" * (limit + extra)
     response = client.post("/api/v1/orders/checkout-cart", json=payload)
     assert response.status_code == (201 if extra == 0 else 422)
@@ -222,10 +223,10 @@ def test_invalid_payment_currency_rejected_before_mutation(
         product.currency = currency
         db_session.commit()
         products.append(product)
-    payload = checkout_payload(products[0].id)
+    payload = checkout_payload(products[0])
     payload.update(
         payment_method=method,
-        items=[dict(product_id=p.id, quantity=1) for p in products],
+        items=[dict(variant_id=p.variants[0].id, quantity=1) for p in products],
     )
     response = client.post("/api/v1/orders/checkout-cart", json=payload)
     assert response.status_code == 400
@@ -245,7 +246,7 @@ def test_vietqr_amount_matches_rounded_url_and_canonical_currency(
     product.currency = "vnd"
     db_session.commit()
     response = client.post(
-        "/api/v1/orders/checkout-cart", json=checkout_payload(product.id)
+        "/api/v1/orders/checkout-cart", json=checkout_payload(product)
     )
     assert response.status_code == 201
     body = response.json()
