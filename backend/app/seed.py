@@ -760,6 +760,10 @@ def seed_database(db=None, force: bool = False):
                         subtotal=total,
                     )
                     db.add(order_item)
+                    if status == "paid":
+                        selected_var.sold_quantity += qty
+                    elif status == "pending":
+                        selected_var.reserved_quantity += qty
                     db.commit()
 
                     if status == "paid":

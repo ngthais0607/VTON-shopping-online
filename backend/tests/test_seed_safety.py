@@ -13,16 +13,14 @@ def test_seed_refuses_production_without_force(monkeypatch):
         seed_database(force=False)
 
 
-def test_seed_allows_production_with_force_and_masks_password(monkeypatch):
+def test_seed_allows_production_with_force_and_masks_password(monkeypatch, db_session):
     monkeypatch.setenv("APP_ENV", "production")
     # Capture stdout
     captured_output = io.StringIO()
     monkeypatch.setattr(sys, "stdout", captured_output)
     
-    # Run with force=True, pass db fixture if available or test session
-    # We test that it does not crash with force=True and masks password in output
     try:
-        seed_database(force=True)
+        seed_database(db=db_session, force=True)
     except Exception as e:
         # DB connection could fail in isolated mock, but RuntimeError guard is passed
         assert "Refusing to seed in production" not in str(e)

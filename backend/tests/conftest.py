@@ -65,7 +65,9 @@ def setup_db():
 @pytest.fixture
 def db_session():
     from app.features.dashboard.service import invalidate_dashboard_cache
+    from app.features.products.service import invalidate_catalog_cache
     invalidate_dashboard_cache()
+    invalidate_catalog_cache()
 
     connection = engine.connect()
     transaction = connection.begin()
@@ -81,6 +83,7 @@ def db_session():
         transaction.rollback()
     connection.close()
     invalidate_dashboard_cache()
+    invalidate_catalog_cache()
 
 
 @pytest.fixture
