@@ -1,21 +1,33 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import event, update
 
 from app.features.orders.model import Order, Payment
 from app.features.products.model import Product
+from app.features.products.variant_model import ProductVariant
 
 
 def _product(name, *, stock=30, reserved=0, sold=0, active=True, deleted=False):
-    return Product(
+    prod = Product(
         name=name,
+        slug=f"p-{uuid.uuid4().hex[:8]}",
+        price=10,
+        is_active=active,
+        is_deleted=deleted,
+    )
+    variant = ProductVariant(
+        sku=f"SKU-{uuid.uuid4().hex[:8]}",
+        size="ONE_SIZE",
+        color_name="Default",
         price=10,
         stock_quantity=stock,
         reserved_quantity=reserved,
         sold_quantity=sold,
-        is_active=active,
-        is_deleted=deleted,
+        is_active=True,
     )
+    prod.variants = [variant]
+    return prod
 
 
 def _order(product, status, amount, created_at):

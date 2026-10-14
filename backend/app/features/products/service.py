@@ -56,12 +56,36 @@ def create_product(db: Session, command: ProductCreate) -> Product:
     if variants_input and len(variants_input) > 0:
         existing_skus = set(s[0] for s in db.query(ProductVariant.sku).all())
         for cand in variants_input:
-            sku = cand.get("sku") if isinstance(cand, dict) else getattr(cand, "sku", None)
-            color_name = cand.get("color_name") if isinstance(cand, dict) else getattr(cand, "color_name", "Default")
-            size = cand.get("size") if isinstance(cand, dict) else getattr(cand, "size", "ONE_SIZE")
-            color_hex = cand.get("color_hex") if isinstance(cand, dict) else getattr(cand, "color_hex", None)
-            cand_price = cand.get("price") if isinstance(cand, dict) else getattr(cand, "price", None)
-            cand_stock = cand.get("stock_quantity", 0) if isinstance(cand, dict) else getattr(cand, "stock_quantity", 0)
+            sku = (
+                cand.get("sku")
+                if isinstance(cand, dict)
+                else getattr(cand, "sku", None)
+            )
+            color_name = (
+                cand.get("color_name")
+                if isinstance(cand, dict)
+                else getattr(cand, "color_name", "Default")
+            )
+            size = (
+                cand.get("size")
+                if isinstance(cand, dict)
+                else getattr(cand, "size", "ONE_SIZE")
+            )
+            color_hex = (
+                cand.get("color_hex")
+                if isinstance(cand, dict)
+                else getattr(cand, "color_hex", None)
+            )
+            cand_price = (
+                cand.get("price")
+                if isinstance(cand, dict)
+                else getattr(cand, "price", None)
+            )
+            cand_stock = (
+                cand.get("stock_quantity", 0)
+                if isinstance(cand, dict)
+                else getattr(cand, "stock_quantity", 0)
+            )
 
             if not sku:
                 clean_color = re.sub(r"[^A-Za-z0-9]+", "", color_name).upper() or "DEF"
@@ -97,7 +121,9 @@ def create_product(db: Session, command: ProductCreate) -> Product:
     return _get_active_product(db, product_id, is_admin=True)
 
 
-def list_products(db: Session, filters: ProductFilters, is_admin: bool = False) -> Page[Product]:
+def list_products(
+    db: Session, filters: ProductFilters, is_admin: bool = False
+) -> Page[Product]:
     query = _active_products_query(db, is_admin=is_admin)
 
     if filters.search:
@@ -113,7 +139,9 @@ def list_products(db: Session, filters: ProductFilters, is_admin: bool = False) 
         query = query.filter(Product.price <= filters.max_price)
     if filters.category_id is not None:
         category_service.get_category(db, filters.category_id)
-        cat_ids = category_service.get_category_and_descendant_ids(db, filters.category_id)
+        cat_ids = category_service.get_category_and_descendant_ids(
+            db, filters.category_id
+        )
         query = query.filter(Product.category_id.in_(cat_ids))
     if is_admin and filters.is_active is not None:
         query = query.filter(Product.is_active.is_(filters.is_active))
@@ -124,18 +152,22 @@ def list_products(db: Session, filters: ProductFilters, is_admin: bool = False) 
     if filters.size:
         query = query.filter(
             Product.variants.any(
-                (ProductVariant.size == filters.size) & (ProductVariant.is_active.is_(True))
+                (ProductVariant.size == filters.size)
+                & (ProductVariant.is_active.is_(True))
             )
         )
     if filters.color:
         query = query.filter(
             Product.variants.any(
-                (ProductVariant.color_name.ilike(filters.color)) & (ProductVariant.is_active.is_(True))
+                (ProductVariant.color_name.ilike(filters.color))
+                & (ProductVariant.is_active.is_(True))
             )
         )
 
     variant_available = (
-        ProductVariant.stock_quantity - ProductVariant.reserved_quantity - ProductVariant.sold_quantity
+        ProductVariant.stock_quantity
+        - ProductVariant.reserved_quantity
+        - ProductVariant.sold_quantity
     )
     if filters.stock_status == StockStatus.IN_STOCK:
         query = query.filter(
@@ -146,7 +178,9 @@ def list_products(db: Session, filters: ProductFilters, is_admin: bool = False) 
     elif filters.stock_status == StockStatus.LOW_STOCK:
         query = query.filter(
             Product.variants.any(
-                (ProductVariant.is_active.is_(True)) & (variant_available > 0) & (variant_available < 20)
+                (ProductVariant.is_active.is_(True))
+                & (variant_available > 0)
+                & (variant_available < 20)
             )
         )
     elif filters.stock_status == StockStatus.OUT_OF_STOCK:
@@ -231,7 +265,9 @@ def lookup_variants(
 
         image_url = None
         if product and product.images:
-            matching = next((img for img in product.images if img.color_name == v.color_name), None)
+            matching = next(
+                (img for img in product.images if img.color_name == v.color_name), None
+            )
             primary = next((img for img in product.images if img.is_primary), None)
             chosen = matching or primary or product.images[0]
             if chosen.object_name.startswith(("http://", "https://")):
@@ -239,7 +275,9 @@ def lookup_variants(
             else:
                 image_url = f"{base_url}/{settings.minio_bucket}/{chosen.object_name}"
 
-        effective_price = float(v.price if v.price is not None else (product.price if product else 0.0))
+        effective_price = float(
+            v.price if v.price is not None else (product.price if product else 0.0)
+        )
         prod_name = product.name if product else "Unavailable"
         prod_slug = product.slug if product else ""
         prod_id = product.id if product else 0
@@ -289,10 +327,7 @@ def lookup_variants(
 
 
 def get_product_facets(db: Session) -> ProductFacetsResponse:
-    products = (
-        _active_products_query(db, is_admin=False)
-        .all()
-    )
+    products = _active_products_query(db, is_admin=False).all()
 
     genders_set = set()
     brands_set = set()
@@ -383,12 +418,11 @@ def update_product(
             else None
         )
 
-    stock_quantity = changes.get("stock_quantity")
+    stock_quantity = changes.pop("stock_quantity", None)
     if stock_quantity is not None:
-        if (
-            (product.reserved_quantity or 0) + (product.sold_quantity or 0)
-            > stock_quantity
-        ):
+        if (product.reserved_quantity or 0) + (
+            product.sold_quantity or 0
+        ) > stock_quantity:
             raise BusinessRuleError(
                 "Reserved and sold quantities cannot exceed total stock",
                 code="invalid_product_inventory",
@@ -399,10 +433,7 @@ def update_product(
 
     if "slug" in changes and changes["slug"]:
         existing_slugs = set(
-            s[0]
-            for s in db.query(Product.slug)
-            .filter(Product.id != product_id)
-            .all()
+            s[0] for s in db.query(Product.slug).filter(Product.id != product_id).all()
         )
         changes["slug"] = generate_unique_slug(
             slugify(changes["slug"]) or "product", existing_slugs
@@ -450,7 +481,9 @@ def _active_products_query(db: Session, is_admin: bool = False) -> Query:
     return query
 
 
-def _get_active_product(db: Session, product_id: int, is_admin: bool = False) -> Product:
+def _get_active_product(
+    db: Session, product_id: int, is_admin: bool = False
+) -> Product:
     product = (
         _active_products_query(db, is_admin=is_admin)
         .filter(Product.id == product_id)
@@ -468,13 +501,17 @@ def _get_active_product(db: Session, product_id: int, is_admin: bool = False) ->
 def _apply_sort(query: Query, sort: ProductSort) -> Query:
     stock_sum = func.coalesce(
         select(func.sum(ProductVariant.stock_quantity))
-        .where(ProductVariant.product_id == Product.id, ProductVariant.is_active.is_(True))
+        .where(
+            ProductVariant.product_id == Product.id, ProductVariant.is_active.is_(True)
+        )
         .scalar_subquery(),
         0,
     )
     sold_sum = func.coalesce(
         select(func.sum(ProductVariant.sold_quantity))
-        .where(ProductVariant.product_id == Product.id, ProductVariant.is_active.is_(True))
+        .where(
+            ProductVariant.product_id == Product.id, ProductVariant.is_active.is_(True)
+        )
         .scalar_subquery(),
         0,
     )

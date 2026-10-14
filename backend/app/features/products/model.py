@@ -31,9 +31,7 @@ def _generate_default_product_slug(context):
 
 class Product(Base):
     __tablename__ = "products"
-    __table_args__ = (
-        Index("ix_products_gender_active", "gender", "is_active"),
-    )
+    __table_args__ = (Index("ix_products_gender_active", "gender", "is_active"),)
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
@@ -62,86 +60,71 @@ class Product(Base):
     currency = Column(String(10), nullable=False, default="VND")
     is_active = Column(Boolean, default=True, index=True)
 
-    def __init__(self, **kwargs):
-        stock = kwargs.pop("stock_quantity", None)
-        reserved = kwargs.pop("reserved_quantity", None)
-        sold = kwargs.pop("sold_quantity", None)
-        super().__init__(**kwargs)
-        if stock is not None or reserved is not None or sold is not None:
-            if not getattr(self, "variants", None):
-                base_slug = getattr(self, "slug", None) or f"p-{uuid.uuid4().hex[:6]}"
-                self.variants = [
-                    ProductVariant(
-                        sku=f"{base_slug}-DEF".upper()[:64],
-                        size="ONE_SIZE",
-                        color_name="Default",
-                        stock_quantity=stock or 0,
-                        reserved_quantity=reserved or 0,
-                        sold_quantity=sold or 0,
-                        is_active=True,
-                    )
-                ]
+    @property
+    def total_stock(self) -> int:
+        if getattr(self, "variants", None):
+            return sum(
+                v.stock_quantity for v in self.variants if v.is_active is not False
+            )
+        return 0
 
     @property
     def stock_quantity(self) -> int:
-        if getattr(self, "variants", None):
-            return sum(v.stock_quantity for v in self.variants if v.is_active)
-        return getattr(self, "_stock_quantity", 0) or 0
-
-    @stock_quantity.setter
-    def stock_quantity(self, value: int):
-        if getattr(self, "variants", None) and len(self.variants) > 0:
-            self.variants[0].stock_quantity = value
-        else:
-            self._stock_quantity = value
+        return self.total_stock
 
     @property
     def reserved_quantity(self) -> int:
         if getattr(self, "variants", None):
-            return sum(v.reserved_quantity for v in self.variants if v.is_active)
-        return getattr(self, "_reserved_quantity", 0) or 0
-
-    @reserved_quantity.setter
-    def reserved_quantity(self, value: int):
-        if getattr(self, "variants", None) and len(self.variants) > 0:
-            self.variants[0].reserved_quantity = value
-        else:
-            self._reserved_quantity = value
+            return sum(
+                v.reserved_quantity for v in self.variants if v.is_active is not False
+            )
+        return 0
 
     @property
     def sold_quantity(self) -> int:
         if getattr(self, "variants", None):
-            return sum(v.sold_quantity for v in self.variants if v.is_active)
-        return getattr(self, "_sold_quantity", 0) or 0
-
-    @sold_quantity.setter
-    def sold_quantity(self, value: int):
-        if getattr(self, "variants", None) and len(self.variants) > 0:
-            self.variants[0].sold_quantity = value
-        else:
-            self._sold_quantity = value
+            return sum(
+                v.sold_quantity for v in self.variants if v.is_active is not False
+            )
+        return 0
 
     @property
     def price_min(self) -> float:
         if getattr(self, "variants", None):
-            active_variants = [v for v in self.variants if v.is_active]
+            active_variants = [v for v in self.variants if v.is_active is not False]
             if active_variants:
-                return float(min(v.price if v.price is not None else self.price for v in active_variants))
+                return float(
+                    min(
+                        v.price if v.price is not None else self.price
+                        for v in active_variants
+                    )
+                )
         return float(self.price or 0.0)
 
     @property
     def price_max(self) -> float:
         if getattr(self, "variants", None):
-            active_variants = [v for v in self.variants if v.is_active]
+            active_variants = [v for v in self.variants if v.is_active is not False]
             if active_variants:
-                return float(max(v.price if v.price is not None else self.price for v in active_variants))
+                return float(
+                    max(
+                        v.price if v.price is not None else self.price
+                        for v in active_variants
+                    )
+                )
         return float(self.price or 0.0)
 
     @property
-    def available_stock(self) -> int:
+    def total_available(self) -> int:
         if getattr(self, "variants", None):
-            return sum(v.available_stock for v in self.variants if v.is_active)
-        return max(0, self.stock_quantity - self.reserved_quantity - self.sold_quantity)
+            return sum(
+                v.available_stock for v in self.variants if v.is_active is not False
+            )
+        return 0
+
+    @property
+    def available_stock(self) -> int:
+        return self.total_available
 
     @property
     def in_stock(self) -> bool:
@@ -172,7 +155,9 @@ class Product(Base):
     variants = relationship(
         "ProductVariant", back_populates="product", cascade="all, delete-orphan"
     )
-    images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
+    images = relationship(
+        "ProductImage", back_populates="product", cascade="all, delete-orphan"
+    )
     orders = relationship("Order", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
     reviews = relationship(

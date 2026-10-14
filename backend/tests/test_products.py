@@ -25,8 +25,11 @@ def valid_product_payload(**overrides):
 def persist_category(db_session, **values) -> Category:
     if "slug" not in values:
         from app.core.slug import generate_unique_slug
+
         existing_slugs = set(s[0] for s in db_session.query(Category.slug).all())
-        values["slug"] = generate_unique_slug(values.get("name", "category"), existing_slugs)
+        values["slug"] = generate_unique_slug(
+            values.get("name", "category"), existing_slugs
+        )
     category = Category(**values)
     db_session.add(category)
     db_session.commit()
@@ -35,38 +38,9 @@ def persist_category(db_session, **values) -> Category:
 
 
 def persist_product(db_session, **values) -> Product:
-    defaults = {
-        "name": "Catalog product",
-        "price": 25.0,
-        "stock_quantity": 10,
-        "reserved_quantity": 0,
-        "sold_quantity": 0,
-        "currency": "USD",
-        "is_active": True,
-    }
-    merged = defaults | values
-    if "slug" not in merged:
-        from app.core.slug import generate_unique_slug
-        existing_slugs = set(s[0] for s in db_session.query(Product.slug).all())
-        merged["slug"] = generate_unique_slug(merged["name"], existing_slugs)
-    product = Product(**merged)
-    db_session.add(product)
-    db_session.flush()
+    from tests.factories import make_product
 
-    if not product.variants:
-        from app.features.products.variant_model import ProductVariant
-        variant = ProductVariant(
-            product_id=product.id,
-            sku=f"P{product.id}-DEFAULT",
-            size="ONE_SIZE",
-            color_name="Default",
-            stock_quantity=merged.get("stock_quantity", 10),
-            reserved_quantity=merged.get("reserved_quantity", 0),
-            sold_quantity=merged.get("sold_quantity", 0),
-            is_active=merged.get("is_active", True),
-        )
-        db_session.add(variant)
-
+    product = make_product(db_session, **values)
     db_session.commit()
     db_session.refresh(product)
     return product
@@ -92,7 +66,9 @@ def test_create_product_inventory_validation_rejects_invalid_values(
 
 
 def test_create_product_allows_zero_price(client, mock_admin_auth):
-    response = client.post(PRODUCTS_PATH, json=valid_product_payload(name="Freebie", price=0))
+    response = client.post(
+        PRODUCTS_PATH, json=valid_product_payload(name="Freebie", price=0)
+    )
     assert response.status_code == 201
     assert response.json()["price"] == 0.0
 
@@ -404,7 +380,9 @@ def test_patch_product_preserves_inventory_validation(
 
 
 def test_adjust_product_stock_endpoint_is_removed(client, db_session, mock_admin_auth):
-    product = persist_product(db_session, stock_quantity=10, reserved_quantity=2, sold_quantity=1)
+    product = persist_product(
+        db_session, stock_quantity=10, reserved_quantity=2, sold_quantity=1
+    )
 
     res = client.post(
         f"{PRODUCTS_PATH}/{product.id}/adjust-stock",
@@ -445,7 +423,6 @@ def test_create_product_without_variants_defaults_inactive(client, mock_admin_au
     )
     assert res_with_var.status_code == 201
     assert res_with_var.json()["is_active"] is True
-
 
 
 def test_patch_product_rejects_inventory_invalid_after_merge(
@@ -595,7 +572,9 @@ def test_get_product_by_slug_not_found(client):
 
 def test_get_product_facets(client, db_session):
     persist_product(db_session, name="Men Shirt", brand="Nike", gender="men", price=100)
-    persist_product(db_session, name="Women Dress", brand="Adidas", gender="women", price=200)
+    persist_product(
+        db_session, name="Women Dress", brand="Adidas", gender="women", price=200
+    )
 
     response = client.get(f"{PRODUCTS_PATH}/facets")
     assert response.status_code == 200
@@ -645,7 +624,9 @@ def test_list_products_fashion_filters(client, db_session):
     assert p2.id in ret_ids
 
 
-def test_update_product_activation_requires_active_variant(client, db_session, mock_admin_auth):
+def test_update_product_activation_requires_active_variant(
+    client, db_session, mock_admin_auth
+):
     p = persist_product(db_session, name="Inactive Item", is_active=False)
     # Mark all variants inactive
     for v in p.variants:
@@ -658,4 +639,3 @@ def test_update_product_activation_requires_active_variant(client, db_session, m
     )
     assert response.status_code == 409
     assert response.json()["code"] == "no_active_variants"
-

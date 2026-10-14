@@ -13,9 +13,11 @@ from app.features.orders.service import (
     checkout_cart,
 )
 from app.features.products.model import Product
+from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
 from app.integrations.queue import get_task_queue
 from app.main import app
+from tests.factories import make_product
 
 
 def persist(db_session, entity):
@@ -39,7 +41,9 @@ def test_admin_order_list_uses_page_contract(client, db_session, mock_admin_auth
 
 
 def test_order_lookup_hides_another_customers_order(client, db_session, mock_user_auth):
-    product = Product(name="Hidden order", price=20, currency="VND", stock_quantity=2)
+    product = make_product(
+        db_session, name="Hidden order", price=20, currency="VND", stock_quantity=2
+    )
     persist(db_session, product)
     created = client.post(
         "/api/v1/orders/checkout-cart",
@@ -67,7 +71,9 @@ def test_order_lookup_hides_another_customers_order(client, db_session, mock_use
 
 
 def test_checkout_reports_typed_stock_conflict(client, db_session, mock_user_auth):
-    product = Product(name="One left", price=20, currency="VND", stock_quantity=1)
+    product = make_product(
+        db_session, name="One left", price=20, currency="VND", stock_quantity=1
+    )
     persist(db_session, product)
     response = client.post(
         "/api/v1/orders/checkout-cart",
@@ -85,7 +91,9 @@ def test_checkout_reports_typed_stock_conflict(client, db_session, mock_user_aut
 def test_order_list_paginates_newest_first(
     client, db_session, mock_user_auth, mock_admin_auth
 ):
-    product = Product(name="Page order", price=12, currency="VND", stock_quantity=4)
+    product = make_product(
+        db_session, name="Page order", price=12, currency="VND", stock_quantity=4
+    )
     persist(db_session, product)
     first = _checkout(client, product)
     second = _checkout(client, product)
@@ -139,7 +147,8 @@ def _checkout(client, target, quantity=1, payment_method="vietqr", **overrides):
 def test_create_order_success(client, db_session, mock_user_auth):
     """Kiểm tra luồng đặt hàng thành công và tự động giữ chỗ kho hàng"""
     # 1. Tạo một sản phẩm mẫu trong database kiểm thử
-    product = Product(
+    product = make_product(
+        db_session,
         name="Mũ bảo hiểm Test",
         price=50.0,
         currency="VND",
@@ -168,7 +177,8 @@ def test_create_order_success(client, db_session, mock_user_auth):
 def test_create_order_out_of_stock(client, db_session, mock_user_auth):
     """Kiểm tra đặt hàng thất bại khi vượt quá số lượng trong kho"""
     # Tạo sản phẩm chỉ có 1 sản phẩm trong kho
-    product = Product(
+    product = make_product(
+        db_session,
         name="Sản phẩm hiếm",
         price=10.0,
         currency="VND",
@@ -193,7 +203,8 @@ def test_update_order_status_to_paid(
 ):
     """Kiểm tra: Khi đơn hàng chuyển sang 'paid', kho reserved giảm và sold tăng"""
     # 1. Tạo sản phẩm mẫu có sẵn
-    product = Product(
+    product = make_product(
+        db_session,
         name="Áo khoác Test",
         price=100.0,
         currency="VND",
@@ -228,7 +239,8 @@ def test_update_order_status_to_cancelled(
 ):
     """Kiểm tra: Khi đơn hàng chuyển sang 'cancelled', kho reserved được giải phóng"""
     # 1. Tạo sản phẩm
-    product = Product(
+    product = make_product(
+        db_session,
         name="Giày thể thao Test",
         price=80.0,
         currency="VND",
@@ -257,7 +269,9 @@ def test_update_order_status_to_cancelled(
 
 
 def _create_trackable_order(client, db_session, mock_user_auth):
-    product = Product(name="Track Watch", price=150.0, currency="VND", stock_quantity=5)
+    product = make_product(
+        db_session, name="Track Watch", price=150.0, currency="VND", stock_quantity=5
+    )
     persist(db_session, product)
 
     resp_create = _checkout(client, product)
@@ -325,7 +339,9 @@ def test_track_order_hides_order_from_other_customer(
     assert response.status_code == 404
 
 
-def test_vietqr_webhook_rejects_unauthenticated_request(client, db_session, mock_user_auth):
+def test_vietqr_webhook_rejects_unauthenticated_request(
+    client, db_session, mock_user_auth
+):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
     app.dependency_overrides.pop(get_current_user, None)
 
@@ -355,8 +371,12 @@ def test_public_expire_route_is_removed(client, db_session, mock_user_auth):
 
 
 def test_checkout_persists_fulfillment_fields(client, db_session, mock_user_auth):
-    product = Product(
-        name="Fulfillment Test", price=25.0, currency="VND", stock_quantity=5
+    product = make_product(
+        db_session,
+        name="Fulfillment Test",
+        price=25.0,
+        currency="VND",
+        stock_quantity=5,
     )
     persist(db_session, product)
 
@@ -373,7 +393,9 @@ def test_checkout_persists_fulfillment_fields(client, db_session, mock_user_auth
 
 
 def test_vietqr_checkout_is_pending_and_expires(client, db_session, mock_user_auth):
-    product = Product(name="VietQR Test", price=25.0, currency="VND", stock_quantity=5)
+    product = make_product(
+        db_session, name="VietQR Test", price=25.0, currency="VND", stock_quantity=5
+    )
     persist(db_session, product)
 
     response = _checkout(client, product, payment_method="vietqr")
@@ -386,7 +408,9 @@ def test_vietqr_checkout_is_pending_and_expires(client, db_session, mock_user_au
 def test_cod_checkout_is_confirmed_without_expiration(
     client, db_session, mock_user_auth
 ):
-    product = Product(name="COD Test", price=25.0, currency="USD", stock_quantity=5)
+    product = make_product(
+        db_session, name="COD Test", price=25.0, currency="USD", stock_quantity=5
+    )
     persist(db_session, product)
 
     response = _checkout(client, product, payment_method="cod")
@@ -404,8 +428,8 @@ def test_cod_checkout_is_confirmed_without_expiration(
 def test_checkout_rejects_unknown_payment_method_with_422(
     client, db_session, mock_user_auth
 ):
-    product = Product(
-        name="Invalid Payment", price=25.0, currency="USD", stock_quantity=5
+    product = make_product(
+        db_session, name="Invalid Payment", price=25.0, currency="USD", stock_quantity=5
     )
     persist(db_session, product)
 
@@ -415,8 +439,8 @@ def test_checkout_rejects_unknown_payment_method_with_422(
 
 
 def test_legacy_single_order_endpoint_is_removed(client, db_session, mock_user_auth):
-    product = Product(
-        name="Legacy Endpoint", price=25.0, currency="USD", stock_quantity=5
+    product = make_product(
+        db_session, name="Legacy Endpoint", price=25.0, currency="USD", stock_quantity=5
     )
     persist(db_session, product)
 
@@ -430,8 +454,8 @@ def test_legacy_single_order_endpoint_is_removed(client, db_session, mock_user_a
 def test_enqueue_failure_does_not_rollback_committed_order(
     client, db_session, mock_user_auth, fake_order_queue
 ):
-    product = Product(
-        name="Queue Failure", price=25.0, currency="VND", stock_quantity=5
+    product = make_product(
+        db_session, name="Queue Failure", price=25.0, currency="VND", stock_quantity=5
     )
     persist(db_session, product)
 
@@ -470,7 +494,8 @@ def test_allowed_order_transitions_update_inventory(
     expected_reserved,
     expected_sold,
 ):
-    product = Product(
+    product = make_product(
+        db_session,
         name=f"Transition {payment_method} {new_status}",
         price=30,
         currency="VND",
@@ -509,7 +534,8 @@ def test_rejected_order_transitions_do_not_mutate_inventory(
     initial_terminal,
     rejected_status,
 ):
-    product = Product(
+    product = make_product(
+        db_session,
         name=f"Rejected {payment_method} {rejected_status}",
         price=30,
         currency="VND",
@@ -537,10 +563,17 @@ def test_rejected_transition_service_does_not_mutate_inventory():
     product = Product(
         name="Immutable terminal inventory",
         price=30,
+    )
+    variant = ProductVariant(
+        sku="IMMUTABLE-1",
+        size="ONE_SIZE",
+        color_name="Default",
         stock_quantity=5,
         reserved_quantity=0,
         sold_quantity=2,
+        is_active=True,
     )
+    product.variants = [variant]
     order = Order(
         product=product,
         product_name=product.name,
@@ -565,7 +598,9 @@ def test_rejected_transition_service_does_not_mutate_inventory():
 def test_unknown_order_status_returns_422(
     client, db_session, mock_user_auth, mock_admin_auth
 ):
-    product = Product(name="Unknown status", price=30, currency="VND", stock_quantity=5)
+    product = make_product(
+        db_session, name="Unknown status", price=30, currency="VND", stock_quantity=5
+    )
     persist(db_session, product)
     checkout = _checkout(client, product)
     order_id = checkout.json()["orders"][0]["id"]
@@ -578,8 +613,8 @@ def test_unknown_order_status_returns_422(
 
 
 def test_duplicate_cart_items_are_aggregated(client, db_session, mock_user_auth):
-    product = Product(
-        name="Duplicate cart", price=20, currency="VND", stock_quantity=10
+    product = make_product(
+        db_session, name="Duplicate cart", price=20, currency="VND", stock_quantity=10
     )
     persist(db_session, product)
     payload = {
@@ -605,7 +640,9 @@ def test_duplicate_cart_items_are_aggregated(client, db_session, mock_user_auth)
 def test_invalid_item_rolls_back_all_orders_and_reservations(
     client, db_session, mock_user_auth
 ):
-    product = Product(name="Atomic cart", price=20, currency="VND", stock_quantity=10)
+    product = make_product(
+        db_session, name="Atomic cart", price=20, currency="VND", stock_quantity=10
+    )
     persist(db_session, product)
     payload = {
         "items": [
@@ -628,7 +665,9 @@ def test_invalid_item_rolls_back_all_orders_and_reservations(
 
 
 def test_out_of_stock_returns_409(client, db_session, mock_user_auth):
-    product = Product(name="Stock conflict", price=20, currency="VND", stock_quantity=1)
+    product = make_product(
+        db_session, name="Stock conflict", price=20, currency="VND", stock_quantity=1
+    )
     persist(db_session, product)
 
     response = _checkout(client, product, quantity=2)
@@ -639,8 +678,8 @@ def test_out_of_stock_returns_409(client, db_session, mock_user_auth):
 def test_checkout_enqueues_emails_only_after_commit(
     client, db_session, mock_user_auth, fake_order_queue
 ):
-    product = Product(
-        name="Commit ordering", price=20, currency="VND", stock_quantity=2
+    product = make_product(
+        db_session, name="Commit ordering", price=20, currency="VND", stock_quantity=2
     )
     persist(db_session, product)
     events = []
@@ -676,8 +715,12 @@ def test_payment_email_failure_does_not_fail_committed_status_update(
     mock_admin_auth,
     fake_order_queue,
 ):
-    product = Product(
-        name="Payment queue failure", price=20, currency="VND", stock_quantity=2
+    product = make_product(
+        db_session,
+        name="Payment queue failure",
+        price=20,
+        currency="VND",
+        stock_quantity=2,
     )
     persist(db_session, product)
     checkout = _checkout(client, product)
@@ -690,8 +733,12 @@ def test_payment_email_failure_does_not_fail_committed_status_update(
     assert db_session.get(Order, order_id).status == "paid"
 
 
-def test_orders_created_with_unique_public_code_and_trackable(client, db_session, mock_user_auth):
-    product = Product(name="Trackable Item", price=50, currency="VND", stock_quantity=5)
+def test_orders_created_with_unique_public_code_and_trackable(
+    client, db_session, mock_user_auth
+):
+    product = make_product(
+        db_session, name="Trackable Item", price=50, currency="VND", stock_quantity=5
+    )
     persist(db_session, product)
     res = client.post(
         "/api/v1/orders/checkout-cart",
@@ -734,9 +781,15 @@ def test_order_response_raises_when_public_code_is_missing(db_session):
     assert exc_info.value.code == "order_missing_public_code"
 
 
-def test_new_order_leaves_legacy_product_columns_null(client, db_session, mock_user_auth):
-    product1 = Product(name="Item A", price=50, currency="VND", stock_quantity=5)
-    product2 = Product(name="Item B", price=30, currency="VND", stock_quantity=5)
+def test_new_order_leaves_legacy_product_columns_null(
+    client, db_session, mock_user_auth
+):
+    product1 = make_product(
+        db_session, name="Item A", price=50, currency="VND", stock_quantity=5
+    )
+    product2 = make_product(
+        db_session, name="Item B", price=30, currency="VND", stock_quantity=5
+    )
     persist(db_session, product1)
     persist(db_session, product2)
     res = client.post(

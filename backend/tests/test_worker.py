@@ -15,6 +15,7 @@ from app.worker import (
     send_payment_received_email_task,
     send_welcome_email_task,
 )
+from tests.factories import make_product
 
 
 @pytest.mark.anyio
@@ -37,8 +38,9 @@ async def test_worker_closes_and_rolls_back_session_when_job_fails(monkeypatch):
 @pytest.mark.anyio
 async def test_send_order_confirmation_email_task(db_session):
     # Setup test product, user, and order in test DB
-    product = Product(name="Test Watch", price=100.0, stock_quantity=10)
-    db_session.add(product)
+    product = make_product(
+        db_session, name="Test Watch", price=100.0, stock_quantity=10
+    )
     db_session.commit()
 
     user = User(
@@ -85,8 +87,9 @@ async def test_send_order_confirmation_email_task(db_session):
 
 @pytest.mark.anyio
 async def test_send_payment_received_email_task(db_session):
-    product = Product(name="Paid Watch", price=250.0, stock_quantity=10)
-    db_session.add(product)
+    product = make_product(
+        db_session, name="Paid Watch", price=250.0, stock_quantity=10
+    )
     db_session.commit()
 
     user = User(
@@ -169,10 +172,13 @@ async def test_cron_expire_pending_orders():
 
 
 def test_expiration_only_changes_expired_vietqr_pending_orders(db_session):
-    product = Product(
-        name="Expiration product", price=100, stock_quantity=10, reserved_quantity=2
+    product = make_product(
+        db_session,
+        name="Expiration product",
+        price=100,
+        stock_quantity=10,
+        reserved_quantity=2,
     )
-    db_session.add(product)
     db_session.commit()
     expired_vietqr = Order(
         product_id=None,

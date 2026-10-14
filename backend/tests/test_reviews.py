@@ -3,39 +3,20 @@ from unittest.mock import patch
 import pytest
 
 from app.features.orders.model import Order
-from app.features.products.model import Product
+from tests.factories import make_product
 
 REVIEWS_PATH = "/api/v1/products/{product_id}/reviews"
 
 
 def persist_product(db_session, **overrides):
-    values = {
+    defaults = {
         "name": "Review product",
         "price": 99.99,
         "currency": "VND",
         "stock_quantity": 10,
     }
-    merged = values | overrides
-    if "slug" not in merged:
-        from app.core.slug import generate_unique_slug
-        existing_slugs = set(s[0] for s in db_session.query(Product.slug).all())
-        merged["slug"] = generate_unique_slug(merged["name"], existing_slugs)
-    product = Product(**merged)
-    db_session.add(product)
-    db_session.flush()
-
-    if not product.variants:
-        from app.features.products.variant_model import ProductVariant
-        variant = ProductVariant(
-            product_id=product.id,
-            sku=f"P{product.id}-DEFAULT",
-            size="ONE_SIZE",
-            color_name="Default",
-            stock_quantity=merged.get("stock_quantity", 10),
-            is_active=True,
-        )
-        db_session.add(variant)
-
+    merged = defaults | overrides
+    product = make_product(db_session, **merged)
     db_session.commit()
     db_session.refresh(product)
     return product

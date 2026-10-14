@@ -1,19 +1,19 @@
 from app.features.orders.model import Order, OrderItem, Payment
-from app.features.products.model import Product
+from tests.factories import make_product
 
 SECRET = "test-webhook-secret-32-chars-long-abc"
 WEBHOOK_URL = "/api/v1/orders/vietqr-webhook"
 
 
 def setup_test_order(db_session, total_amount=100.0, status="pending", reserved=1):
-    product = Product(
+    product = make_product(
+        db_session,
         name="Webhook Product",
         price=total_amount,
         stock_quantity=10,
         reserved_quantity=reserved,
         sold_quantity=0,
     )
-    db_session.add(product)
     db_session.commit()
     db_session.refresh(product)
 
@@ -156,7 +156,9 @@ def test_webhook_success_marks_order_paid_and_idempotent(client, db_session):
 
 
 def test_webhook_expired_or_cancelled_order_records_late_payment(client, db_session):
-    order, product = setup_test_order(db_session, total_amount=200.0, status="expired", reserved=0)
+    order, product = setup_test_order(
+        db_session, total_amount=200.0, status="expired", reserved=0
+    )
     payload = {
         "transaction_id": "TXN_LATE_1",
         "amount": 200.0,
@@ -198,7 +200,9 @@ def test_webhook_expired_or_cancelled_order_records_late_payment(client, db_sess
 
 
 def test_get_late_payments_admin_endpoint(client, db_session, mock_admin_auth):
-    order, _ = setup_test_order(db_session, total_amount=300.0, status="expired", reserved=0)
+    order, _ = setup_test_order(
+        db_session, total_amount=300.0, status="expired", reserved=0
+    )
     payload = {
         "transaction_id": "TXN_LATE_ADMIN_1",
         "amount": 300.0,
@@ -216,7 +220,9 @@ def test_get_late_payments_admin_endpoint(client, db_session, mock_admin_auth):
     data = res.json()
     assert "items" in data
     assert data["total"] >= 1
-    item = next(p for p in data["items"] if p["provider_transaction_id"] == "TXN_LATE_ADMIN_1")
+    item = next(
+        p for p in data["items"] if p["provider_transaction_id"] == "TXN_LATE_ADMIN_1"
+    )
     assert item["status"] == "late_payment"
     assert item["order_id"] == order.id
     assert item["customer_name"] == order.customer_name
