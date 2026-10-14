@@ -1,4 +1,6 @@
 
+import uuid
+
 from app.features.orders.model import Order, OrderItem
 from app.features.orders.schemas import mask_customer_name, mask_customer_phone
 from app.features.users.model import User
@@ -14,12 +16,13 @@ def persist_order(
     notes: str = "Leave with security",
     payment_method: str = "vietqr",
     status: str = "pending",
+    public_code: str | None = None,
 ) -> Order:
     product = make_product(db_session, name="Tracking Test Shirt", price=250000.0)
     db_session.flush()
 
     order = Order(
-        public_code="trk-pub-code-1234567890abcdef",
+        public_code=public_code or f"trk-{uuid.uuid4().hex[:16]}",
         user_id=user_id,
         product_id=product.id,
         product_name=product.name,
@@ -151,50 +154,39 @@ def test_public_tracking_single_token_names(client, db_session, mock_user_auth):
     assert data["customer_phone"] == "09******21"
 
 
-def test_public_tracking_numeric_id_requires_auth(client, db_session):
+def test_public_tracking_strictly_uses_public_code(client, db_session):
     owner = User(
         username="order_owner",
         email="owner@example.com",
         password_hash="pw",
         role="customer",
     )
-    other_user = User(
-        username="other_track_user",
-        email="other_track@example.com",
-        password_hash="pw",
-        role="customer",
-    )
-    db_session.add_all([owner, other_user])
+    db_session.add(owner)
     db_session.commit()
     order = persist_order(db_session, user_id=owner.id)
 
-    # 1. Anonymous access to numeric ID route must be rejected with 401
-    anon_resp = client.get(f"/api/v1/orders/track/{order.id}")
-    assert anon_resp.status_code == 401
-    assert anon_resp.json()["code"] == "invalid_token"
+    # 1. Querying with internal integer order ID returns 404 (not found)
+    id_resp = client.get(f"/api/v1/orders/track/{order.id}")
+    assert id_resp.status_code == 404
+    assert id_resp.json()["code"] == "order_not_found"
 
-    from app.core.security import get_current_user_optional
-    from app.main import app
+    # 2. Querying with genuine public_code succeeds anonymously
+    pub_resp = client.get(f"/api/v1/orders/track/{order.public_code}")
+    assert pub_resp.status_code == 200
+    assert pub_resp.json()["public_code"] == order.public_code
 
-    # 2. Another user access to numeric ID route must be 404
-    app.dependency_overrides[get_current_user_optional] = lambda: other_user
-    try:
-        forbidden_resp = client.get(f"/api/v1/orders/track/{order.id}")
-        assert forbidden_resp.status_code == 404
-    finally:
-        app.dependency_overrides.pop(get_current_user_optional, None)
+    # 3. Numeric-only public_code (e.g. "987654321") also resolves anonymously as a public code
+    numeric_code_order = persist_order(
+        db_session,
+        user_id=owner.id,
+    )
+    numeric_code_order.public_code = "987654321"
+    db_session.commit()
 
-    # 3. Authenticated owner access via numeric ID returns masked PublicTrackingResponse
-    app.dependency_overrides[get_current_user_optional] = lambda: owner
-    try:
-        owner_resp = client.get(f"/api/v1/orders/track/{order.id}")
-        assert owner_resp.status_code == 200
-        owner_data = owner_resp.json()
-        assert "shipping_address" not in owner_data
-        assert "user_id" not in owner_data
-        assert owner_data["customer_phone"] == "09******78"
-    finally:
-        app.dependency_overrides.pop(get_current_user_optional, None)
+    num_resp = client.get("/api/v1/orders/track/987654321")
+    assert num_resp.status_code == 200
+    assert num_resp.json()["public_code"] == "987654321"
+    assert num_resp.json()["customer_phone"] == "09******78"
 
 
 def test_private_order_endpoint_preserves_full_order(client, db_session, mock_user_auth):

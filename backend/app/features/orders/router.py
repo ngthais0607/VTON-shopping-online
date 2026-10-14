@@ -2,13 +2,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request,
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.errors import AuthenticationError
 from app.core.rate_limiter import limiter
 from app.core.schemas import Page
 from app.core.security import (
     get_current_admin,
     get_current_user,
-    get_current_user_optional,
 )
 from app.features.orders import service
 from app.features.orders.schemas import (
@@ -155,12 +153,5 @@ def get_orders_by_user(
 def track_order_public(
     public_code: str,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user_optional),
 ):
-    if public_code.isdigit():
-        if current_user is None:
-            raise AuthenticationError(
-                "Could not validate credentials", code="invalid_token"
-            )
-        return service.track_order_public_by_id(db, int(public_code), current_user)
     return service.track_order_by_public_code(db, public_code)

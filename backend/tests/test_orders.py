@@ -278,23 +278,27 @@ def _create_trackable_order(client, db_session, mock_user_auth):
     return resp_create.json()["orders"][0]["id"]
 
 
-def test_track_order_requires_authentication(client, db_session, mock_user_auth):
+def test_track_order_by_id_returns_404_on_public_endpoint(client, db_session, mock_user_auth):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_current_user_optional, None)
 
+    # Integer order ID returns 404 because tracking strictly uses public_code
     response = client.get(f"/api/v1/orders/track/{order_id}")
+    assert response.status_code == 404
+    assert response.json()["code"] == "order_not_found"
 
-    assert response.status_code == 401
 
-
-def test_track_order_owner_can_view(client, db_session, mock_user_auth):
+def test_track_order_public_by_public_code(client, db_session, mock_user_auth):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
+    order = db_session.get(Order, order_id)
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_current_user_optional, None)
 
-    response = client.get(f"/api/v1/orders/track/{order_id}")
+    response = client.get(f"/api/v1/orders/track/{order.public_code}")
 
     assert response.status_code == 200
-    assert response.json()["public_code"]
+    assert response.json()["public_code"] == order.public_code
     assert "id" not in response.json()
     assert "shipping_address" not in response.json()
     timeline_copy = " ".join(
@@ -304,8 +308,22 @@ def test_track_order_owner_can_view(client, db_session, mock_user_auth):
     assert "administrator" in timeline_copy
 
 
-def test_track_order_admin_can_view_any_order(client, db_session, mock_user_auth):
+def test_private_order_by_id_requires_auth_and_ownership(client, db_session, mock_user_auth):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
+
+    # 1. Unauthenticated -> 401
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_current_user_optional, None)
+    res_unauth = client.get(f"/api/v1/orders/{order_id}")
+    assert res_unauth.status_code == 401
+
+    # 2. Owner -> 200
+    app.dependency_overrides[get_current_user] = lambda: mock_user_auth
+    res_owner = client.get(f"/api/v1/orders/{order_id}")
+    assert res_owner.status_code == 200
+    assert res_owner.json()["id"] == order_id
+
+    # 3. Admin -> 200
     admin = User(
         username="tracking_admin",
         email="tracking-admin@example.com",
@@ -315,20 +333,10 @@ def test_track_order_admin_can_view_any_order(client, db_session, mock_user_auth
     db_session.add(admin)
     db_session.commit()
     app.dependency_overrides[get_current_user] = lambda: admin
-    app.dependency_overrides[get_current_user_optional] = lambda: admin
+    res_admin = client.get(f"/api/v1/orders/{order_id}")
+    assert res_admin.status_code == 200
 
-    response = client.get(f"/api/v1/orders/track/{order_id}")
-
-    assert response.status_code == 200
-    assert response.json()["public_code"]
-    assert "id" not in response.json()
-    assert "shipping_address" not in response.json()
-
-
-def test_track_order_hides_order_from_other_customer(
-    client, db_session, mock_user_auth
-):
-    order_id = _create_trackable_order(client, db_session, mock_user_auth)
+    # 4. Other customer -> 404
     other_customer = User(
         username="other_customer",
         email="other-customer@example.com",
@@ -338,11 +346,8 @@ def test_track_order_hides_order_from_other_customer(
     db_session.add(other_customer)
     db_session.commit()
     app.dependency_overrides[get_current_user] = lambda: other_customer
-    app.dependency_overrides[get_current_user_optional] = lambda: other_customer
-
-    response = client.get(f"/api/v1/orders/track/{order_id}")
-
-    assert response.status_code == 404
+    res_other = client.get(f"/api/v1/orders/{order_id}")
+    assert res_other.status_code == 404
 
 
 def test_vietqr_webhook_rejects_unauthenticated_request(
@@ -426,7 +431,7 @@ def test_cod_checkout_is_confirmed_without_expiration(
     assert data["expires_at"] is None
     assert "vietqr" not in response.json()
 
-    tracking_response = client.get(f"/api/v1/orders/track/{data['id']}")
+    tracking_response = client.get(f"/api/v1/orders/track/{data['public_code']}")
     assert tracking_response.status_code == 200
     assert "vietqr" not in tracking_response.json()
 

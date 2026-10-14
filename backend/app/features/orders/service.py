@@ -723,14 +723,6 @@ def track_order_by_public_code(db: Session, public_code: str) -> PublicTrackingR
     return _build_public_tracking_response(order)
 
 
-def track_order_public_by_id(
-    db: Session, order_id: int, user: User | None = None
-) -> PublicTrackingResponse:
-    order = db.get(Order, order_id)
-    if order is None or (user and user.role != "admin" and order.user_id != user.id):
-        raise OrderNotFoundError("Order not found")
-    return _build_public_tracking_response(order)
-
 
 def track_order(
     db: Session, order_id: int, user: User | None = None
