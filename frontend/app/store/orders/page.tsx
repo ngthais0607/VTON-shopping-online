@@ -5,7 +5,7 @@ import { displayDate, formatCurrency } from '@/lib/utils';
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, ApiError } from "@/lib/api";
-import { Order, User } from "@/lib/types";
+import { Order, Page, User } from "@/lib/types";
 import { getOrderStatusPresentation } from "@/lib/order-status";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
@@ -28,8 +28,8 @@ export default function CustomerOrdersPage() {
             setCurrentUser(user);
 
             // 2. Lấy đơn hàng của riêng user này thông qua API /orders/user/{user_id}
-            const ordersData = await apiGet<Order[]>(`/orders/user/${user.id}`);
-            setOrders(ordersData);
+            const ordersData = await apiGet<Page<Order> | Order[]>(`/orders/user/${user.id}?limit=20&offset=0`);
+            setOrders(Array.isArray(ordersData) ? ordersData : ordersData.items);
         } catch (err) {
             console.error("Failed to load customer orders", err);
             // Nếu token hết hạn hoặc chưa đăng nhập, tự động đẩy về trang Login

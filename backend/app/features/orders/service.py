@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from fastapi import BackgroundTasks
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
 from app.core.errors import (
@@ -409,6 +409,7 @@ def list_orders(db: Session, limit: int, offset: int) -> Page[OrderResponse]:
     total = db.query(Order).count()
     orders = (
         db.query(Order)
+        .options(selectinload(Order.items), selectinload(Order.payments))
         .order_by(Order.created_at.desc(), Order.id.desc())
         .offset(offset)
         .limit(limit)
@@ -546,17 +547,29 @@ def confirm_cod(
 
 
 def list_user_orders(
-    db: Session, user_id: int, current_user: User
-) -> list[OrderResponse]:
+    db: Session,
+    user_id: int,
+    current_user: User,
+    limit: int = 10,
+    offset: int = 0,
+) -> Page[OrderResponse]:
     if current_user.role != "admin" and current_user.id != user_id:
         raise ForbiddenError("You do not have permission to access these orders")
+    base_query = db.query(Order).filter(Order.user_id == user_id)
+    total = base_query.count()
     orders = (
-        db.query(Order)
-        .filter(Order.user_id == user_id)
+        base_query.options(selectinload(Order.items), selectinload(Order.payments))
         .order_by(Order.created_at.desc(), Order.id.desc())
+        .offset(offset)
+        .limit(limit)
         .all()
     )
-    return [order_to_response(order) for order in orders]
+    return Page(
+        items=[order_to_response(order) for order in orders],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def _build_public_tracking_response(order: Order) -> PublicTrackingResponse:

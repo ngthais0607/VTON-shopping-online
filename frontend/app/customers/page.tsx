@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiDelete } from "@/lib/api";
 import { useUsers } from '@/hooks/use-users';
 import { PaginationControls } from '@/components/pagination-controls';
-import { User, Order } from "@/lib/types";
+import { User, Order, Page } from "@/lib/types";
 
 import { Header } from "@/components/header";
 import { Card } from "@/components/ui/card";
@@ -66,8 +66,8 @@ export default function CustomersPage() {
     setOrdersError(null);
     setUserOrders([]);
     try {
-      const data = await apiGet<Order[]>(`/orders/user/${user.id}`);
-      setUserOrders(data);
+      const data = await apiGet<Page<Order> | Order[]>(`/orders/user/${user.id}`);
+      setUserOrders(Array.isArray(data) ? data : (data?.items ?? []));
     } catch (err) {
       setOrdersError(err instanceof Error ? err.message : "Failed to load customer orders");
     } finally {

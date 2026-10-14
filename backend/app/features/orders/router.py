@@ -114,15 +114,19 @@ def update_order_status(
 
 @router.get(
     "/user/{user_id}",
-    response_model=list[OrderResponse],
+    response_model=Page[OrderResponse],
     summary="Get orders by user ID",
 )
 def get_orders_by_user(
     user_id: int,
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return service.list_user_orders(db, user_id, current_user)
+    return service.list_user_orders(
+        db, user_id, current_user, limit=limit, offset=offset
+    )
 
 
 @router.get(
