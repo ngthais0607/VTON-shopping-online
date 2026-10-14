@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy import func, or_, select
@@ -20,7 +21,6 @@ from app.features.products.schemas import (
     ProductFilters,
     ProductPatch,
     ProductSort,
-    ProductStockAdjustment,
     StockStatus,
     VariantLookupAdminItem,
     VariantLookupPublicItem,
@@ -34,11 +34,15 @@ def create_product(db: Session, command: ProductCreate) -> Product:
         category = category_service.get_category(db, command.category_id)
 
     data = command.model_dump()
-    stock_qty = data.pop("stock_quantity", 0)
+    data.pop("stock_quantity", None)
+    variants_input = data.pop("variants", None)
 
     existing_slugs = set(s[0] for s in db.query(Product.slug).all())
     base_slug = slugify(data.get("slug")) if data.get("slug") else slugify(data["name"])
     data["slug"] = generate_unique_slug(base_slug or "product", existing_slugs)
+
+    requested_active = data.pop("is_active", False)
+    data["is_active"] = False
 
     product = Product(**data)
     if category is not None:
@@ -48,21 +52,49 @@ def create_product(db: Session, command: ProductCreate) -> Product:
     db.add(product)
     db.flush()
 
-    default_variant = ProductVariant(
-        product_id=product.id,
-        sku=f"P{product.id}-DEFAULT",
-        size="ONE_SIZE",
-        color_name="Default",
-        stock_quantity=stock_qty,
-        reserved_quantity=0,
-        sold_quantity=0,
-        is_active=True,
-    )
-    db.add(default_variant)
+    created_variants = []
+    if variants_input and len(variants_input) > 0:
+        existing_skus = set(s[0] for s in db.query(ProductVariant.sku).all())
+        for cand in variants_input:
+            sku = cand.get("sku") if isinstance(cand, dict) else getattr(cand, "sku", None)
+            color_name = cand.get("color_name") if isinstance(cand, dict) else getattr(cand, "color_name", "Default")
+            size = cand.get("size") if isinstance(cand, dict) else getattr(cand, "size", "ONE_SIZE")
+            color_hex = cand.get("color_hex") if isinstance(cand, dict) else getattr(cand, "color_hex", None)
+            cand_price = cand.get("price") if isinstance(cand, dict) else getattr(cand, "price", None)
+            cand_stock = cand.get("stock_quantity", 0) if isinstance(cand, dict) else getattr(cand, "stock_quantity", 0)
+
+            if not sku:
+                clean_color = re.sub(r"[^A-Za-z0-9]+", "", color_name).upper() or "DEF"
+                clean_size = re.sub(r"[^A-Za-z0-9]+", "", size).upper() or "STD"
+                base_sku = f"{product.slug}-{clean_color}-{clean_size}"[:55]
+                sku = base_sku
+                counter = 2
+                while sku in existing_skus:
+                    sku = f"{base_sku}-{counter}"
+                    counter += 1
+            existing_skus.add(sku)
+            v = ProductVariant(
+                product_id=product.id,
+                sku=sku,
+                size=size.strip(),
+                color_name=color_name.strip(),
+                color_hex=color_hex,
+                price=cand_price if cand_price is not None else product.price,
+                stock_quantity=cand_stock or 0,
+                reserved_quantity=0,
+                sold_quantity=0,
+                is_active=True,
+            )
+            db.add(v)
+            created_variants.append(v)
+        db.flush()
+
+    if created_variants and any(v.is_active for v in created_variants):
+        product.is_active = requested_active
 
     product_id = product.id
     db.commit()
-    return _get_active_product(db, product_id)
+    return _get_active_product(db, product_id, is_admin=True)
 
 
 def list_products(db: Session, filters: ProductFilters, is_admin: bool = False) -> Page[Product]:
@@ -382,28 +414,11 @@ def update_product(
         product.category = category
 
     db.commit()
-    return _get_active_product(db, product_id)
-
-
-def adjust_product_stock(
-    db: Session, product_id: int, command: ProductStockAdjustment
-) -> Product:
-    product = _get_active_product(db, product_id)
-    if (product.reserved_quantity or 0) + (product.sold_quantity or 0) > command.stock_quantity:
-        raise BusinessRuleError(
-            "Reserved and sold quantities cannot exceed total stock",
-            code="invalid_product_inventory",
-        )
-    if product.variants:
-        first_v = product.variants[0]
-        first_v.stock_quantity = command.stock_quantity
-    product.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    return _get_active_product(db, product_id)
+    return _get_active_product(db, product_id, is_admin=True)
 
 
 def delete_product(db: Session, product_id: int) -> None:
-    product = _get_active_product(db, product_id)
+    product = _get_active_product(db, product_id, is_admin=True)
     product.is_deleted = True
     product.is_active = False
     product.deleted_at = datetime.now(timezone.utc)

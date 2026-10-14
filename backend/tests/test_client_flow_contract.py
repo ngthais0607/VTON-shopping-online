@@ -45,7 +45,19 @@ def test_customer_checkout_tracking_and_admin_payment_contract(
         response = client.post(
             "/api/v1/products",
             headers=admin_headers,
-            json={"name": name, "price": 25, "stock_quantity": 3, "currency": "VND"},
+            json={
+                "name": name,
+                "price": 25,
+                "currency": "VND",
+                "is_active": True,
+                "variants": [
+                    {
+                        "size": "M",
+                        "color_name": "Default",
+                        "stock_quantity": 3,
+                    }
+                ],
+            },
         )
         assert response.status_code == 201
         slug = response.json()["slug"]

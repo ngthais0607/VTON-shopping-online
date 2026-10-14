@@ -403,24 +403,49 @@ def test_patch_product_preserves_inventory_validation(
     assert response.status_code == 422
 
 
-def test_adjust_product_stock_endpoint(client, db_session, mock_admin_auth):
+def test_adjust_product_stock_endpoint_is_removed(client, db_session, mock_admin_auth):
     product = persist_product(db_session, stock_quantity=10, reserved_quantity=2, sold_quantity=1)
 
-    # Valid adjustment
     res = client.post(
         f"{PRODUCTS_PATH}/{product.id}/adjust-stock",
         json={"stock_quantity": 15, "reason": "Restocked from warehouse"},
     )
-    assert res.status_code == 200
-    assert res.json()["stock_quantity"] == 15
+    assert res.status_code == 404
 
-    # Invalid adjustment: less than reserved + sold (3)
-    res_invalid = client.post(
-        f"{PRODUCTS_PATH}/{product.id}/adjust-stock",
-        json={"stock_quantity": 2, "reason": "Downsizing"},
+
+def test_create_product_without_variants_defaults_inactive(client, mock_admin_auth):
+    # Without variants, product is draft (is_active=False)
+    res_no_var = client.post(
+        PRODUCTS_PATH,
+        json={
+            "name": "Draft Dress",
+            "price": 100.0,
+            "currency": "USD",
+        },
     )
-    assert res_invalid.status_code == 400
-    assert res_invalid.json()["code"] == "invalid_product_inventory"
+    assert res_no_var.status_code == 201
+    assert res_no_var.json()["is_active"] is False
+
+    # With variants provided, product can be active
+    res_with_var = client.post(
+        PRODUCTS_PATH,
+        json={
+            "name": "Active Shirt",
+            "price": 50.0,
+            "currency": "USD",
+            "is_active": True,
+            "variants": [
+                {
+                    "size": "M",
+                    "color_name": "White",
+                    "stock_quantity": 10,
+                }
+            ],
+        },
+    )
+    assert res_with_var.status_code == 201
+    assert res_with_var.json()["is_active"] is True
+
 
 
 def test_patch_product_rejects_inventory_invalid_after_merge(

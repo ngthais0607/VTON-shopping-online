@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 from app.core.config import get_settings
+from app.features.products.variant_schemas import VariantItem
 
 
 class ProductSort(StrEnum):
@@ -59,13 +60,14 @@ class ProductCreate(BaseModel):
     category_id: int | None = None
     stock_quantity: int = Field(default=0, ge=0)
     currency: str = Field(default="VND", min_length=1, max_length=10)
-    is_active: bool = True
+    is_active: bool = False
     brand: str | None = Field(default=None, max_length=100)
     gender: str = Field(default="unisex", max_length=20)
     material: str | None = Field(default=None, max_length=255)
     fit: str | None = Field(default=None, max_length=50)
     care_instructions: str | None = Field(default=None, max_length=500)
     size_chart: dict[str, Any] | None = None
+    variants: list[VariantItem] | None = None
 
 
 class ProductPatch(BaseModel):
@@ -104,11 +106,6 @@ class ProductPatch(BaseModel):
             if field_name not in nullable_fields and field_value is None:
                 raise ValueError(f"{field_name} cannot be null")
         return value
-
-
-class ProductStockAdjustment(BaseModel):
-    stock_quantity: int = Field(ge=0)
-    reason: str = Field(min_length=1, max_length=500)
 
 
 class CategorySummary(BaseModel):
