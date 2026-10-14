@@ -91,15 +91,15 @@ def apply_order_transition(
             raise RuntimeError(f"OrderItem {item.id} missing variant reference")
         qty = item.quantity or 0
         if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
-            target.reserved_quantity = max(0, (getattr(target, "reserved_quantity", 0) or 0) - qty)
+            target.reserved_quantity = max(
+                0, (getattr(target, "reserved_quantity", 0) or 0) - qty
+            )
             if new_status == OrderStatus.PAID:
                 target.sold_quantity = (getattr(target, "sold_quantity", 0) or 0) + qty
-        elif (
-            current_status == OrderStatus.PAID
-            and new_status == OrderStatus.CANCELLED
-        ):
-            target.sold_quantity = max(0, (getattr(target, "sold_quantity", 0) or 0) - qty)
-
+        elif current_status == OrderStatus.PAID and new_status == OrderStatus.CANCELLED:
+            target.sold_quantity = max(
+                0, (getattr(target, "sold_quantity", 0) or 0) - qty
+            )
 
     order.status = new_status.value
     current_time = now or datetime.now(timezone.utc)
@@ -112,4 +112,3 @@ def apply_order_transition(
         for payment in getattr(order, "payments", []):
             if payment.status == "pending":
                 payment.status = "expired"
-

@@ -33,7 +33,7 @@
 - Consumes: `ProductPatch`, `ProductCreate`, `update_product`
 - Produces: `ProductPatch` without `stock_quantity`, `update_product` that only mutates product metadata without altering variant inventory.
 
-- [ ] **Step 1: Write failing regression test for stock inflation**
+- [x] **Step 1: Write failing regression test for stock inflation**
 
 Create `backend/tests/test_product_stock_inflation.py`:
 ```python
@@ -97,12 +97,12 @@ def test_update_product_does_not_inflate_variant_stock(db_session: Session):
     assert updated.stock_quantity == 20
 ```
 
-- [ ] **Step 2: Run test to verify behavior and test schema rejection**
+- [x] **Step 2: Run test to verify behavior and test schema rejection**
 
 Run: `pytest backend/tests/test_product_stock_inflation.py -v`
 Ensure test runs.
 
-- [ ] **Step 3: Modify backend schemas and service**
+- [x] **Step 3: Modify backend schemas and service**
 
 1. In `backend/app/features/products/schemas.py`:
 Remove `stock_quantity` from `ProductPatch` and `ProductCreate`:
@@ -137,12 +137,12 @@ Delete:
 - Remove the stock input element from the modal form.
 - Keep the read-only display of total stock and variant stocks.
 
-- [ ] **Step 4: Run tests to verify fix**
+- [x] **Step 4: Run tests to verify fix**
 
 Run: `pytest backend/tests/test_product_stock_inflation.py backend/tests/test_products.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit Task 1**
+- [x] **Step 5: Commit Task 1**
 
 ```bash
 git add backend/app/features/products/schemas.py backend/app/features/products/service.py frontend/app/products/page.tsx backend/tests/test_product_stock_inflation.py
@@ -161,7 +161,7 @@ git commit -m "fix(products): remove stock_quantity from product patch and admin
 - Consumes: `VietQRWebhookPayload`, `process_vietqr_webhook`
 - Produces: Concurrent-safe `process_vietqr_webhook` with strict locking order and duplicate payment idempotency.
 
-- [ ] **Step 1: Write failing concurrency regression test for VietQR Webhook**
+- [x] **Step 1: Write failing concurrency regression test for VietQR Webhook**
 
 Create `backend/tests/test_vietqr_webhook_concurrency.py`:
 ```python
@@ -251,11 +251,11 @@ def test_vietqr_concurrent_webhook_does_not_double_count_sold(db_session: Sessio
     assert order.status == "paid"
 ```
 
-- [ ] **Step 2: Run test to see current behavior**
+- [x] **Step 2: Run test to see current behavior**
 
 Run: `pytest backend/tests/test_vietqr_webhook_concurrency.py -v`
 
-- [ ] **Step 3: Refactor `process_vietqr_webhook` in `orders/service.py`**
+- [x] **Step 3: Refactor `process_vietqr_webhook` in `orders/service.py`**
 
 In `backend/app/features/orders/service.py`:
 Update `process_vietqr_webhook` to:
@@ -267,12 +267,12 @@ Update `process_vietqr_webhook` to:
    - If `order.status in (OrderStatus.EXPIRED.value, OrderStatus.CANCELLED.value)`: record `Payment(status="late_payment")`.
 4. Catch `IntegrityError` on commit, rollback, and return `status="already_processed"`.
 
-- [ ] **Step 4: Run test to verify fix passes**
+- [x] **Step 4: Run test to verify fix passes**
 
 Run: `pytest backend/tests/test_vietqr_webhook_concurrency.py backend/tests/test_order_domain.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit Task 2**
+- [x] **Step 5: Commit Task 2**
 
 ```bash
 git add backend/app/features/orders/service.py backend/tests/test_vietqr_webhook_concurrency.py
@@ -294,7 +294,7 @@ git commit -m "fix(orders): lock orders with for update and handle duplicate pay
 - Consumes: `checkout_cart`, `update_order_status`, `register_user`
 - Produces: Synchronous `def` route handlers taking `BackgroundTasks` to enqueue email tasks asynchronously without blocking the event loop.
 
-- [ ] **Step 1: Write test for sync route execution and background task scheduling**
+- [x] **Step 1: Write test for sync route execution and background task scheduling**
 
 Create `backend/tests/test_nonblocking_event_loop.py`:
 ```python
@@ -312,12 +312,12 @@ def test_db_lock_endpoints_are_synchronous():
     assert not inspect.iscoroutinefunction(user_router.register_user)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pytest backend/tests/test_nonblocking_event_loop.py -v`
 Expected: FAIL because functions are currently `async def`.
 
-- [ ] **Step 3: Convert endpoints to synchronous `def` with `BackgroundTasks`**
+- [x] **Step 3: Convert endpoints to synchronous `def` with `BackgroundTasks`**
 
 1. In `backend/app/features/orders/service.py`:
    - Change `def checkout_cart(...)` to synchronous `def`.
@@ -372,12 +372,12 @@ Expected: FAIL because functions are currently `async def`.
          return service.register_user(db, command, queue, background_tasks=background_tasks)
      ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pytest backend/tests/test_nonblocking_event_loop.py backend/tests/test_order_domain.py backend/tests/test_users.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```bash
 git add backend/app/features/orders/router.py backend/app/features/orders/service.py backend/app/features/users/router.py backend/app/features/users/service.py backend/tests/test_nonblocking_event_loop.py
@@ -396,7 +396,7 @@ git commit -m "fix(concurrency): offload sync DB lock operations to threadpool a
 - Consumes: `slowapi.Limiter`, `redis_url`
 - Produces: Resilient `limiter` instance that swallows connection errors and falls back to memory storage.
 
-- [ ] **Step 1: Write failing test for rate limiter resilience when Redis fails**
+- [x] **Step 1: Write failing test for rate limiter resilience when Redis fails**
 
 Create `backend/tests/test_rate_limiter_resilience.py`:
 ```python
@@ -426,11 +426,11 @@ def test_rate_limiter_swallows_storage_errors():
     assert response.json() == {"ok": True}
 ```
 
-- [ ] **Step 2: Run test to verify current behavior**
+- [x] **Step 2: Run test to verify current behavior**
 
 Run: `pytest backend/tests/test_rate_limiter_resilience.py -v`
 
-- [ ] **Step 3: Update `rate_limiter.py` configuration**
+- [x] **Step 3: Update `rate_limiter.py` configuration**
 
 In `backend/app/core/rate_limiter.py`:
 Update initialization to support `swallow_errors=True` and `in_memory_fallback_enabled=True`:
@@ -461,12 +461,12 @@ except Exception:
     )
 ```
 
-- [ ] **Step 4: Run test to verify pass**
+- [x] **Step 4: Run test to verify pass**
 
 Run: `pytest backend/tests/test_rate_limiter_resilience.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit Task 4**
+- [x] **Step 5: Commit Task 4**
 
 ```bash
 git add backend/app/core/rate_limiter.py backend/tests/test_rate_limiter_resilience.py
@@ -477,17 +477,17 @@ git commit -m "fix(resilience): enable swallow_errors and in-memory fallback on 
 
 ### Task 5: Full Regression & Integration Verification
 
-- [ ] **Step 1: Run all backend tests**
+- [x] **Step 1: Run all backend tests**
 
 Run: `pytest backend/tests/ -v`
 Expected: 315+ pass, 0 fail.
 
-- [ ] **Step 2: Run ruff check and format**
+- [x] **Step 2: Run ruff check and format**
 
 Run: `ruff check backend/ && ruff format --check backend/`
 Expected: Clean or format cleanly.
 
-- [ ] **Step 3: Run frontend typecheck and tests**
+- [x] **Step 3: Run frontend typecheck and tests**
 
 Run: `cd frontend && npm run type-check && npm run test`
 Expected: All type checks and tests pass.
