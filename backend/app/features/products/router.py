@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.errors import BusinessRuleError
 from app.core.schemas import Page
-from app.core.security import get_current_admin, get_current_user, get_optional_user
+from app.core.security import get_current_admin, get_current_user, get_current_user_optional
 from app.features.products import images, reviews, service
 from app.features.products.schemas import (
     ProductAdminResponse,
@@ -88,7 +88,7 @@ def create_product(
 def list_products(
     filters: Annotated[ProductFilters, Depends(get_product_filters)],
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_optional_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     is_admin = bool(current_user and current_user.role == "admin")
     page = service.list_products(db, filters, is_admin=is_admin)
@@ -116,7 +116,7 @@ def lookup_variants(
     ids: str = Query(default="", description="Comma-separated variant IDs"),
     skus: str = Query(default="", description="Comma-separated variant SKUs"),
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_optional_user),
+    current_user: User | None = Depends(get_current_user_optional),
     storage: ProductStorage = Depends(get_product_storage),
 ):
     id_list: list[int] = []
@@ -154,7 +154,7 @@ def get_product_facets(db: Session = Depends(get_db)):
 def get_product_by_slug(
     slug: str,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_optional_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     is_admin = bool(current_user and current_user.role == "admin")
     product = service.get_product_by_slug(db, slug, is_admin=is_admin)
@@ -176,7 +176,7 @@ def get_product_by_slug(
 def get_product(
     product_id: int,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_optional_user),
+    current_user: User | None = Depends(get_current_user_optional),
 ):
     is_admin = bool(current_user and current_user.role == "admin")
     product = service.get_product(db, product_id, is_admin=is_admin)

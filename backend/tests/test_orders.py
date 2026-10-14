@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_current_user_optional
 from app.features.orders.constants import OrderStatus
 from app.features.orders.domain import InvalidOrderTransition, apply_order_transition
 from app.features.orders.model import Order, OrderItem
@@ -281,6 +281,7 @@ def _create_trackable_order(client, db_session, mock_user_auth):
 def test_track_order_requires_authentication(client, db_session, mock_user_auth):
     order_id = _create_trackable_order(client, db_session, mock_user_auth)
     app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_current_user_optional, None)
 
     response = client.get(f"/api/v1/orders/track/{order_id}")
 
@@ -314,6 +315,7 @@ def test_track_order_admin_can_view_any_order(client, db_session, mock_user_auth
     db_session.add(admin)
     db_session.commit()
     app.dependency_overrides[get_current_user] = lambda: admin
+    app.dependency_overrides[get_current_user_optional] = lambda: admin
 
     response = client.get(f"/api/v1/orders/track/{order_id}")
 
@@ -336,6 +338,7 @@ def test_track_order_hides_order_from_other_customer(
     db_session.add(other_customer)
     db_session.commit()
     app.dependency_overrides[get_current_user] = lambda: other_customer
+    app.dependency_overrides[get_current_user_optional] = lambda: other_customer
 
     response = client.get(f"/api/v1/orders/track/{order_id}")
 
