@@ -200,3 +200,98 @@ def test_invalid_adjustment_below_reserved_and_sold_rejected(
         .all()
     )
     assert len(adjustments) == 0
+
+
+def test_three_variants_retain_stock_after_name_only_patch(
+    client, db_session: Session, mock_admin_auth
+):
+    product = Product(
+        name="Tri-Variant Polo",
+        slug="tri-variant-polo",
+        price=Decimal("250000.00"),
+        currency="VND",
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.flush()
+
+    v1 = ProductVariant(
+        product_id=product.id,
+        sku="POLO-S",
+        color_name="White",
+        size="S",
+        stock_quantity=10,
+        reserved_quantity=0,
+        sold_quantity=0,
+        is_active=True,
+    )
+    v2 = ProductVariant(
+        product_id=product.id,
+        sku="POLO-M",
+        color_name="White",
+        size="M",
+        stock_quantity=10,
+        reserved_quantity=0,
+        sold_quantity=0,
+        is_active=True,
+    )
+    v3 = ProductVariant(
+        product_id=product.id,
+        sku="POLO-L",
+        color_name="White",
+        size="L",
+        stock_quantity=10,
+        reserved_quantity=0,
+        sold_quantity=0,
+        is_active=True,
+    )
+    db_session.add_all([v1, v2, v3])
+    db_session.commit()
+
+    patch_resp = client.patch(
+        f"/api/v1/products/{product.id}",
+        json={"name": "Tri-Variant Polo Slim"},
+    )
+    assert patch_resp.status_code == 200
+
+    db_session.expire_all()
+    v1_refreshed = db_session.get(ProductVariant, v1.id)
+    v2_refreshed = db_session.get(ProductVariant, v2.id)
+    v3_refreshed = db_session.get(ProductVariant, v3.id)
+    prod_refreshed = db_session.get(Product, product.id)
+
+    assert v1_refreshed.stock_quantity == 10
+    assert v2_refreshed.stock_quantity == 10
+    assert v3_refreshed.stock_quantity == 10
+    assert prod_refreshed.stock_quantity == 30
+
+
+def test_create_product_with_explicit_initial_variant_stock(
+    client, db_session: Session, mock_admin_auth
+):
+    resp = client.post(
+        "/api/v1/products",
+        json={
+            "name": "Hoodie with Variants",
+            "price": 500000,
+            "currency": "VND",
+            "variants": [
+                {
+                    "sku": "HOODIE-BLK-S",
+                    "color_name": "Black",
+                    "size": "S",
+                    "stock_quantity": 15,
+                },
+                {
+                    "sku": "HOODIE-BLK-M",
+                    "color_name": "Black",
+                    "size": "M",
+                    "stock_quantity": 25,
+                },
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["stock_quantity"] == 40
+
