@@ -1,7 +1,6 @@
-from datetime import datetime
-
 from pydantic import BaseModel
 
+from app.core.schemas import UtcDatetime
 from app.features.orders.constants import OrderStatus
 from app.features.products.schemas import CategorySummary
 
@@ -22,7 +21,7 @@ class RecentOrderSummary(BaseModel):
     currency: str
     status: OrderStatus
     payment_status: str
-    created_at: datetime | None
+    created_at: UtcDatetime | None
 
 
 class LowStockProductSummary(BaseModel):

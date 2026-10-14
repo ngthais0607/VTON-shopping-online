@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.core.schemas import UtcDatetime
+
 HEX_COLOR_PATTERN = r"^#[0-9A-Fa-f]{6}$"
 
 
@@ -54,4 +56,4 @@ class InventoryAdjustmentResponse(BaseModel):
     delta: int
     reason: str
     user_id: int | None = None
-    created_at: datetime
+    created_at: UtcDatetime

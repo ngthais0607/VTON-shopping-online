@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.core.schemas import UtcDatetime
 
 
 class CategoryCreate(BaseModel):
@@ -34,8 +34,8 @@ class CategoryResponse(BaseModel):
     slug: str
     parent_id: int | None = None
     description: str | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    created_at: UtcDatetime | None = None
+    updated_at: UtcDatetime | None = None
     created_by: int | None = None
     updated_by: int | None = None
     deleted_by: int | None = None

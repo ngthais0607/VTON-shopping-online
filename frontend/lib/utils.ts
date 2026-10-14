@@ -8,7 +8,11 @@ export function cn(...inputs: ClassValue[]) {
 
 export function displayDate(value: string | null | undefined, pattern = 'MMM dd, yyyy'): string {
   if (!value) return 'N/A';
-  const date = new Date(value);
+  const normalized =
+    typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)
+      ? `${value}Z`
+      : value;
+  const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? 'N/A' : format(date, pattern);
 }
 

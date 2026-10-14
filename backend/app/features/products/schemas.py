@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
@@ -15,6 +14,7 @@ from pydantic import (
 )
 
 from app.core.config import get_settings
+from app.core.schemas import UtcDatetime
 from app.features.products.variant_schemas import VariantItem
 
 
@@ -166,8 +166,8 @@ class ProductVariantPublicResponse(BaseModel):
     available_stock: int
     in_stock: bool = True
     is_active: bool
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    created_at: UtcDatetime | None = None
+    updated_at: UtcDatetime | None = None
 
 
 class ProductVariantAdminResponse(ProductVariantPublicResponse):
@@ -201,8 +201,8 @@ class ProductPublicResponse(BaseModel):
     images: list[ProductImageResponse] = []
     available_stock: int
     in_stock: bool = True
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    created_at: UtcDatetime | None = None
+    updated_at: UtcDatetime | None = None
 
 
 class ProductAdminResponse(ProductPublicResponse):
@@ -286,8 +286,8 @@ class ProductDetailPublicResponse(BaseModel):
     available_sizes: list[str] = []
     available_colors: list[FacetColor] = []
     fit_feedback: FitFeedbackSummary | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    created_at: UtcDatetime | None = None
+    updated_at: UtcDatetime | None = None
 
 
 class ProductDetailAdminResponse(ProductDetailPublicResponse):
@@ -321,7 +321,7 @@ class ReviewResponse(BaseModel):
     comment: str | None = None
     fit_feedback: str | None = None
     is_verified_purchase: bool
-    created_at: datetime | None = None
+    created_at: UtcDatetime | None = None
 
 
 class ReviewSummary(BaseModel):

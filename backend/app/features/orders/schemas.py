@@ -1,7 +1,6 @@
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.schemas import UtcDatetime
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 
 
@@ -41,7 +40,7 @@ class VietQRWebhookPayload(BaseModel):
     content: str = Field(min_length=1, max_length=500)
     account_number: str | None = None
     bank_code: str | None = None
-    transacted_at: datetime | None = None
+    transacted_at: UtcDatetime | None = None
 
 
 class VietQRWebhookResponse(BaseModel):
@@ -60,8 +59,8 @@ class LatePaymentResponse(BaseModel):
     amount: float
     currency: str
     status: str
-    paid_at: datetime | None = None
-    created_at: datetime | None = None
+    paid_at: UtcDatetime | None = None
+    created_at: UtcDatetime | None = None
     order_status: str | None = None
     customer_name: str | None = None
     customer_phone: str | None = None
@@ -103,9 +102,9 @@ class OrderResponse(BaseModel):
     notes: str | None
     payment_method: OrderPaymentMethod
     payment_status: str
-    expires_at: datetime | None
-    paid_at: datetime | None
-    created_at: datetime | None
+    expires_at: UtcDatetime | None
+    paid_at: UtcDatetime | None
+    created_at: UtcDatetime | None
     items: list[OrderItemResponse] = []
 
 
@@ -122,7 +121,7 @@ class TrackingStep(BaseModel):
     title: str
     description: str
     completed: bool
-    timestamp: datetime | None
+    timestamp: UtcDatetime | None
 
 
 class TrackingResponse(OrderResponse):

@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any
 
 from pydantic import (
@@ -9,6 +8,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from app.core.schemas import UtcDatetime
 
 
 def _validate_new_password(password: str) -> str:
@@ -55,8 +56,8 @@ class UserResponse(BaseModel):
     first_name: str | None
     last_name: str | None
     role: str
-    created_at: datetime | None
-    updated_at: datetime | None
+    created_at: UtcDatetime | None
+    updated_at: UtcDatetime | None
 
 
 class LoginCommand(BaseModel):
