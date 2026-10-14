@@ -612,7 +612,7 @@ def test_unknown_order_status_returns_422(
     order_id = checkout.json()["orders"][0]["id"]
 
     response = client.put(
-        f"/api/v1/orders/{order_id}/status", json={"status": "shipped"}
+        f"/api/v1/orders/{order_id}/status", json={"status": "unknown_status"}
     )
 
     assert response.status_code == 422

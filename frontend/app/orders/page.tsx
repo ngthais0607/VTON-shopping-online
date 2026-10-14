@@ -47,7 +47,10 @@ function getStatusColor(status: string) {
     case "pending":
       return "bg-amber-50 text-amber-700 border-amber-200";
     case "confirmed":
+    case "shipped":
       return "bg-blue-50 text-blue-700 border-blue-200";
+    case "delivered":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
     case "cancelled":
       return "bg-rose-50 text-rose-700 border-rose-200";
     case "expired":
@@ -66,6 +69,7 @@ function getPaymentStatusColor(status: string) {
       return "bg-amber-100 text-amber-800 border-amber-300";
     case "failed":
     case "expired":
+    case "cancelled":
       return "bg-rose-100 text-rose-800 border-rose-300";
     default:
       return "bg-slate-100 text-slate-800 border-slate-300";

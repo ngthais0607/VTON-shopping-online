@@ -65,12 +65,16 @@ class InsufficientStockError(ConflictError):
 def order_to_response(order: Order) -> OrderResponse:
     payments = getattr(order, "payments", []) or []
     payment = payments[-1] if payments else None
-    if payment:
-        payment_status = payment.status
-    elif order.status == OrderStatus.PAID.value:
+    if payment and payment.status == "paid":
         payment_status = "paid"
+    elif order.status == OrderStatus.PAID.value or (hasattr(order, "paid_at") and order.paid_at is not None):
+        payment_status = "paid"
+    elif order.status == OrderStatus.CANCELLED.value:
+        payment_status = "cancelled"
     elif order.status == OrderStatus.EXPIRED.value:
-        payment_status = "failed"
+        payment_status = "expired"
+    elif payment:
+        payment_status = payment.status
     else:
         payment_status = "pending"
 
@@ -524,6 +528,28 @@ def cancel_order(
     )
 
 
+def cancel_customer_order(
+    db: Session,
+    order_id: int,
+    user: User,
+    queue: TaskQueue,
+    background_tasks: BackgroundTasks | None = None,
+) -> OrderResponse:
+    order = db.get(Order, order_id)
+    if order is None:
+        raise OrderNotFoundError("Order not found")
+    if user.role != "admin" and order.user_id != user.id:
+        raise ForbiddenError("You do not have permission to cancel this order")
+    if order.status != OrderStatus.PENDING.value:
+        raise BusinessRuleError(
+            "Only pending orders can be cancelled by customers",
+            code="order_not_cancellable",
+        )
+    return change_order_status(
+        db, order_id, OrderStatus.CANCELLED, queue, background_tasks=background_tasks
+    )
+
+
 def expire_order(
     db: Session,
     order_id: int,
@@ -573,9 +599,18 @@ def list_user_orders(
 
 
 def _build_public_tracking_response(order: Order) -> PublicTrackingResponse:
-    paid = order.status == OrderStatus.PAID.value or (
-        hasattr(order, "status") and order.status == OrderStatus.PAID
+    paid = (
+        order.status == OrderStatus.PAID.value
+        or (hasattr(order, "status") and order.status == OrderStatus.PAID)
+        or (getattr(order, "paid_at", None) is not None)
     )
+    is_confirmed = order.status == OrderStatus.CONFIRMED.value
+    is_shipped = order.status in {
+        OrderStatus.SHIPPED.value,
+        OrderStatus.DELIVERED.value,
+    }
+    is_delivered = order.status == OrderStatus.DELIVERED.value
+
     timeline = [
         TrackingStep(
             step=1,
@@ -586,23 +621,37 @@ def _build_public_tracking_response(order: Order) -> PublicTrackingResponse:
         ),
         TrackingStep(
             step=2,
-            title="Payment Verified",
-            description="VietQR bank transfer verified by an administrator.",
-            completed=paid,
-            timestamp=order.paid_at if paid else None,
+            title=(
+                "Payment Verified"
+                if order.payment_method != OrderPaymentMethod.COD.value
+                else "Order Confirmed"
+            ),
+            description=(
+                "VietQR bank transfer verified by an administrator."
+                if order.payment_method != OrderPaymentMethod.COD.value
+                else "Cash on delivery order confirmed for fulfillment."
+            ),
+            completed=paid or is_confirmed or is_shipped or is_delivered,
+            timestamp=order.paid_at
+            if paid
+            else (
+                order.created_at
+                if (is_confirmed or is_shipped or is_delivered)
+                else None
+            ),
         ),
         TrackingStep(
             step=3,
             title="Processing & Packing",
             description="Item certified and packed for express dispatch.",
-            completed=paid,
+            completed=is_shipped or is_delivered,
             timestamp=None,
         ),
         TrackingStep(
             step=4,
             title="Delivered",
             description="Order fulfilled and delivered to recipient.",
-            completed=False,
+            completed=is_delivered,
             timestamp=None,
         ),
     ]

@@ -112,6 +112,23 @@ def update_order_status(
     )
 
 
+@router.post(
+    "/{order_id}/cancel",
+    response_model=OrderResponse,
+    summary="Customer cancel pending order",
+)
+def customer_cancel_order(
+    order_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    queue: TaskQueue = Depends(get_task_queue),
+):
+    return service.cancel_customer_order(
+        db, order_id, current_user, queue, background_tasks=background_tasks
+    )
+
+
 @router.get(
     "/user/{user_id}",
     response_model=Page[OrderResponse],

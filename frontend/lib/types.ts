@@ -89,7 +89,7 @@ export interface Category {
   deleted_by: number | null;
 }
 
-export type OrderStatus = "pending" | "confirmed" | "paid" | "cancelled" | "expired";
+export type OrderStatus = "pending" | "confirmed" | "paid" | "shipped" | "delivered" | "cancelled" | "expired";
 export type OrderPaymentMethod = "vietqr" | "cod";
 
 export interface OrderItem {

@@ -17,6 +17,8 @@ describe("getOrderStatusPresentation", () => {
       "pending",
       "confirmed",
       "paid",
+      "shipped",
+      "delivered",
       "cancelled",
       "expired",
     ];

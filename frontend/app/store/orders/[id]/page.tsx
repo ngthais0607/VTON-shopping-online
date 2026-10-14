@@ -112,6 +112,24 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           color: "bg-blue-100 text-blue-800 border-blue-200",
           icon: <CheckCircle2 className="w-4 h-4 text-blue-600" />
         };
+      case "shipped":
+        return {
+          label: "Shipped",
+          color: "bg-blue-100 text-blue-800 border-blue-200",
+          icon: <Package className="w-4 h-4 text-blue-600" />
+        };
+      case "delivered":
+        return {
+          label: "Delivered",
+          color: "bg-emerald-100 text-emerald-800 border-emerald-200",
+          icon: <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+        };
+      case "cancelled":
+        return {
+          label: "Order Cancelled",
+          color: "bg-rose-100 text-rose-800 border-rose-200",
+          icon: <AlertCircle className="w-4 h-4 text-rose-600" />
+        };
       case "expired":
         return {
           label: "Order Expired",
@@ -121,8 +139,8 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
       default:
         return {
           label: status,
-          color: "bg-rose-100 text-rose-800 border-rose-200",
-          icon: <AlertCircle className="w-4 h-4 text-rose-600" />
+          color: "bg-slate-100 text-slate-800 border-slate-200",
+          icon: <AlertCircle className="w-4 h-4 text-slate-600" />
         };
     }
   };

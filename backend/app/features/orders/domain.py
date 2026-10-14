@@ -52,6 +52,14 @@ _ALLOWED_TRANSITIONS = {
         OrderStatus.EXPIRED,
     },
     (OrderPaymentMethod.VIETQR, OrderStatus.PAID): {
+        OrderStatus.SHIPPED,
+        OrderStatus.CANCELLED,
+    },
+    (OrderPaymentMethod.VIETQR, OrderStatus.SHIPPED): {
+        OrderStatus.DELIVERED,
+        OrderStatus.CANCELLED,
+    },
+    (OrderPaymentMethod.VIETQR, OrderStatus.DELIVERED): {
         OrderStatus.CANCELLED,
     },
     (OrderPaymentMethod.COD, OrderStatus.PENDING): {
@@ -60,9 +68,21 @@ _ALLOWED_TRANSITIONS = {
     },
     (OrderPaymentMethod.COD, OrderStatus.CONFIRMED): {
         OrderStatus.PAID,
+        OrderStatus.SHIPPED,
+        OrderStatus.CANCELLED,
+    },
+    (OrderPaymentMethod.COD, OrderStatus.SHIPPED): {
+        OrderStatus.PAID,
+        OrderStatus.DELIVERED,
         OrderStatus.CANCELLED,
     },
     (OrderPaymentMethod.COD, OrderStatus.PAID): {
+        OrderStatus.SHIPPED,
+        OrderStatus.DELIVERED,
+        OrderStatus.CANCELLED,
+    },
+    (OrderPaymentMethod.COD, OrderStatus.DELIVERED): {
+        OrderStatus.PAID,
         OrderStatus.CANCELLED,
     },
 }
@@ -107,8 +127,8 @@ def apply_order_transition(
         current_sold = getattr(target, "sold_quantity", 0) or 0
 
         if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
-            if new_status == OrderStatus.CONFIRMED:
-                # COD pending -> confirmed: reservation stays intact until payment or cancellation
+            if new_status in {OrderStatus.CONFIRMED, OrderStatus.SHIPPED}:
+                # COD pending -> confirmed / shipped: reservation stays intact
                 pass
             elif new_status == OrderStatus.PAID:
                 if current_reserved < qty:
@@ -125,13 +145,19 @@ def apply_order_transition(
                         code="inventory_state_inconsistent",
                     )
                 target.reserved_quantity = current_reserved - qty
-        elif current_status == OrderStatus.PAID and new_status == OrderStatus.CANCELLED:
-            if current_sold < qty:
-                raise ConflictError(
-                    f"Inconsistent inventory state: variant {getattr(target, 'id', None)} sold {current_sold} < {qty}",
-                    code="inventory_state_inconsistent",
-                )
-            target.sold_quantity = current_sold - qty
+        elif current_status in {OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED}:
+            if new_status in {OrderStatus.SHIPPED, OrderStatus.DELIVERED}:
+                # Delivery lifecycle progression leaves inventory counts intact
+                pass
+            elif new_status == OrderStatus.PAID:
+                if current_reserved >= qty:
+                    target.reserved_quantity = current_reserved - qty
+                    target.sold_quantity = current_sold + qty
+            elif new_status == OrderStatus.CANCELLED:
+                if current_sold >= qty:
+                    target.sold_quantity = current_sold - qty
+                elif current_reserved >= qty:
+                    target.reserved_quantity = current_reserved - qty
 
     order.status = new_status.value
     current_time = now or datetime.now(timezone.utc)
@@ -144,4 +170,8 @@ def apply_order_transition(
         for payment in getattr(order, "payments", []):
             if payment.status == "pending":
                 payment.status = "expired"
+    elif new_status == OrderStatus.CANCELLED:
+        for payment in getattr(order, "payments", []):
+            if payment.status == "pending":
+                payment.status = "cancelled"
 
