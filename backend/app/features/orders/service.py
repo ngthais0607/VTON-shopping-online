@@ -47,7 +47,7 @@ from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
 from app.integrations.queue import TaskQueue
-from app.integrations.vietqr import build_vietqr_instructions
+from app.integrations.vietqr import build_vietqr_instructions, to_vnd_amount
 
 logger = logging.getLogger(__name__)
 
@@ -964,7 +964,7 @@ def process_vietqr_webhook(
         )
 
     total_expected = sum(order.total_amount for order in orders)
-    if round(float(total_expected)) != round(payload.amount):
+    if to_vnd_amount(total_expected) != to_vnd_amount(payload.amount):
         logger.warning(
             "VietQR webhook amount mismatch: received %s, expected %s for orders %s",
             payload.amount,

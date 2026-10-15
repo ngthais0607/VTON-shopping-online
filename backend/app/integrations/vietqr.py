@@ -18,8 +18,12 @@ class VietQRInstructions:
     amount: int
 
 
+def to_vnd_amount(value: Decimal | float | int | str) -> int:
+    return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
 def build_vietqr_instructions(
-    amount: Decimal | float | int,
+    amount: Decimal | float | int | str,
     memo: str,
     settings: Settings | None = None,
 ) -> VietQRInstructions:
@@ -28,9 +32,7 @@ def build_vietqr_instructions(
         config, "vietqr_account_no", None
     ):
         raise ValueError("VietQR bank_id and account_no must be configured")
-    rounded_amount = int(
-        Decimal(str(amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    )
+    rounded_amount = to_vnd_amount(amount)
     image = (
         "https://img.vietqr.io/image/"
         f"{quote(config.vietqr_bank_id, safe='')}-"
