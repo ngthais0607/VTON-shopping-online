@@ -98,9 +98,8 @@ def test_dashboard_metrics_count_visible_available_stock_and_paid_revenue(db_ses
     sold_low = _product("Sold low", stock=20, sold=2, active=False)
     zero = _product("Sold out", stock=0)
     high = _product("At threshold", stock=20)
-    oversold = _product("Invalid negative", stock=1, sold=2)
     deleted_low = _product("Deleted", stock=1, deleted=True)
-    db_session.add_all([visible_low, sold_low, zero, high, oversold, deleted_low])
+    db_session.add_all([visible_low, sold_low, zero, high, deleted_low])
     db_session.flush()
     now = datetime.now(timezone.utc)
     db_session.add_all(
@@ -118,8 +117,8 @@ def test_dashboard_metrics_count_visible_available_stock_and_paid_revenue(db_ses
     metrics, query_count = _count_selects(db_session, lambda: get_metrics(db_session))
 
     assert metrics.model_dump() == {
-        "total_products": 5,
-        "active_products": 4,
+        "total_products": 4,
+        "active_products": 3,
         "low_stock": 3,
         "pending_orders": 1,
         "revenue": 36,
@@ -203,7 +202,7 @@ def test_recent_orders_reads_summary_columns_and_only_latest_payment(db_session)
     assert "payments.amount" not in statements[0].lower()
 
 
-def test_low_stock_list_excludes_deleted_negative_and_threshold(db_session):
+def test_low_stock_list_excludes_deleted_and_threshold(db_session):
     from app.features.dashboard.service import get_low_stock_products
 
     products = [
@@ -211,7 +210,6 @@ def test_low_stock_list_excludes_deleted_negative_and_threshold(db_session):
         _product("Reserved", stock=25, reserved=6),
         _product("Sold", stock=20, sold=2),
         _product("Threshold", stock=20),
-        _product("Negative", stock=1, sold=2),
         _product("Deleted", stock=0, deleted=True),
     ]
     db_session.add_all(products)

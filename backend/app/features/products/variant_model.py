@@ -28,6 +28,11 @@ class ProductVariant(Base):
             "reserved_quantity >= 0", name="ck_variants_reserved_non_negative"
         ),
         CheckConstraint("sold_quantity >= 0", name="ck_variants_sold_non_negative"),
+        CheckConstraint(
+            "reserved_quantity >= 0 AND sold_quantity >= 0 "
+            "AND reserved_quantity + sold_quantity <= stock_quantity",
+            name="ck_variants_inventory_bounds",
+        ),
         Index("ix_product_variants_product_active", "product_id", "is_active"),
         Index("ix_product_variants_sku", "sku"),
     )

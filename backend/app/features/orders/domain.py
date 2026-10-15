@@ -118,57 +118,53 @@ def apply_order_transition(
     if not items:
         raise RuntimeError(f"Order {order.id} has no order items")
 
+    # The counters include other orders. Ownership follows the order's payment
+    # history, never whichever aggregate counter happens to contain enough stock.
+    inventory_sold = current_status == OrderStatus.PAID or order.paid_at is not None
+    updates: dict[int, tuple[Any, int, int]] = {}
     for item in items:
         target = getattr(item, "variant", None)
         if target is None:
             raise RuntimeError(f"OrderItem {item.id} missing variant reference")
         qty = item.quantity or 0
-        current_reserved = getattr(target, "reserved_quantity", 0) or 0
-        current_sold = getattr(target, "sold_quantity", 0) or 0
+        reserved = getattr(target, "reserved_quantity", 0) or 0
+        sold = getattr(target, "sold_quantity", 0) or 0
+        if id(target) in updates:
+            _, reserved, sold = updates[id(target)]
+        owned = sold if inventory_sold else reserved
+        if (
+            owned < qty
+            or reserved < 0
+            or sold < 0
+            or reserved + sold > target.stock_quantity
+        ):
+            raise ConflictError(
+                f"Inconsistent inventory state: variant {target.id} "
+                f"{'sold' if inventory_sold else 'reserved'} {owned} < {qty} "
+                "or counters outside stock bounds",
+                code="inventory_state_inconsistent",
+            )
+        if new_status in {OrderStatus.CANCELLED, OrderStatus.EXPIRED}:
+            if inventory_sold:
+                sold -= qty
+            else:
+                reserved -= qty
+        elif new_status == OrderStatus.PAID and not inventory_sold:
+            reserved -= qty
+            sold += qty
+        updates[id(target)] = (target, reserved, sold)
 
-        if current_status in {OrderStatus.PENDING, OrderStatus.CONFIRMED}:
-            if new_status in {OrderStatus.CONFIRMED, OrderStatus.SHIPPED}:
-                # COD pending -> confirmed / shipped: reservation stays intact
-                pass
-            elif new_status == OrderStatus.PAID:
-                if current_reserved < qty:
-                    raise ConflictError(
-                        f"Inconsistent inventory state: variant {getattr(target, 'id', None)} reserved {current_reserved} < {qty}",
-                        code="inventory_state_inconsistent",
-                    )
-                target.reserved_quantity = current_reserved - qty
-                target.sold_quantity = current_sold + qty
-            elif new_status in {OrderStatus.CANCELLED, OrderStatus.EXPIRED}:
-                if current_reserved < qty:
-                    raise ConflictError(
-                        f"Inconsistent inventory state: variant {getattr(target, 'id', None)} reserved {current_reserved} < {qty}",
-                        code="inventory_state_inconsistent",
-                    )
-                target.reserved_quantity = current_reserved - qty
-        elif current_status in {
-            OrderStatus.PAID,
-            OrderStatus.SHIPPED,
-            OrderStatus.DELIVERED,
-        }:
-            if new_status in {OrderStatus.SHIPPED, OrderStatus.DELIVERED}:
-                # Delivery lifecycle progression leaves inventory counts intact
-                pass
-            elif new_status == OrderStatus.PAID:
-                if current_reserved >= qty:
-                    target.reserved_quantity = current_reserved - qty
-                    target.sold_quantity = current_sold + qty
-            elif new_status == OrderStatus.CANCELLED:
-                if current_sold >= qty:
-                    target.sold_quantity = current_sold - qty
-                elif current_reserved >= qty:
-                    target.reserved_quantity = current_reserved - qty
+    # Validate every line before changing any inventory, including in-memory callers.
+    for target, reserved, sold in updates.values():
+        target.reserved_quantity = reserved
+        target.sold_quantity = sold
 
     order.status = new_status.value
     current_time = now or datetime.now(timezone.utc)
     if current_time.tzinfo is None:
         current_time = current_time.replace(tzinfo=timezone.utc)
 
-    if new_status == OrderStatus.PAID:
+    if new_status == OrderStatus.PAID and order.paid_at is None:
         order.paid_at = current_time
     elif new_status == OrderStatus.EXPIRED:
         for payment in getattr(order, "payments", []):
