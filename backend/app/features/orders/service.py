@@ -470,6 +470,7 @@ def change_order_status(
     new_status: OrderStatus,
     queue: TaskQueue,
     background_tasks: BackgroundTasks | None = None,
+    allowed_from: set[OrderStatus] | None = None,
 ) -> OrderResponse:
     order_exists = db.query(Order.id).filter(Order.id == order_id).scalar()
     if order_exists is None:
@@ -488,6 +489,12 @@ def change_order_status(
     )
     if order is None:
         raise OrderNotFoundError("Order not found")
+
+    if allowed_from is not None and OrderStatus(order.status) not in allowed_from:
+        raise BusinessRuleError(
+            "Order cannot be cancelled by customers in its current state",
+            code="order_not_cancellable",
+        )
 
     for item in order.items:
         if item.variant_id:
@@ -541,13 +548,21 @@ def cancel_customer_order(
         raise OrderNotFoundError("Order not found")
     if user.role != "admin" and order.user_id != user.id:
         raise ForbiddenError("You do not have permission to cancel this order")
-    if order.status != OrderStatus.PENDING.value:
-        raise BusinessRuleError(
-            "Only pending orders can be cancelled by customers",
-            code="order_not_cancellable",
-        )
+    allowed_from = (
+        None
+        if user.role == "admin"
+        else {
+            OrderPaymentMethod.VIETQR: {OrderStatus.PENDING},
+            OrderPaymentMethod.COD: {OrderStatus.CONFIRMED},
+        }.get(OrderPaymentMethod(order.payment_method), set())
+    )
     return change_order_status(
-        db, order_id, OrderStatus.CANCELLED, queue, background_tasks=background_tasks
+        db,
+        order_id,
+        OrderStatus.CANCELLED,
+        queue,
+        background_tasks=background_tasks,
+        allowed_from=allowed_from,
     )
 
 
