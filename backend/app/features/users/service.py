@@ -134,6 +134,25 @@ def refresh_user_session(db: Session, refresh_token: str) -> TokenPair:
     return _token_pair(int(claims.subject), next_version)
 
 
+def logout_user_session(db: Session, refresh_token: str | None) -> None:
+    if not refresh_token:
+        return
+    try:
+        claims = decode_refresh_token(refresh_token)
+    except AuthenticationError:
+        return
+    # A stale logout must not revoke a newer rotated session.
+    db.query(User).filter(
+        User.id == int(claims.subject),
+        User.is_deleted.is_(False),
+        User.refresh_version == claims.version,
+    ).update(
+        {User.refresh_version: User.refresh_version + 1},
+        synchronize_session=False,
+    )
+    db.commit()
+
+
 def update_profile(db: Session, current_user: User, command: UserPatch) -> User:
     return _update_user(db, current_user, command)
 

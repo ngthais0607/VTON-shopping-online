@@ -88,7 +88,10 @@ def refresh_user_session(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Logout user",
 )
-def logout_user(request: Request, response: Response) -> None:
+def logout_user(
+    request: Request, response: Response, db: Session = Depends(get_db)
+) -> None:
+    service.logout_user_session(db, request.cookies.get("refresh_token"))
     settings = request.app.state.settings
     response.delete_cookie(
         key="refresh_token",
