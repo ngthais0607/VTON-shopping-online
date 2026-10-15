@@ -61,6 +61,7 @@ def login_user(
 
 
 @router.post("/refresh", response_model=TokenResponse, summary="Refresh session")
+@limiter.limit("30/minute")
 def refresh_user_session(
     request: Request,
     response: Response,
