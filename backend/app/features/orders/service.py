@@ -23,6 +23,7 @@ from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 from app.features.orders.domain import (
     apply_order_transition,
     available_stock,
+    is_order_paid,
 )
 from app.features.orders.model import Order, OrderItem, Payment
 from app.features.orders.schemas import (
@@ -464,6 +465,29 @@ def _resolve_and_lock_order_inventory(
     return _lock_transition_variants(db, variant_ids)
 
 
+def _record_paid(
+    db: Session,
+    order: Order,
+    provider: str,
+    transaction_id: str | None,
+    now: datetime,
+) -> None:
+    """Transition and record a receipt in the caller's locked transaction."""
+    apply_order_transition(order, OrderStatus.PAID, now)
+    if not any(payment.status == "paid" for payment in order.payments):
+        db.add(
+            Payment(
+                order=order,
+                provider=provider,
+                provider_transaction_id=transaction_id,
+                amount=order.total_amount,
+                currency=order.currency,
+                status="paid",
+                paid_at=order.paid_at,
+            )
+        )
+
+
 def change_order_status(
     db: Session,
     order_id: int,
@@ -500,7 +524,13 @@ def change_order_status(
         if item.variant_id:
             item.variant = locked_variants.get(item.variant_id)
 
-    apply_order_transition(order, new_status)
+    if new_status == OrderStatus.PAID:
+        provider = (
+            "cod" if order.payment_method == OrderPaymentMethod.COD.value else "manual"
+        )
+        _record_paid(db, order, provider, None, datetime.now(timezone.utc))
+    else:
+        apply_order_transition(order, new_status)
     db.commit()
     db.refresh(order)
     invalidate_dashboard_cache()
@@ -987,19 +1017,11 @@ def process_vietqr_webhook(
             for item in order.items:
                 if item.variant_id:
                     item.variant = locked_variants.get(item.variant_id)
-            apply_order_transition(order, OrderStatus.PAID, current_time)
-
-            payment = Payment(
-                order_id=order.id,
-                provider="vietqr",
-                provider_transaction_id=payload.transaction_id,
-                amount=order.total_amount,
-                currency=order.currency,
-                status="paid",
-                paid_at=current_time,
-            )
-            db.add(payment)
-        elif order.status == OrderStatus.PAID.value:
+            _record_paid(db, order, "vietqr", payload.transaction_id, current_time)
+        elif order.status not in (
+            OrderStatus.EXPIRED.value,
+            OrderStatus.CANCELLED.value,
+        ) and is_order_paid(order):
             # Order is already paid. Record duplicate payment without re-decrementing stock.
             all_paid = False
             has_duplicate = True
