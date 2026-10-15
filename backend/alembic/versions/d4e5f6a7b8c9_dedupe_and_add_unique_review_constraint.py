@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -48,7 +49,9 @@ def upgrade() -> None:
                 to_delete.append(r.id)
 
     if to_delete:
-        bind.execute(product_reviews.delete().where(product_reviews.c.id.in_(to_delete)))
+        bind.execute(
+            product_reviews.delete().where(product_reviews.c.id.in_(to_delete))
+        )
 
     with op.batch_alter_table("product_reviews") as batch_op:
         batch_op.create_unique_constraint(
