@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from fastapi import BackgroundTasks
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
@@ -106,7 +107,13 @@ def test_product_patch_serializes_with_checkout():
             event.listen(session, "do_orm_execute", signal_read)
             try:
                 with pytest.raises(InsufficientStockError):
-                    checkout_cart(session, user, command, AsyncMock())
+                    checkout_cart(
+                        session,
+                        user,
+                        command,
+                        AsyncMock(),
+                        background_tasks=BackgroundTasks(),
+                    )
             finally:
                 event.remove(session, "do_orm_execute", signal_read)
 

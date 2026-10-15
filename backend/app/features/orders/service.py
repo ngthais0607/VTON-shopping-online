@@ -35,7 +35,6 @@ from app.features.orders.schemas import (
     OrderResponse,
     PublicTrackingItem,
     PublicTrackingResponse,
-    TrackingResponse,
     TrackingStep,
     VietQRResponse,
     VietQRWebhookPayload,
@@ -180,13 +179,9 @@ def parse_order_ids_from_memo(content: str) -> list[int]:
     return ids
 
 
-def _vietqr_response(orders: list[Order]) -> VietQRResponse:
-    total = sum(order.total_amount for order in orders)
-    if len(orders) == 1:
-        memo = generate_order_payment_memo(orders[0].id)
-    else:
-        memo = f"TL{'X'.join(str(order.id) for order in orders)}"
-    instructions = build_vietqr_instructions(total, memo)
+def _vietqr_response(order: Order) -> VietQRResponse:
+    memo = generate_order_payment_memo(order.id)
+    instructions = build_vietqr_instructions(order.total_amount, memo)
     return VietQRResponse(**vars(instructions))
 
 
@@ -212,34 +207,9 @@ def _dispatch_email(
     queue: TaskQueue,
     task_name: str,
     order_id: int,
-    background_tasks: BackgroundTasks | None = None,
+    background_tasks: BackgroundTasks,
 ) -> None:
-    if background_tasks is not None:
-        background_tasks.add_task(_enqueue_best_effort, queue, task_name, order_id)
-    else:
-        try:
-            import anyio
-
-            anyio.from_thread.run(_enqueue_best_effort, queue, task_name, order_id)
-        except Exception:
-            try:
-                import asyncio
-
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-                if loop and loop.is_running():
-                    loop.create_task(_enqueue_best_effort(queue, task_name, order_id))
-                else:
-                    asyncio.run(_enqueue_best_effort(queue, task_name, order_id))
-            except Exception as exc:
-                logger.error(
-                    "Failed to enqueue email task %s for order %s: %s",
-                    task_name,
-                    order_id,
-                    exc,
-                )
+    background_tasks.add_task(_enqueue_best_effort, queue, task_name, order_id)
 
 
 def checkout_cart(
@@ -247,8 +217,8 @@ def checkout_cart(
     user: User,
     command: CheckoutCommand,
     queue: TaskQueue,
+    background_tasks: BackgroundTasks,
     now: datetime | None = None,
-    background_tasks: BackgroundTasks | None = None,
 ) -> CheckoutResponse:
     # 1. Resolve variant ID for each cart item
     variant_quantities: dict[int, int] = {}
@@ -404,7 +374,7 @@ def checkout_cart(
         payment_method=command.payment_method,
     )
     if is_vietqr:
-        response.vietqr = _vietqr_response([order])
+        response.vietqr = _vietqr_response(order)
     return response
 
 
@@ -494,7 +464,7 @@ def change_order_status(
     order_id: int,
     new_status: OrderStatus,
     queue: TaskQueue,
-    background_tasks: BackgroundTasks | None = None,
+    background_tasks: BackgroundTasks,
     allowed_from: set[OrderStatus] | None = None,
 ) -> OrderResponse:
     order_exists = db.query(Order.id).filter(Order.id == order_id).scalar()
@@ -549,7 +519,7 @@ def mark_paid(
     db: Session,
     order_id: int,
     queue: TaskQueue,
-    background_tasks: BackgroundTasks | None = None,
+    background_tasks: BackgroundTasks,
 ) -> OrderResponse:
     return change_order_status(
         db, order_id, OrderStatus.PAID, queue, background_tasks=background_tasks
@@ -560,7 +530,7 @@ def cancel_order(
     db: Session,
     order_id: int,
     queue: TaskQueue,
-    background_tasks: BackgroundTasks | None = None,
+    background_tasks: BackgroundTasks,
 ) -> OrderResponse:
     return change_order_status(
         db, order_id, OrderStatus.CANCELLED, queue, background_tasks=background_tasks
@@ -572,7 +542,7 @@ def cancel_customer_order(
     order_id: int,
     user: User,
     queue: TaskQueue,
-    background_tasks: BackgroundTasks | None = None,
+    background_tasks: BackgroundTasks,
 ) -> OrderResponse:
     order = db.get(Order, order_id)
     if order is None:
@@ -598,7 +568,7 @@ def expire_order(
     db: Session,
     order_id: int,
     queue: TaskQueue,
-    background_tasks: BackgroundTasks | None = None,
+    background_tasks: BackgroundTasks,
 ) -> OrderResponse:
     return change_order_status(
         db, order_id, OrderStatus.EXPIRED, queue, background_tasks=background_tasks
@@ -609,7 +579,7 @@ def confirm_cod(
     db: Session,
     order_id: int,
     queue: TaskQueue,
-    background_tasks: BackgroundTasks | None = None,
+    background_tasks: BackgroundTasks,
 ) -> OrderResponse:
     return change_order_status(
         db, order_id, OrderStatus.CONFIRMED, queue, background_tasks=background_tasks
@@ -737,7 +707,7 @@ def _build_public_tracking_response(order: Order) -> PublicTrackingResponse:
         order.payment_method == OrderPaymentMethod.VIETQR.value
         and order.status == OrderStatus.PENDING.value
     ):
-        vietqr_data = _vietqr_response([order])
+        vietqr_data = _vietqr_response(order)
 
     payload = {
         "public_code": order.public_code,
@@ -767,55 +737,6 @@ def track_order_by_public_code(db: Session, public_code: str) -> PublicTrackingR
     return _build_public_tracking_response(order)
 
 
-def track_order(
-    db: Session, order_id: int, user: User | None = None
-) -> TrackingResponse:
-    order = db.get(Order, order_id)
-    if order is None or (user and user.role != "admin" and order.user_id != user.id):
-        raise OrderNotFoundError("Order not found")
-    return _build_tracking_response(order)
-
-
-def _build_tracking_response(order: Order) -> TrackingResponse:
-    paid = order.status == OrderStatus.PAID.value
-    timeline = [
-        TrackingStep(
-            step=1,
-            title="Order Placed",
-            description="Order submitted and awaiting payment confirmation.",
-            completed=True,
-            timestamp=order.created_at,
-        ),
-        TrackingStep(
-            step=2,
-            title="Payment Verified",
-            description="VietQR bank transfer verified by an administrator.",
-            completed=paid,
-            timestamp=order.paid_at if paid else None,
-        ),
-        TrackingStep(
-            step=3,
-            title="Processing & Packing",
-            description="Item certified and packed for express dispatch.",
-            completed=paid,
-            timestamp=None,
-        ),
-        TrackingStep(
-            step=4,
-            title="Delivered",
-            description="Order fulfilled and delivered to recipient.",
-            completed=False,
-            timestamp=None,
-        ),
-    ]
-    response = TrackingResponse(
-        **order_to_response(order).model_dump(), timeline=timeline
-    )
-    if order.payment_method == OrderPaymentMethod.VIETQR.value:
-        response.vietqr = _vietqr_response([order])
-    return response
-
-
 def expire_pending_orders(
     db: Session,
     now: datetime | None = None,
@@ -825,7 +746,7 @@ def expire_pending_orders(
     if current_time.tzinfo is None:
         current_time = current_time.replace(tzinfo=timezone.utc)
     candidates = (
-        db.query(Order.id, Order.product_id)
+        db.query(Order.id)
         .filter(
             Order.status == OrderStatus.PENDING.value,
             Order.payment_method == OrderPaymentMethod.VIETQR.value,
@@ -838,7 +759,7 @@ def expire_pending_orders(
     if not candidates:
         return 0
 
-    order_ids = [cid for cid, _ in candidates]
+    order_ids = [row.id for row in candidates]
 
     # 1. Lock inventory FIRST
     locked_variants = _resolve_and_lock_order_inventory(db, order_ids)
@@ -848,7 +769,7 @@ def expire_pending_orders(
         db.bind and db.bind.dialect.name in ("mysql", "mariadb", "postgresql")
     )
     expired_count = 0
-    for order_id, _discovered_product_id in candidates:
+    for order_id in order_ids:
         order = (
             db.query(Order)
             .filter(Order.id == order_id)

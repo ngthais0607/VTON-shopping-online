@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from fastapi import BackgroundTasks
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -232,7 +233,11 @@ def test_webhook_racing_with_admin_paid():
         try:
             barrier.wait(timeout=10)
             order = change_order_status(
-                session, order_id, OrderStatus.PAID, AsyncMock()
+                session,
+                order_id,
+                OrderStatus.PAID,
+                AsyncMock(),
+                background_tasks=BackgroundTasks(),
             )
             return order.status
         finally:

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from fastapi import BackgroundTasks
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -73,7 +74,13 @@ def test_checkout_final_unit_cannot_be_oversold():
         try:
             current_user = session.get(User, user_id)
             barrier.wait()
-            checkout_cart(session, current_user, checkout, AsyncMock())
+            checkout_cart(
+                session,
+                current_user,
+                checkout,
+                AsyncMock(),
+                background_tasks=BackgroundTasks(),
+            )
             return "success"
         except InsufficientStockError:
             session.rollback()
@@ -173,7 +180,13 @@ def test_multi_item_checkout_atomicity_under_concurrency():
         try:
             current_user = session.get(User, user_id)
             barrier.wait()
-            checkout_cart(session, current_user, checkout, AsyncMock())
+            checkout_cart(
+                session,
+                current_user,
+                checkout,
+                AsyncMock(),
+                background_tasks=BackgroundTasks(),
+            )
             return "success"
         except InsufficientStockError:
             session.rollback()

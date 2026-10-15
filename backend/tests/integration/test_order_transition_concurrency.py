@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import BackgroundTasks
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
@@ -127,7 +128,11 @@ def test_admin_transition_rechecks_status_after_waiting_for_lock():
             try:
                 asyncio.run(
                     change_order_status(
-                        session, order_id, OrderStatus.PAID, AsyncMock()
+                        session,
+                        order_id,
+                        OrderStatus.PAID,
+                        AsyncMock(),
+                        background_tasks=BackgroundTasks(),
                     )
                 )
             except InvalidOrderTransition as exc:
@@ -296,7 +301,13 @@ def test_two_orders_sharing_product_preserve_both_transitions(
             if use_worker:
                 assert expire_orders(session) == 1
             else:
-                change_order_status(session, order_id, status, AsyncMock())
+                change_order_status(
+                    session,
+                    order_id,
+                    status,
+                    AsyncMock(),
+                    background_tasks=BackgroundTasks(),
+                )
         finally:
             session.close()
 
@@ -402,7 +413,9 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
         session = session_factory()
         try:
             buyer = session.get(User, user_id)
-            return checkout_cart(session, buyer, command, AsyncMock())
+            return checkout_cart(
+                session, buyer, command, AsyncMock(), background_tasks=BackgroundTasks()
+            )
         finally:
             session.close()
 

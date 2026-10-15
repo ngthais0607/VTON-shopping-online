@@ -18,7 +18,11 @@ def test_customer_cannot_cancel_paid_order(db_session):
     db_session.flush()
     with pytest.raises(BusinessRuleError) as exc:
         service.cancel_customer_order(
-            db_session, order_id, SimpleNamespace(id=7, role="customer"), AsyncMock()
+            db_session,
+            order_id,
+            SimpleNamespace(id=7, role="customer"),
+            AsyncMock(),
+            background_tasks=BackgroundTasks(),
         )
     assert exc.value.code == "order_not_cancellable"
 

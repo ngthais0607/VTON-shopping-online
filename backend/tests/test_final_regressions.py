@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from fastapi import BackgroundTasks
 from sqlalchemy import event, update
 from sqlalchemy.orm import Session
 
@@ -149,7 +150,13 @@ def test_transition_retains_locked_product_without_nonlocking_reload(
         if expire:
             assert expire_pending_orders(fresh) == 1
         else:
-            change_order_status(fresh, order_id, OrderStatus.PAID, AsyncMock())
+            change_order_status(
+                fresh,
+                order_id,
+                OrderStatus.PAID,
+                AsyncMock(),
+                background_tasks=BackgroundTasks(),
+            )
         event.remove(fresh, "do_orm_execute", require_lock)
         assert len(reads) == 1
         current = fresh.get(Product, product_id)
