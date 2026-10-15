@@ -907,6 +907,15 @@ def process_vietqr_webhook(
             "Invalid or missing webhook secret", code="unauthorized_webhook"
         )
 
+    if (
+        payload.account_number is not None
+        and payload.account_number != settings.vietqr_account_no
+    ):
+        raise BusinessRuleError(
+            "Webhook recipient account does not match the configured account",
+            code="account_mismatch",
+        )
+
     distinct_order_ids = parse_order_ids_from_memo(payload.content)
     if not distinct_order_ids:
         logger.warning(
