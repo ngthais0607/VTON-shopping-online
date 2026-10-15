@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useCart } from "../context/CartContext";
-import { apiPost, apiGet } from "@/lib/api";
+import { apiPost } from "@/lib/api";
 import { checkoutSchema } from "@/lib/validations/checkout";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
@@ -26,7 +26,8 @@ import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User, CheckoutResponse, CheckoutCommand } from "@/lib/types";
+import { CheckoutResponse, CheckoutCommand } from "@/lib/types";
+import { useSession } from "@/hooks/use-session";
 import { formatCurrency } from "@/lib/utils";
 
 export default function CheckoutPage() {
@@ -34,7 +35,7 @@ export default function CheckoutPage() {
   const submissionPending = useRef(false);
   const router = useRouter();
 
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const { user: currentUser } = useSession();
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
@@ -51,22 +52,10 @@ export default function CheckoutPage() {
   const [vietqrData, setVietqrData] = useState<VietQRData | null>(null);
 
   useEffect(() => {
-    async function loadUser() {
-      try {
-        const token = localStorage.getItem("token");
-        if (token) {
-          const user = await apiGet<User>("/users/me").catch(() => null);
-          if (user) {
-            setCurrentUser(user);
-            setCustomerName(user.first_name || user.username || "");
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load user info", err);
-      }
+    if (currentUser) {
+      setCustomerName(name => name || currentUser.first_name || currentUser.username || "");
     }
-    loadUser();
-  }, []);
+  }, [currentUser]);
 
   const shippingFee = 0;
   const grandTotal = totalAmount;

@@ -3,6 +3,8 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
+import { SWRConfig } from 'swr';
+import { setAccessToken, clearAccessToken } from '../lib/session';
 import CheckoutPage from '../app/store/checkout/page';
 import { CartProvider } from '../app/store/context/CartContext';
 const {post,get,push} = vi.hoisted(()=>({post:vi.fn(),get:vi.fn(),push:vi.fn()}));
@@ -41,11 +43,12 @@ beforeEach(() => {
     return Promise.resolve(null);
   });
   localStorage.clear();
-  localStorage.setItem('token', 'test');
+  clearAccessToken();
+  setAccessToken('test');
   localStorage.setItem('truelook_cart_v2', JSON.stringify([{ productId: 1, variantId: 101, quantity: 1 }]));
 });
 async function checkoutForm() {
-  const { container } = render(<CartProvider><CheckoutPage /></CartProvider>);
+  const { container } = render(<SWRConfig value={{provider:() => new Map()}}><CartProvider><CheckoutPage /></CartProvider></SWRConfig>);
   await waitFor(() => expect(screen.getByPlaceholderText('John Doe')).toHaveValue('Customer'));
   fireEvent.change(screen.getByPlaceholderText('+84 987 654 321'), { target: { value: '0987654321' } });
   fireEvent.change(screen.getByPlaceholderText('123 Commerce St, District 1, Ho Chi Minh City'), { target: { value: '123 Test Street' } });

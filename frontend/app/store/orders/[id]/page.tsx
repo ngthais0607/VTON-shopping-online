@@ -4,7 +4,7 @@ import { useEffect, useState, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { apiGet, ApiError } from "@/lib/api";
-import { User, TrackingResponse } from "@/lib/types";
+import { TrackingResponse } from "@/lib/types";
 import { Header } from "../../components/Header";
 import { Footer } from "../../components/Footer";
 import { 
@@ -23,6 +23,7 @@ import {
   ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { useSession } from "@/hooks/use-session";
 import { formatCurrency } from "@/lib/utils";
 
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
@@ -31,7 +32,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const router = useRouter();
 
   const [order, setOrder] = useState<TrackingResponse | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const { user: currentUser } = useSession();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,22 +54,9 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
     }
   }, [orderId]);
 
-  const loadUserData = useCallback(async () => {
-    try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      if (token) {
-        const user = await apiGet<User>("/users/me").catch(() => null);
-        setCurrentUser(user);
-      }
-    } catch (e) {
-      console.error("Error loading user", e);
-    }
-  }, []);
-
   useEffect(() => {
-    loadUserData();
     fetchTrackingData();
-  }, [loadUserData, fetchTrackingData]);
+  }, [fetchTrackingData]);
 
   // Auto-polling for pending orders every 5 seconds
   useEffect(() => {
