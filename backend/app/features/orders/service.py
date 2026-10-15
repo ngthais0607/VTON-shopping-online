@@ -21,6 +21,7 @@ from app.features.categories.model import Category
 from app.features.dashboard.service import invalidate_dashboard_cache
 from app.features.orders.constants import OrderPaymentMethod, OrderStatus
 from app.features.orders.domain import (
+    CUSTOMER_CANCELLABLE,
     apply_order_transition,
     available_stock,
     is_order_paid,
@@ -581,10 +582,7 @@ def cancel_customer_order(
     allowed_from = (
         None
         if user.role == "admin"
-        else {
-            OrderPaymentMethod.VIETQR: {OrderStatus.PENDING},
-            OrderPaymentMethod.COD: {OrderStatus.CONFIRMED},
-        }.get(OrderPaymentMethod(order.payment_method), set())
+        else CUSTOMER_CANCELLABLE.get(OrderPaymentMethod(order.payment_method), set())
     )
     return change_order_status(
         db,

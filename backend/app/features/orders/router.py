@@ -113,7 +113,7 @@ def update_order_status(
 @router.post(
     "/{order_id}/cancel",
     response_model=OrderResponse,
-    summary="Customer cancel pending order",
+    summary="Customer cancel an eligible order",
 )
 def customer_cancel_order(
     order_id: int,

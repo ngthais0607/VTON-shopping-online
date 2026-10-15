@@ -45,6 +45,12 @@ def aggregate_cart_items(items: Sequence[CartLine]) -> dict[int, int]:
     return aggregated
 
 
+CUSTOMER_CANCELLABLE: dict[OrderPaymentMethod, set[OrderStatus]] = {
+    OrderPaymentMethod.VIETQR: {OrderStatus.PENDING},
+    OrderPaymentMethod.COD: {OrderStatus.CONFIRMED},
+}
+
+
 _ALLOWED_TRANSITIONS = {
     (OrderPaymentMethod.VIETQR, OrderStatus.PENDING): {
         OrderStatus.PAID,
