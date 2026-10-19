@@ -72,7 +72,7 @@ def get_orders(
 @router.get(
     "/late-payments",
     response_model=Page[LatePaymentResponse],
-    summary="List late payments for admin manual reconciliation",
+    summary="List exceptional payments for admin manual reconciliation",
 )
 def get_late_payments(
     limit: int = Query(10, ge=1, le=100),

@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -73,7 +74,7 @@ class VietQRResponse(BaseModel):
 
 class VietQRWebhookPayload(BaseModel):
     transaction_id: str = Field(min_length=1, max_length=100)
-    amount: float = Field(gt=0)
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2, allow_inf_nan=False)
     content: str = Field(min_length=1, max_length=500)
     account_number: str | None = None
     bank_code: str | None = None

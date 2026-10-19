@@ -893,19 +893,6 @@ def process_vietqr_webhook(
             "One or more orders in memo not found", code="orders_not_found"
         )
 
-    total_expected = sum(order.total_amount for order in orders)
-    if to_vnd_amount(total_expected) != to_vnd_amount(payload.amount):
-        logger.warning(
-            "VietQR webhook amount mismatch: received %s, expected %s for orders %s",
-            payload.amount,
-            total_expected,
-            order_ids,
-        )
-        raise BusinessRuleError(
-            f"Amount mismatch: received {payload.amount}, expected {total_expected}",
-            code="amount_mismatch",
-        )
-
     # Check under lock whether this transaction was already processed
     existing_payment = (
         db.query(Payment)
@@ -933,6 +920,49 @@ def process_vietqr_webhook(
         )
 
     current_time = datetime.now(timezone.utc)
+    total_expected = sum(order.total_amount for order in orders)
+    if to_vnd_amount(total_expected) != to_vnd_amount(payload.amount):
+        db.add(
+            Payment(
+                order_id=orders[0].id,
+                provider="vietqr",
+                provider_transaction_id=payload.transaction_id,
+                amount=payload.amount,
+                currency=orders[0].currency,
+                status="amount_mismatch",
+                paid_at=payload.transacted_at or current_time,
+            )
+        )
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            if not _is_payment_transaction_uniqueness_error(exc):
+                raise
+            recorded = (
+                db.query(Payment)
+                .filter_by(
+                    provider="vietqr", provider_transaction_id=payload.transaction_id
+                )
+                .first()
+            )
+            if recorded is None:
+                raise
+            if recorded.order_id not in order_ids:
+                raise BusinessRuleError(
+                    "Transaction is already associated with another order",
+                    code="transaction_order_mismatch",
+                ) from exc
+            return VietQRWebhookResponse(
+                status="already_processed",
+                message="Transaction already recorded",
+                order_ids=order_ids,
+            )
+        return VietQRWebhookResponse(
+            status="amount_mismatch",
+            message="Received amount recorded for manual reconciliation",
+            order_ids=order_ids,
+        )
     has_pending = False
     has_late = False
     has_duplicate = False
@@ -1059,7 +1089,9 @@ def list_late_payments(
     query = (
         db.query(Payment, Order)
         .join(Order, Payment.order_id == Order.id)
-        .filter(Payment.status == "late_payment")
+        .filter(
+            Payment.status.in_(("late_payment", "duplicate_payment", "amount_mismatch"))
+        )
         .order_by(Payment.id.desc())
     )
     total = query.count()

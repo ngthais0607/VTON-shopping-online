@@ -91,8 +91,10 @@ def test_webhook_rejects_invalid_memo_pattern(client, db_session):
     assert res.json()["code"] == "invalid_webhook_memo"
 
 
-def test_webhook_rejects_amount_mismatch(client, db_session):
-    order, _ = setup_test_order(db_session, total_amount=250.0)
+def test_webhook_records_amount_mismatch_and_retry(client, db_session):
+    from decimal import Decimal
+
+    order, product = setup_test_order(db_session, total_amount=250.0)
     payload = {
         "transaction_id": "TXN_003",
         "amount": 200.0,  # Mismatched amount
@@ -103,11 +105,66 @@ def test_webhook_rejects_amount_mismatch(client, db_session):
         json=payload,
         headers={"X-Webhook-Secret": SECRET},
     )
-    assert res.status_code == 400
-    assert res.json()["code"] == "amount_mismatch"
+    assert res.status_code == 200
+    assert res.json()["status"] == "amount_mismatch"
+
+    payment = (
+        db_session.query(Payment).filter_by(provider_transaction_id="TXN_003").one()
+    )
+    assert payment.status == "amount_mismatch"
+    assert payment.amount == Decimal("200.00")
+    retry = client.post(
+        WEBHOOK_URL,
+        json={**payload, "amount": 201.0},
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    assert retry.status_code == 200
+    assert (
+        db_session.query(Payment).filter_by(provider_transaction_id="TXN_003").count()
+        == 1
+    )
+    db_session.refresh(payment)
+    assert payment.amount == Decimal("200.00")
 
     db_session.refresh(order)
     assert order.status == "pending"
+    db_session.refresh(product.variants[0])
+    assert product.variants[0].reserved_quantity == 1
+    assert product.variants[0].sold_quantity == 0
+    correct = client.post(
+        WEBHOOK_URL,
+        json={**payload, "transaction_id": "TXN_CORRECT", "amount": 250.0},
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    assert correct.status_code == 200
+    db_session.refresh(order)
+    assert order.status == "paid"
+
+
+def test_amount_mismatch_is_visible_to_admin(client, db_session, mock_admin_auth):
+    order, _ = setup_test_order(db_session)
+    client.post(
+        WEBHOOK_URL,
+        json={
+            "transaction_id": "MISMATCH_ADMIN",
+            "amount": 1,
+            "content": f"TL{order.id}",
+        },
+        headers={"X-Webhook-Secret": SECRET},
+    )
+    result = client.get("/api/v1/orders/late-payments")
+    assert result.status_code == 200
+    assert any(row["status"] == "amount_mismatch" for row in result.json()["items"])
+
+
+def test_webhook_rejects_unrepresentable_amounts(client):
+    for amount in ("NaN", "Infinity", "10000000000.00", "1.001"):
+        result = client.post(
+            WEBHOOK_URL,
+            json={"transaction_id": "INVALID", "amount": amount, "content": "TL1"},
+            headers={"X-Webhook-Secret": SECRET},
+        )
+        assert result.status_code == 422
 
 
 def test_webhook_success_marks_order_paid_and_idempotent(client, db_session):
