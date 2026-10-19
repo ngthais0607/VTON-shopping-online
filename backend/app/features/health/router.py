@@ -1,5 +1,7 @@
+import logging
+
 import redis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -8,25 +10,31 @@ from app.core.database import get_db
 from app.features.health.schemas import HealthComponents, HealthResponse
 
 router = APIRouter(prefix="/api/v1/health", tags=["Health"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("", response_model=HealthResponse, summary="System health check")
-def health_check(db: Session = Depends(get_db)) -> HealthResponse:
+def health_check(response: Response, db: Session = Depends(get_db)) -> HealthResponse:
     db_status = "healthy"
     try:
         db.execute(text("SELECT 1")).scalar()
-    except Exception as exc:
-        db_status = f"unhealthy: {exc}"
+    except Exception:
+        logger.exception("Health check: database unavailable")
+        db_status = "unhealthy"
+        response.status_code = 503
 
     settings = get_settings()
     redis_status = "memory"
     if settings.redis_url.startswith("redis://"):
         try:
-            r = redis.Redis.from_url(settings.redis_url, socket_timeout=2)
-            r.ping()
+            with redis.Redis.from_url(
+                settings.redis_url, socket_timeout=2, socket_connect_timeout=2
+            ) as r:
+                r.ping()
             redis_status = "healthy"
-        except Exception as exc:
-            redis_status = f"degraded: {exc}"
+        except Exception:
+            logger.exception("Health check: Redis unavailable")
+            redis_status = "degraded"
 
     storage_status = "configured"
     is_ok = db_status == "healthy"

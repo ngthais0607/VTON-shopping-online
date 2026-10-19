@@ -114,3 +114,14 @@ Verify that running the seed process multiple times does not produce duplicate r
 ## 5. Zero VTON Boundary Commitment
 - **Zero VTON Schema Objects:** No `vton_*` tables, columns, or foreign keys exist in migrations.
 - **Future Integration:** All VTON deep learning inference pipelines must be integrated in future feature branches behind isolated workers and tables as outlined in `docs/VTON_READINESS.md`.
+# Compose application database user (2026-10-19)
+
+Before deploying the restricted application database configuration over an
+existing MariaDB volume, provision `MARIADB_USER` with `MARIADB_PASSWORD` using an
+administrative connection and grant privileges on `MARIADB_DATABASE` only.
+Changing Compose environment values does not change existing database accounts.
+Verify the new connection with `SELECT CURRENT_USER()` before restarting API,
+migration and worker containers. Back up the database; never reset existing
+volumes to initialize an account. Disposable migration tests use a separate
+administrative account because they create and drop their own test databases.
+

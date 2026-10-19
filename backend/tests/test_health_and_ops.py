@@ -2,6 +2,35 @@ from app.core.cache import get_cache
 from app.features.dashboard.service import invalidate_dashboard_cache
 
 
+def test_database_failure_is_503_without_exception_details(client):
+    from app.core.database import get_db
+    from app.main import app
+
+    class BrokenDatabase:
+        def execute(self, *args):
+            raise RuntimeError("private-database-password")
+
+    app.dependency_overrides[get_db] = lambda: BrokenDatabase()
+    response = client.get("/api/v1/health")
+    assert response.status_code == 503
+    assert response.json()["components"]["database"] == "unhealthy"
+    assert "private-database-password" not in response.text
+
+
+def test_redis_failure_is_200_degraded(client, monkeypatch):
+    from importlib import import_module
+
+    health_module = import_module("app.features.health.router")
+
+    settings = health_module.get_settings().model_copy(
+        update={"redis_url": "redis://localhost:1/0"}
+    )
+    monkeypatch.setattr(health_module, "get_settings", lambda: settings)
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json()["components"]["redis"] == "degraded"
+
+
 def test_health_check_returns_healthy(client):
     response = client.get("/api/v1/health")
     assert response.status_code == 200

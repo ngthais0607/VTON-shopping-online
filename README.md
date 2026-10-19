@@ -119,3 +119,26 @@ Ten MariaDB integration tests skip unless `TEST_DATABASE_URL` is set. Use a dedi
 ## License
 
 Proprietary project; no public license is granted by this repository.
+# Compose configuration notes
+
+Copy `.env.example` to `.env` and set distinct database app/root, Redis,
+MinIO and application secrets. Infrastructure ports bind to loopback. Production
+deployments must remove their published ports, use HTTPS public origins, and set
+`REFRESH_COOKIE_SECURE=true`; local HTTP development explicitly uses `false`.
+
+`MARIADB_USER` is a dedicated schema user, never `root`. Existing MariaDB volumes
+do not create a new user when environment settings change: use an administrative
+connection to create the chosen user and grant privileges only on the application's
+database before restarting app services. Keep the existing volume and database.
+Do not run `docker compose down -v` against an installation containing real data.
+
+Passwords supplied to MariaDB/Redis are raw. If passwords contain URL delimiters
+(`@`, `:`, `/`, `%`), override `DATABASE_URL`/`REDIS_URL` in `.env` using
+percent-encoded password components and internal service hosts `mariadb`/`redis`.
+Quote values containing `$` in the env file with single quotes. Keep raw service
+passwords and encoded URL passwords consistent. Never paste secrets into logs.
+
+Host ports can be changed with `MARIADB_PORT`, `REDIS_PORT`, `MINIO_PORT`,
+`MINIO_CONSOLE_PORT`, `API_PORT`, and `FRONTEND_PORT`. Update public URLs and CORS
+when changing ports. Use unique Compose project names for disposable test stacks.
+
