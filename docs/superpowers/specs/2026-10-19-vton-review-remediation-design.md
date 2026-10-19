@@ -46,6 +46,8 @@ Compose probes `/api/v1/health`. The route returns HTTP 503 when the database pr
 
 Pass a browser-reachable `MINIO_EXTERNAL_URL` to backend services. Pass `NEXT_PUBLIC_IMAGE_HOST` as a build argument/environment value before the Next.js build, consistent with its `remotePatterns`. Internal storage requests still use `minio:9000`. Validate product image access both directly and through Next.js image optimization; test data must include a real uploaded object, not just a placeholder. Document rebuild requirements when public image/API origins change.
 
+Execution clarification: normalize API image URLs from the configured public storage base to `/storage/<bucket>/<object>`. A fixed Next.js rewrite for the configured bucket forwards to the internal MinIO origin. This lets the optimizer handle a same-origin path without enabling arbitrary private-IP fetches; other image origins and the original public storage URL remain unchanged. Both internal origin and bucket are server build configuration, not client-selected proxy destinations.
+
 ## 4. Seed safety and payment reconciliation
 
 ### Seed behavior
