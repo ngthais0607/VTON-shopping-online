@@ -12,6 +12,12 @@
 
 This report documents the completion of all 26 hardening items across 5 phases specified in `docs/reviews/PROMPT_fix_all_except_vton.md`, `docs/superpowers/specs/2026-10-14-mvp-hardening-design.md`, and `docs/superpowers/plans/2026-10-14-mvp-hardening-plan.md`.
 
+The two historical MVP plan/spec files were retired by the 2026-10-19 remediation;
+their replacement decisions and cleanup evidence are recorded in the
+[remediation report](2026-10-19-vton-review-remediation-report.md) and
+[cleanup inventory](2026-10-19-vton-cleanup-inventory.md). The paths above identify
+the original review scope, rather than current execution instructions.
+
 All items were developed using strict test-driven methodologies, isolated transactional invariants, and conventional commits. Zero runtime VTON components were touched.
 
 ### Key Quality Metrics
