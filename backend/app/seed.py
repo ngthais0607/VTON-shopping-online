@@ -1,5 +1,6 @@
 import os
 import random
+import secrets
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -8,6 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 from sqlalchemy import or_
 
+from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.core.slug import slugify
@@ -19,9 +21,12 @@ from app.features.users.model import User
 
 
 def seed_database(db=None, force: bool = False):
-    app_env = os.getenv("APP_ENV", "development").lower()
-    if app_env == "production" and not force:
-        raise RuntimeError("Refusing to seed in production without --force")
+    settings = get_settings()
+    app_env = settings.app_env.strip().lower()
+    if app_env == "production":
+        raise RuntimeError(
+            "Refusing demo seed in production; use python -m app.cli create-admin"
+        )
 
     print(f"[SEED] Starting TrueLook fashion database seeding (env: {app_env})...")
     should_close = False
@@ -30,8 +35,6 @@ def seed_database(db=None, force: bool = False):
         should_close = True
 
     try:
-        is_production = app_env == "production"
-
         # 1. Seed Admin User
         admin_user = (
             db.query(User)
@@ -40,18 +43,18 @@ def seed_database(db=None, force: bool = False):
         )
 
         if not admin_user:
+            admin_pwd = settings.seed_admin_password or secrets.token_urlsafe(24)
             admin_user = User(
                 first_name="System",
                 last_name="Admin",
                 username="admin",
                 email="admin@example.com",
-                password_hash=hash_password("Admin@123456"),
+                password_hash=hash_password(admin_pwd),
                 role="admin",
             )
             db.add(admin_user)
             db.commit()
             db.refresh(admin_user)
-            admin_pwd = "[REDACTED]" if is_production else "Admin@123456"
             print(f"[OK] Created Admin User: admin@example.com / {admin_pwd}")
 
         # 2. Seed Customer User
@@ -62,18 +65,18 @@ def seed_database(db=None, force: bool = False):
         )
 
         if not customer:
+            cust_pwd = settings.seed_customer_password or secrets.token_urlsafe(24)
             customer = User(
                 first_name="Demo",
                 last_name="Customer",
                 username="demouser",
                 email="user@example.com",
-                password_hash=hash_password("User@123456"),
+                password_hash=hash_password(cust_pwd),
                 role="customer",
             )
             db.add(customer)
             db.commit()
             db.refresh(customer)
-            cust_pwd = "[REDACTED]" if is_production else "User@123456"
             print(f"[OK] Created Customer User: user@example.com / {cust_pwd}")
 
         # 3. Clean up legacy non-fashion categories & products (Electronics, Furniture, etc.)
