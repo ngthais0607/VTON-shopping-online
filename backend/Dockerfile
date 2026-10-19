@@ -3,8 +3,8 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+COPY requirements-lock.txt .
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir --require-hashes -r requirements-lock.txt && /opt/venv/bin/pip check
 
 # Stage 2: Production runtime
 FROM python:3.12-slim AS runner
@@ -16,16 +16,16 @@ RUN addgroup --system --gid 1001 appgroup && \
     adduser --system --uid 1001 --gid 1001 appuser
 
 # Copy installed python dependencies from builder
-COPY --from=builder /root/.local /home/appuser/.local
+COPY --from=builder /opt/venv /opt/venv
 
 # Copy application source
 COPY . .
 
 # Ensure app directory permissions
-RUN chown -R appuser:appgroup /app /home/appuser
+RUN chown -R appuser:appgroup /app
 
 USER appuser
-ENV PATH="/home/appuser/.local/bin:$PATH"
+ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000

@@ -12,3 +12,9 @@ venv
 tests
 htmlcov
 .coverage
+.env
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+*.log

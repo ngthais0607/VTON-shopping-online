@@ -29,7 +29,8 @@ if config_url and config_url != "sqlite:///./app.db":
     target_url = config_url
 else:
     target_url = os.environ.get("DATABASE_URL") or os.environ.get("TEST_DATABASE_URL") or DATABASE_URL
-config.set_main_option("sqlalchemy.url", target_url)
+# ConfigParser interpolates percent signs; SQLAlchemy must receive the original URL.
+config.set_main_option("sqlalchemy.url", target_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging without resetting existing loggers.
 if config.config_file_name is not None:
