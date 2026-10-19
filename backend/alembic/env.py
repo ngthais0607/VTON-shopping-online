@@ -18,6 +18,7 @@ from app.features.orders.model import Order, Payment  # noqa: F401  # Alembic au
 from app.features.products.model import Product, ProductImage, ProductReview  # noqa: F401  # Alembic autogenerate registration
 from app.features.products.variant_model import ProductVariant  # noqa: F401  # Alembic autogenerate registration
 from app.features.users.model import User  # noqa: F401  # Alembic autogenerate registration
+from app.features.users.session_model import UserSession  # noqa: F401
 
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
