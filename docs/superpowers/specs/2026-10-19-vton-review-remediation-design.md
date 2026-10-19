@@ -3,7 +3,7 @@
 Date: 2026-10-19
 Branch: `codex/vton-review-remediation`
 Base: `fix/mvp-hardening` at `f7ac031`
-Status: Approach A selected; written design awaiting user review.
+Status: Written design approved by the user on 2026-10-19; implementation plan awaiting review.
 
 ## 1. Intent and scope
 
