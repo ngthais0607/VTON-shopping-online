@@ -6,7 +6,7 @@ from tests.test_vietqr_webhook import SECRET, WEBHOOK_URL, setup_test_order
 
 @pytest.mark.parametrize(
     "account,allowed",
-    [(None, True), ("0382912048", True), ("wrong-account", False), ("", False)],
+    [(None, True), ("0000000000", True), ("wrong-account", False), ("", False)],
 )
 def test_webhook_checks_supplied_recipient_account(
     client, db_session, account, allowed

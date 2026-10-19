@@ -46,7 +46,7 @@ def test_settings_derives_minio_external_url_from_endpoint():
         _env_file=None,
         secret_key="a" * 32,
         vietqr_bank_id="MB",
-        vietqr_account_no="0382912048",
+        vietqr_account_no="0000000000",
         minio_endpoint="storage.internal:9000",
     )
 

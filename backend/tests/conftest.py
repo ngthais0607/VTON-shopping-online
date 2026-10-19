@@ -17,7 +17,7 @@ os.environ["MINIO_SECRET_KEY"] = "test-minio-secret-key"
 os.environ["MINIO_EXTERNAL_URL"] = ""
 os.environ["VIETQR_BANK_ID"] = "MB"
 os.environ["VIETQR_BANK_NAME"] = "MB Bank (Ngan hang Quan doi)"
-os.environ["VIETQR_ACCOUNT_NO"] = "0382912048"
+os.environ["VIETQR_ACCOUNT_NO"] = "0000000000"
 os.environ["VIETQR_ACCOUNT_NAME"] = "TRUELOOK"
 os.environ["VIETQR_WEBHOOK_SECRET"] = "test-webhook-secret-32-chars-long-abc"
 

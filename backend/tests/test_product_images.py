@@ -445,7 +445,7 @@ def test_minio_storage_adapter_uses_settings_and_sdk_primitives():
         _env_file=None,
         secret_key="test-secret-at-least-32-chars-long!",
         vietqr_bank_id="MB",
-        vietqr_account_no="0382912048",
+        vietqr_account_no="0000000000",
         minio_endpoint="minio.internal:9000",
         minio_access_key="access",
         minio_secret_key="secret",
@@ -494,7 +494,7 @@ def test_application_lifespan_ensures_product_storage_bucket():
             _env_file=None,
             secret_key="test-secret-for-lifespan-32-bytes!",
             vietqr_bank_id="MB",
-            vietqr_account_no="0382912048",
+            vietqr_account_no="0000000000",
         )
     )
     storage = FakeProductStorage()
