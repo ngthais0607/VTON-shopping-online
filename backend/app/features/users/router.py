@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -15,6 +17,7 @@ from app.core.rate_limiter import limiter
 from app.core.schemas import Page
 from app.core.security import get_current_admin, get_current_user
 from app.features.users import service
+from app.features.users.login_limits import login_identifier_key, prepare_login_command
 from app.features.users.model import User
 from app.features.users.schemas import (
     LoginCommand,
@@ -48,15 +51,18 @@ def register_user(
 
 
 @router.post("/login", response_model=TokenResponse, summary="Login user")
-@limiter.limit("5/minute")
+@limiter.limit("60/minute")
+@limiter.limit("5/minute", key_func=login_identifier_key)
 def login_user(
     request: Request,
     response: Response,
-    command: LoginCommand,
+    command: LoginCommand = Depends(prepare_login_command),
     db: Session = Depends(get_db),
 ):
     tokens = service.login_user(db, command)
-    _set_refresh_cookie(request, response, tokens.refresh_token)
+    _set_refresh_cookie(
+        request, response, tokens.refresh_token, tokens.refresh_expires_at
+    )
     return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
 
 
@@ -79,7 +85,9 @@ def refresh_user_session(
             code="invalid_token",
         )
     tokens = service.refresh_user_session(db, refresh_token)
-    _set_refresh_cookie(request, response, tokens.refresh_token)
+    _set_refresh_cookie(
+        request, response, tokens.refresh_token, tokens.refresh_expires_at
+    )
     return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
 
 
@@ -187,7 +195,7 @@ def delete_user(
 
 
 def _set_refresh_cookie(
-    request: Request, response: Response, refresh_token: str
+    request: Request, response: Response, refresh_token: str, expires_at: datetime
 ) -> None:
     settings = request.app.state.settings
     response.set_cookie(
@@ -196,6 +204,6 @@ def _set_refresh_cookie(
         httponly=True,
         samesite=getattr(settings, "refresh_cookie_samesite", "lax"),
         secure=settings.refresh_cookie_secure,
-        max_age=settings.refresh_token_expire_days * 24 * 3600,
+        max_age=max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds())),
         path="/",
     )

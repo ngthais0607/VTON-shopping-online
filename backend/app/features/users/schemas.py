@@ -68,6 +68,7 @@ class LoginCommand(BaseModel):
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str
+    refresh_expires_at: UtcDatetime
     token_type: str = "bearer"
 
 

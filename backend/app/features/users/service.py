@@ -15,6 +15,7 @@ from app.core.errors import (
     ResourceNotFoundError,
 )
 from app.core.schemas import Page
+from app.core.search import literal_contains_pattern
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -22,6 +23,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.features.users import sessions
 from app.features.users.model import User
 from app.features.users.schemas import (
     LoginCommand,
@@ -30,9 +32,11 @@ from app.features.users.schemas import (
     UserCreate,
     UserPatch,
 )
+from app.features.users.session_model import UserSession
 from app.integrations.queue import TaskQueue
 
 logger = logging.getLogger(__name__)
+_DUMMY_HASH = hash_password("invalid-user-password-work-factor")
 
 
 class DuplicateUserError(ConflictError):
@@ -102,36 +106,34 @@ def login_user(db: Session, command: LoginCommand) -> TokenPair:
                 User.username == command.identifier,
             )
         )
+        .populate_existing()
+        .with_for_update()
         .first()
     )
-    if user is None or not verify_password(command.password, user.password_hash):
+    password_matches = verify_password(
+        command.password, user.password_hash if user else _DUMMY_HASH
+    )
+    if user is None or not password_matches:
         raise AuthenticationError(
             "Invalid username, email, or password",
             code="invalid_credentials",
         )
-    return _token_pair(user.id, user.refresh_version)
+    session = sessions.create_session(db, user.id)
+    tokens = _token_pair(user.id, session)
+    db.commit()
+    return tokens
 
 
 def refresh_user_session(db: Session, refresh_token: str) -> TokenPair:
     claims = decode_refresh_token(refresh_token)
-    next_version = claims.version + 1
-    updated = (
-        db.query(User)
-        .filter(
-            User.id == int(claims.subject),
-            User.is_deleted.is_(False),
-            User.refresh_version == claims.version,
-        )
-        .update(
-            {User.refresh_version: next_version},
-            synchronize_session=False,
-        )
-    )
-    if updated != 1:
+    try:
+        session = sessions.rotate_session(db, claims)
+        tokens = _token_pair(int(claims.subject), session)
+        db.commit()
+    except Exception:
         db.rollback()
-        raise _invalid_refresh_token()
-    db.commit()
-    return _token_pair(int(claims.subject), next_version)
+        raise
+    return tokens
 
 
 def logout_user_session(db: Session, refresh_token: str | None) -> None:
@@ -141,16 +143,11 @@ def logout_user_session(db: Session, refresh_token: str | None) -> None:
         claims = decode_refresh_token(refresh_token)
     except AuthenticationError:
         return
-    # A stale logout must not revoke a newer rotated session.
-    db.query(User).filter(
-        User.id == int(claims.subject),
-        User.is_deleted.is_(False),
-        User.refresh_version == claims.version,
-    ).update(
-        {User.refresh_version: User.refresh_version + 1},
-        synchronize_session=False,
-    )
-    db.commit()
+    try:
+        sessions.revoke_session(db, claims)
+        db.commit()
+    except AuthenticationError:
+        db.rollback()
 
 
 def update_profile(db: Session, current_user: User, command: UserPatch) -> User:
@@ -162,13 +159,14 @@ def change_password(
     current_user: User,
     command: PasswordChange,
 ) -> None:
+    current_user = sessions.lock_active_user(db, current_user.id)
     if not verify_password(command.current_password, current_user.password_hash):
         raise BusinessRuleError(
             "Current password is incorrect",
             code="incorrect_password",
         )
     current_user.password_hash = hash_password(command.new_password)
-    current_user.refresh_version = User.refresh_version + 1
+    sessions.revoke_user_sessions(db, current_user.id)
     _commit_user(db, current_user)
 
 
@@ -182,10 +180,10 @@ def list_users(
     if search:
         query = query.filter(
             or_(
-                User.username.ilike(f"%{search}%"),
-                User.email.ilike(f"%{search}%"),
-                User.first_name.ilike(f"%{search}%"),
-                User.last_name.ilike(f"%{search}%"),
+                User.username.ilike(literal_contains_pattern(search), escape="\\"),
+                User.email.ilike(literal_contains_pattern(search), escape="\\"),
+                User.first_name.ilike(literal_contains_pattern(search), escape="\\"),
+                User.last_name.ilike(literal_contains_pattern(search), escape="\\"),
             )
         )
     total = query.count()
@@ -324,15 +322,29 @@ def _get_active_user(db: Session, user_id: int) -> User:
     return user
 
 
-def _token_pair(user_id: int, refresh_version: int) -> TokenPair:
+def _token_pair(user_id: int, session: UserSession) -> TokenPair:
+    expires_at = session.expires_at.replace(tzinfo=timezone.utc)
     return TokenPair(
-        access_token=create_access_token({"sub": str(user_id)}),
+        access_token=create_access_token(
+            {
+                "sub": str(user_id),
+                "sid": session.id,
+                "sv": session.refresh_version,
+                "session_started_at": int(
+                    session.created_at.replace(tzinfo=timezone.utc).timestamp()
+                    * 1_000_000
+                ),
+            }
+        ),
         refresh_token=create_refresh_token(
             {
                 "sub": str(user_id),
-                "version": refresh_version,
-            }
+                "version": session.refresh_version,
+                "sid": session.id,
+            },
+            expires_delta=expires_at - datetime.now(timezone.utc),
         ),
+        refresh_expires_at=expires_at,
     )
 
 

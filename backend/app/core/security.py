@@ -28,6 +28,7 @@ password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 class RefreshTokenClaims:
     subject: str
     version: int
+    session_id: str
 
 
 def hash_password(password: str) -> str:
@@ -64,9 +65,16 @@ def decode_access_token(token: str) -> str:
 def decode_refresh_token(token: str) -> RefreshTokenClaims:
     payload = _decode_token_payload(token, expected_type="refresh")
     version = payload.get("version")
+    sid = payload.get("sid")
+    if (
+        not isinstance(sid, str)
+        or len(sid) != 32
+        or any(c not in "0123456789abcdef" for c in sid)
+    ):
+        raise _invalid_token()
     if isinstance(version, bool) or not isinstance(version, int) or version < 0:
         raise _invalid_token()
-    return RefreshTokenClaims(subject=payload["sub"], version=version)
+    return RefreshTokenClaims(subject=payload["sub"], version=version, session_id=sid)
 
 
 def get_current_user(

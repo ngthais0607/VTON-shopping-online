@@ -19,6 +19,7 @@ from app.core.security import (
 from app.features.users import service
 from app.features.users.model import User
 from app.features.users.schemas import LoginCommand, UserPatch
+from app.features.users.session_model import UserSession
 from app.integrations.queue import get_task_queue
 from app.seed import seed_database
 
@@ -48,7 +49,13 @@ def _make_user(db_session, suffix: str, *, role: str = "customer", **values) -> 
     return user
 
 
-def test_seed_database_and_versioned_login(client, db_session):
+def test_seed_database_and_versioned_login(client, db_session, monkeypatch):
+    from importlib import import_module
+
+    from app.core.config import get_settings
+
+    settings = get_settings().model_copy(update={"seed_admin_password": "Admin@123456"})
+    monkeypatch.setattr(import_module("app.seed"), "get_settings", lambda: settings)
     seed_database(db_session)
 
     admin = db_session.query(User).filter(User.email == "admin@example.com").one()
@@ -86,7 +93,13 @@ def test_login_rate_limiting_uses_versioned_route(client):
     assert client.post("/api/v1/users/login", json=payload).status_code == 429
 
 
-def test_refresh_rotates_cookie_and_logout_deletes_it(client, db_session):
+def test_refresh_rotates_cookie_and_logout_deletes_it(client, db_session, monkeypatch):
+    from importlib import import_module
+
+    from app.core.config import get_settings
+
+    settings = get_settings().model_copy(update={"seed_admin_password": "Admin@123456"})
+    monkeypatch.setattr(import_module("app.seed"), "get_settings", lambda: settings)
     seed_database(db_session)
     limiter.reset()
     login = client.post(
@@ -368,6 +381,7 @@ def test_concurrent_refresh_consumes_version_once(tmp_path):
         connect_args={"check_same_thread": False, "timeout": 10},
     )
     User.__table__.create(engine)
+    UserSession.__table__.create(engine)
     session_factory = sessionmaker(bind=engine, expire_on_commit=False)
     setup = session_factory()
     user = User(
@@ -438,7 +452,8 @@ def test_profile_update_does_not_restore_consumed_refresh_version(
         lambda _context: original_version,
     )
     service.update_profile(db_session, user, UserPatch(first_name="Changed"))
-    assert user.refresh_version == 1
+    claims = decode_refresh_token(original_refresh)
+    assert db_session.get(UserSession, claims.session_id).refresh_version == 1
 
     with pytest.raises(AuthenticationError) as error:
         service.refresh_user_session(db_session, original_refresh)
