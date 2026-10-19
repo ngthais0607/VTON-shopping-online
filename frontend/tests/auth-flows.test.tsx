@@ -5,7 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { AuthContainer } from '../components/auth/auth-container';
 const {post,get,push} = vi.hoisted(()=>({post:vi.fn(),get:vi.fn(),push:vi.fn()}));
-vi.mock('@/lib/api',()=>({apiPost:post,apiGet:get}));
+vi.mock('@/lib/api',()=>({apiPost:post,apiGet:get,loginSession:(identifier:string,password:string)=>post('/users/login',{identifier,password})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push,refresh:()=>{}})}));
 it('rejects short new passwords but accepts short existing login passwords', () => {
   expect(registerSchema.safeParse({username:'customer',email:'c@example.com',password:'1234567'}).success).toBe(false);

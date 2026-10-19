@@ -35,6 +35,12 @@ if (process.env.NEXT_PUBLIC_IMAGE_HOST) {
 }
 
 const nextConfig = {
+  async rewrites() {
+    const bucket = process.env.MINIO_BUCKET || 'product-images';
+    if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket)) throw new Error('Invalid storage bucket');
+    const internal = process.env.MINIO_INTERNAL_URL || 'http://localhost:9000';
+    return [{ source: `/storage/${bucket}/:path*`, destination: `${internal.replace(/\/+$/, '')}/${bucket}/:path*` }];
+  },
   images: {
     remotePatterns,
   },

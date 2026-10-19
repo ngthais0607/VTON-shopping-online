@@ -1,5 +1,8 @@
 import axios, { InternalAxiosRequestConfig } from 'axios';
 import { clearAccessToken, getAccessToken, getSessionGeneration, renewAccessToken, setSessionNotice } from './session';
+import { setAccessToken } from './session';
+import { withSessionLock } from './session-lock';
+import { normalizeStorageUrls } from './storage-image';
 
 export function normalizeApiBase(base: string): string {
     const clean = base.replace(/\/+$/, '');
@@ -44,7 +47,12 @@ export async function refreshSession(): Promise<string> {
     const version = getSessionGeneration();
     if (!refreshWork || refreshWork.generation !== version) {
         const work = { generation: version, promise: Promise.resolve('') };
-        work.promise = axios.post(`${API_BASE_URL}/users/refresh`, {}, { withCredentials: true }).then(response => {
+        const tokenBeforeLock = getAccessToken();
+        work.promise = withSessionLock(async () => {
+            if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+            const peerToken = getAccessToken();
+            if (peerToken && peerToken !== tokenBeforeLock) return peerToken;
+            const response = await axios.post(`${API_BASE_URL}/users/refresh`, {}, { withCredentials: true });
             if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
             const token = response.data?.access_token;
             if (typeof token !== 'string' || !token) throw new ApiError('Invalid session response', 401);
@@ -68,7 +76,7 @@ apiClient.interceptors.response.use(
     response => {
         const config = response.config as SessionRequest;
         if (!isAuthRequest(config.url) && config._generation !== getSessionGeneration()) throw new ApiError('Session changed. Please try again.', 401);
-        return response.data;
+        return normalizeStorageUrls(response.data);
     },
     async error => {
         const request = error.config as SessionRequest | undefined;
@@ -91,11 +99,21 @@ apiClient.interceptors.response.use(
 export async function logoutSession(): Promise<void> {
     clearAccessToken();
     delete apiClient.defaults.headers.common.Authorization;
-    try { await apiPost<void>('/users/logout', {}); }
+    try { await withSessionLock(async () => { await apiPost<void>('/users/logout', {}); }); }
     catch (error) {
         setSessionNotice(`Local session cleared. ${toApiError(error).message}. Server logout could not be verified; retry when the server is available.`);
         throw error;
     }
+}
+
+export async function loginSession(identifier: string, password: string): Promise<void> {
+    const generation = getSessionGeneration();
+    await withSessionLock(async () => {
+        const response = await apiPost<{access_token: string}>('/users/login', {identifier, password});
+        if (generation !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+        if (!response.access_token) throw new ApiError('Invalid session response', 401);
+        setAccessToken(response.access_token);
+    });
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

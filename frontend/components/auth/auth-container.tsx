@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, registerSchema, LoginFormData, RegisterFormData } from "@/lib/validations/auth";
-import { setAccessToken, safeReturnPath } from '@/lib/session';
-import { apiPost, apiGet } from "@/lib/api";
+import { safeReturnPath } from '@/lib/session';
+import { apiPost, apiGet, loginSession } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Mail, User, Lock, Eye, EyeOff, AlertCircle, Sparkles, Star, ShieldCheck, Truck } from "lucide-react";
@@ -115,12 +115,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
         try {
             if (activeTab === "signin") {
                 // Login action
-                const response = await apiPost<{ access_token: string; token_type: string }, any>("/users/login", {
-                    identifier: formData.email,
-                    password: formData.password,
-                });
-
-                setAccessToken(response.access_token);
+                await loginSession(formData.email, formData.password);
 
                 try {
                     const me = await apiGet<{ role?: string }>("/users/me");
