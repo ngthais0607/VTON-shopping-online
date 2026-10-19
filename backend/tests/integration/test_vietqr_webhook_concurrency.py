@@ -26,6 +26,40 @@ from app.features.users.model import User
 pytestmark = pytest.mark.integration
 
 
+def test_mismatched_transaction_retry_is_durable_once():
+    engine, factory = _session_factory()
+    order_id, variant_id, _ = _setup_test_order(
+        factory, total_amount=100000, reserved=2
+    )
+    transaction_id = "mismatch-" + uuid4().hex
+    payload = VietQRWebhookPayload(
+        transaction_id=transaction_id, amount=Decimal("99999"), content=f"TL{order_id}"
+    )
+    barrier = Barrier(2)
+
+    def accept():
+        with factory() as db:
+            barrier.wait(timeout=15)
+            return process_vietqr_webhook(
+                db, payload, get_settings().vietqr_webhook_secret
+            ).status
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(accept) for _ in range(2)]
+        statuses = sorted(future.result(timeout=30) for future in futures)
+    assert statuses == ["already_processed", "amount_mismatch"]
+    with factory() as db:
+        payment = (
+            db.query(Payment).filter_by(provider_transaction_id=transaction_id).one()
+        )
+        assert payment.amount == Decimal("99999")
+        assert db.get(Order, order_id).status == "pending"
+        variant = db.get(ProductVariant, variant_id)
+        assert variant.reserved_quantity == 2
+        assert variant.sold_quantity == 0
+    engine.dispose()
+
+
 def _session_factory():
     database_url = os.getenv("TEST_DATABASE_URL")
     if not database_url:
@@ -110,7 +144,6 @@ def test_concurrent_webhooks_same_transaction_id():
     )
     settings = get_settings()
     secret = settings.vietqr_webhook_secret or "test-secret"
-    settings.vietqr_webhook_secret = secret
 
     txn_id = f"TXN_SAME_{uuid4().hex[:8]}"
     payload = VietQRWebhookPayload(
@@ -157,7 +190,6 @@ def test_concurrent_webhooks_different_transaction_ids():
     )
     settings = get_settings()
     secret = settings.vietqr_webhook_secret or "test-secret"
-    settings.vietqr_webhook_secret = secret
 
     payload1 = VietQRWebhookPayload(
         transaction_id=f"TXN_DIFF_A_{uuid4().hex[:8]}",
@@ -210,7 +242,6 @@ def test_webhook_racing_with_admin_paid():
     )
     settings = get_settings()
     secret = settings.vietqr_webhook_secret or "test-secret"
-    settings.vietqr_webhook_secret = secret
 
     payload = VietQRWebhookPayload(
         transaction_id=f"TXN_ADMIN_RACE_{uuid4().hex[:8]}",
@@ -246,7 +277,7 @@ def test_webhook_racing_with_admin_paid():
     with ThreadPoolExecutor(max_workers=2) as executor:
         f1 = executor.submit(run_webhook)
         f2 = executor.submit(run_admin)
-        f1.result(timeout=15)
+        webhook_status = f1.result(timeout=15)
         f2.result(timeout=15)
 
     verify = session_factory()
@@ -257,5 +288,15 @@ def test_webhook_racing_with_admin_paid():
     assert order.status == "paid"
     assert variant.reserved_quantity == 0
     assert variant.sold_quantity == 1
-    assert len(payments) == 1
+    assert sum(payment.status == "paid" for payment in payments) == 1
+    assert len(payments) == (2 if webhook_status == "duplicate_payment" else 1)
+    transaction = [
+        payment
+        for payment in payments
+        if payment.provider_transaction_id == payload.transaction_id
+    ]
+    assert len(transaction) == 1
+    assert transaction[0].status == (
+        "duplicate_payment" if webhook_status == "duplicate_payment" else "paid"
+    )
     verify.close()

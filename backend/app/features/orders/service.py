@@ -261,6 +261,8 @@ def checkout_cart(
                     | Product.category.has(Category.is_deleted.is_(False))
                 ),
             )
+            .populate_existing()
+            .with_for_update(read=True)
             .first()
         )
         if parent_product is None:

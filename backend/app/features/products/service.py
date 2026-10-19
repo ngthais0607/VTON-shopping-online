@@ -13,6 +13,7 @@ from app.core.cache import get_cache
 from app.core.config import get_settings
 from app.core.errors import BusinessRuleError, ConflictError, ResourceNotFoundError
 from app.core.schemas import Page
+from app.core.search import literal_contains_pattern
 from app.core.slug import generate_unique_slug, slugify
 from app.features.categories import service as category_service
 from app.features.categories.model import Category
@@ -221,8 +222,12 @@ def list_products(
     if filters.search:
         query = query.filter(
             or_(
-                Product.name.ilike(f"%{filters.search}%"),
-                Product.description.ilike(f"%{filters.search}%"),
+                Product.name.ilike(
+                    literal_contains_pattern(filters.search), escape="\\"
+                ),
+                Product.description.ilike(
+                    literal_contains_pattern(filters.search), escape="\\"
+                ),
             )
         )
     effective_price = _effective_product_price()
@@ -242,7 +247,12 @@ def list_products(
         query = query.filter(Product.gender.in_(filters.gender))
     if filters.brand:
         query = query.filter(
-            or_(*(Product.brand.ilike(f"%{b}%") for b in filters.brand))
+            or_(
+                *(
+                    Product.brand.ilike(literal_contains_pattern(b), escape="\\")
+                    for b in filters.brand
+                )
+            )
         )
     if filters.size:
         query = query.filter(
@@ -254,7 +264,14 @@ def list_products(
     if filters.color:
         query = query.filter(
             Product.variants.any(
-                or_(*(ProductVariant.color_name.ilike(f"%{c}%") for c in filters.color))
+                or_(
+                    *(
+                        ProductVariant.color_name.ilike(
+                            literal_contains_pattern(c), escape="\\"
+                        )
+                        for c in filters.color
+                    )
+                )
                 & (ProductVariant.is_active.is_(True))
             )
         )

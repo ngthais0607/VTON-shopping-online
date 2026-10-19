@@ -64,26 +64,28 @@ def test_review_migration_dedupe_and_unique_constraint():
     conn = session.connection()
     conn.execute(
         text(
-            "INSERT INTO product_reviews (user_id, product_id, rating, title, comment, is_verified_purchase, created_at, updated_at) "
-            "VALUES (:uid, :pid, 2, 'Old Review 1', 'Oldest', 1, :dt1, :dt1)"
+            "INSERT INTO product_reviews (user_id, product_id, rating, title, comment, is_verified_purchase, created_at) "
+            "VALUES (:uid, :pid, 2, 'Old Review 1', 'Oldest', 1, :dt1)"
         ),
         {"uid": u.id, "pid": p.id, "dt1": old_dt},
     )
     conn.execute(
         text(
-            "INSERT INTO product_reviews (user_id, product_id, rating, title, comment, is_verified_purchase, created_at, updated_at) "
-            "VALUES (:uid, :pid, 4, 'Newer Review 2', 'Newer', 1, :dt2, :dt2)"
+            "INSERT INTO product_reviews (user_id, product_id, rating, title, comment, is_verified_purchase, created_at) "
+            "VALUES (:uid, :pid, 4, 'Newer Review 2', 'Newer', 1, :dt2)"
         ),
         {"uid": u.id, "pid": p.id, "dt2": new_dt},
     )
     conn.execute(
         text(
-            "INSERT INTO product_reviews (user_id, product_id, rating, title, comment, is_verified_purchase, created_at, updated_at) "
-            "VALUES (:uid, :pid, 5, 'Tie-break Review 3', 'Same date higher ID', 1, :dt2, :dt2)"
+            "INSERT INTO product_reviews (user_id, product_id, rating, title, comment, is_verified_purchase, created_at) "
+            "VALUES (:uid, :pid, 5, 'Tie-break Review 3', 'Same date higher ID', 1, :dt2)"
         ),
         {"uid": u.id, "pid": p.id, "dt2": new_dt},
     )
+    user_id, product_id = u.id, p.id
     session.commit()
+    session.close()
 
     # 2. Upgrade to d4e5f6a7b8c9: dedupes and adds unique constraint
     command.upgrade(alembic_cfg, "d4e5f6a7b8c9")
@@ -92,25 +94,32 @@ def test_review_migration_dedupe_and_unique_constraint():
     session = session_factory()
     surviving = (
         session.query(ProductReview)
-        .filter(ProductReview.user_id == u.id, ProductReview.product_id == p.id)
+        .filter(
+            ProductReview.user_id == user_id, ProductReview.product_id == product_id
+        )
         .all()
     )
     assert len(surviving) == 1
     assert surviving[0].rating == 5
     assert surviving[0].title == "Tie-break Review 3"
+    session.close()
 
     # 4. Downgrade drops constraint without restoring deleted duplicates
     command.downgrade(alembic_cfg, "c3d4e5f6a7b8")
     session = session_factory()
     after_downgrade = (
         session.query(ProductReview)
-        .filter(ProductReview.user_id == u.id, ProductReview.product_id == p.id)
+        .filter(
+            ProductReview.user_id == user_id, ProductReview.product_id == product_id
+        )
         .all()
     )
     assert len(after_downgrade) == 1
+    session.close()
 
     # Restore head for subsequent test isolation
     command.upgrade(alembic_cfg, "head")
+    engine.dispose()
 
 
 def test_concurrent_review_first_submission_upsert():

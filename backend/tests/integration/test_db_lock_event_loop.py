@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+from app.core.database import get_db
 from app.core.security import create_access_token
 from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
@@ -63,9 +64,15 @@ def _setup_product_and_user(session_factory):
 
 
 @pytest.mark.asyncio
-async def test_event_loop_remains_responsive_during_db_lock_wait():
+async def test_event_loop_remains_responsive_during_db_lock_wait(monkeypatch):
     engine, session_factory = _session_factory()
     user_id, product_id, variant_id = _setup_product_and_user(session_factory)
+
+    def independent_database():
+        with session_factory() as session:
+            yield session
+
+    monkeypatch.setitem(app.dependency_overrides, get_db, independent_database)
 
     # Temporary lightweight async probe endpoint
     probe_path = f"/api/v1/test-probe-{uuid4().hex[:6]}"
@@ -74,7 +81,7 @@ async def test_event_loop_remains_responsive_during_db_lock_wait():
     async def _async_probe():
         return {"probe": "responsive"}
 
-    token = create_access_token(user_id=user_id, role="customer")
+    token = create_access_token({"sub": str(user_id)})
     headers = {"Authorization": f"Bearer {token}"}
 
     # Open independent raw connection and acquire row lock on product_variant
@@ -129,3 +136,9 @@ async def test_event_loop_remains_responsive_during_db_lock_wait():
         if not conn.closed:
             trans.rollback()
             conn.close()
+        app.router.routes[:] = [
+            route
+            for route in app.router.routes
+            if getattr(route, "path", None) != probe_path
+        ]
+        engine.dispose()

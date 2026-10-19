@@ -49,6 +49,7 @@ def _create_pending_order(session_factory):
         slug=f"transition-{suffix}",
         price=100,
         currency="USD",
+        is_active=True,
     )
     session.add_all([admin, product])
     session.flush()
@@ -76,7 +77,7 @@ def _create_pending_order(session_factory):
         currency="USD",
         status="pending",
         customer_name="Concurrency Customer",
-        customer_phone="0123456789",
+        customer_phone="0912345678",
         shipping_address="123 Lock Street",
         payment_method="vietqr",
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
@@ -208,6 +209,7 @@ def test_two_orders_sharing_product_preserve_both_transitions(
         slug=f"shared-product-{suffix}",
         price=100,
         currency="USD",
+        is_active=True,
     )
     setup.add(product)
     setup.flush()
@@ -234,8 +236,8 @@ def test_two_orders_sharing_product_preserve_both_transitions(
         currency="USD",
         status="pending",
         customer_name="First Buyer",
-        customer_phone="123",
-        shipping_address="Address",
+        customer_phone="0912345678",
+        shipping_address="123 Integration Street",
         payment_method="vietqr",
         expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
@@ -262,8 +264,8 @@ def test_two_orders_sharing_product_preserve_both_transitions(
         currency="USD",
         status="pending",
         customer_name="Second Buyer",
-        customer_phone="456",
-        shipping_address="Address",
+        customer_phone="0912345678",
+        shipping_address="123 Integration Street",
         payment_method="vietqr",
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
@@ -344,6 +346,7 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
         slug=f"checkout-expire-{suffix}",
         price=100,
         currency="VND",
+        is_active=True,
     )
     setup.add_all([user, product])
     setup.flush()
@@ -371,8 +374,8 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
         currency="VND",
         status="pending",
         customer_name="Earlier Buyer",
-        customer_phone="123",
-        shipping_address="Address",
+        customer_phone="0912345678",
+        shipping_address="123 Integration Street",
         payment_method="vietqr",
         expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
     )
@@ -399,8 +402,8 @@ def test_checkout_insert_does_not_deadlock_with_expiration_scan():
     command = CheckoutCommand(
         items=[{"variant_id": variant_id, "quantity": 1}],
         customer_name="Later Buyer",
-        customer_phone="456",
-        shipping_address="Address",
+        customer_phone="0912345678",
+        shipping_address="123 Integration Street",
         payment_method="vietqr",
     )
 

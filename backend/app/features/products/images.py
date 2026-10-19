@@ -208,6 +208,12 @@ def delete_product_image(
             f"Image {image_id} was not found",
             code="image_not_found",
         )
-    storage.delete(image.object_name)
+    object_name = image.object_name
     db.delete(image)
     db.commit()
+    try:
+        storage.delete(object_name)
+    except Exception:
+        logger.exception(
+            "Image object cleanup failed after metadata deletion: %s", object_name
+        )

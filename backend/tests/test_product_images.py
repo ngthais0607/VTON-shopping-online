@@ -23,6 +23,45 @@ VALID_JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 32
 VALID_WEBP_BYTES = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 20
 
 
+def test_image_delete_commit_failure_preserves_object(db_session, monkeypatch):
+    from app.features.products.images import delete_product_image
+
+    product = make_product(db_session)
+    image = ProductImage(
+        id="delete-failure", product_id=product.id, object_name="keep.png"
+    )
+    db_session.add(image)
+    db_session.commit()
+    storage = FakeProductStorage()
+
+    def fail_commit():
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+    with pytest.raises(RuntimeError, match="commit failed"):
+        delete_product_image(db_session, storage, product.id, image.id)
+    assert storage.deleted == []
+
+
+def test_object_cleanup_failure_does_not_restore_row(db_session, caplog):
+    from app.features.products.images import delete_product_image
+
+    product = make_product(db_session)
+    image = ProductImage(
+        id="cleanup-failure", product_id=product.id, object_name="orphan.png"
+    )
+    db_session.add(image)
+    db_session.commit()
+    delete_product_image(
+        db_session,
+        FakeProductStorage(delete_error=RuntimeError("offline")),
+        product.id,
+        image.id,
+    )
+    assert db_session.get(ProductImage, "cleanup-failure") is None
+    assert "orphan.png" in caplog.text
+
+
 class CountingStream(BytesIO):
     def __init__(self, data: bytes):
         super().__init__(data)

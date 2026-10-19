@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ConflictError, ResourceNotFoundError
 from app.core.schemas import Page
+from app.core.search import literal_contains_pattern
 from app.core.slug import generate_unique_slug, slugify
 from app.features.categories.model import Category
 from app.features.categories.schemas import (
@@ -54,7 +55,9 @@ def list_categories(
 ) -> Page[Category]:
     query = db.query(Category).filter(Category.is_deleted.is_(False))
     if search:
-        query = query.filter(Category.name.ilike(f"%{search}%"))
+        query = query.filter(
+            Category.name.ilike(literal_contains_pattern(search), escape="\\")
+        )
 
     total = query.count()
     categories = query.order_by(Category.id).offset(offset).limit(limit).all()

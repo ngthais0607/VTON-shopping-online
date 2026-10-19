@@ -39,6 +39,7 @@ def test_checkout_final_unit_cannot_be_oversold():
         slug=f"final-unit-{suffix}",
         price=100,
         currency="VND",
+        is_active=True,
     )
     setup_session.add_all([user, product])
     setup_session.flush()
@@ -63,7 +64,7 @@ def test_checkout_final_unit_cannot_be_oversold():
     checkout = CheckoutCommand(
         items=[{"variant_id": variant_id, "quantity": 1}],
         customer_name="Concurrent Buyer",
-        customer_phone="0123456789",
+        customer_phone="0912345678",
         shipping_address="123 Concurrency Street",
         payment_method="vietqr",
     )
@@ -125,12 +126,14 @@ def test_multi_item_checkout_atomicity_under_concurrency():
         slug=f"limited-item-{suffix}",
         price=50,
         currency="VND",
+        is_active=True,
     )
     product_b = Product(
         name=f"Abundant item {suffix}",
         slug=f"abundant-item-{suffix}",
         price=30,
         currency="VND",
+        is_active=True,
     )
     setup_session.add_all([user, product_a, product_b])
     setup_session.flush()

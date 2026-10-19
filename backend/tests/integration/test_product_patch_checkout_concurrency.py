@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.features.orders.schemas import CheckoutCommand
-from app.features.orders.service import InsufficientStockError, checkout_cart
+from app.features.orders.service import ProductNotFoundError, checkout_cart
 from app.features.products.model import Product
 from app.features.products.schemas import ProductPatch
 from app.features.products.service import update_product
@@ -41,6 +41,7 @@ def test_product_patch_serializes_with_checkout():
             slug=f"patch-race-{suffix}",
             price=10,
             currency="VND",
+            is_active=True,
         )
         setup.add_all([user, product])
         setup.flush()
@@ -80,7 +81,9 @@ def test_product_patch_serializes_with_checkout():
             event.listen(session.bind, "after_cursor_execute", hold_after_lock)
             try:
                 update_product(
-                    session, product_id, ProductPatch(name="Updated Concurrently")
+                    session,
+                    product_id,
+                    ProductPatch(name="Updated Concurrently", is_active=False),
                 )
             finally:
                 event.remove(session.bind, "after_cursor_execute", hold_after_lock)
@@ -92,8 +95,8 @@ def test_product_patch_serializes_with_checkout():
             command = CheckoutCommand(
                 items=[{"variant_id": variant_id, "quantity": 1}],
                 customer_name="Buyer",
-                customer_phone="123",
-                shipping_address="Home",
+                customer_phone="0912345678",
+                shipping_address="123 Checkout Street",
                 payment_method="vietqr",
             )
 
@@ -106,7 +109,7 @@ def test_product_patch_serializes_with_checkout():
 
             event.listen(session, "do_orm_execute", signal_read)
             try:
-                with pytest.raises(InsufficientStockError):
+                with pytest.raises(ProductNotFoundError):
                     checkout_cart(
                         session,
                         user,
@@ -125,6 +128,7 @@ def test_product_patch_serializes_with_checkout():
             checkout_future.result(timeout=20)
         with sessions() as verify:
             current_v = verify.get(ProductVariant, variant_id)
-            assert (current_v.stock_quantity, current_v.reserved_quantity) == (0, 0)
+            assert (current_v.stock_quantity, current_v.reserved_quantity) == (1, 0)
+            assert verify.get(Product, product_id).is_active is False
     finally:
         engine.dispose()
