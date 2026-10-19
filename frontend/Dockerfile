@@ -7,6 +7,12 @@ RUN corepack enable && corepack prepare pnpm@10.33.4 --activate
 
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_IMAGE_HOST=http://localhost:9000
+ENV NEXT_PUBLIC_IMAGE_HOST=$NEXT_PUBLIC_IMAGE_HOST
+ARG MINIO_INTERNAL_URL=http://localhost:9000
+ARG MINIO_BUCKET=product-images
+ENV MINIO_INTERNAL_URL=$MINIO_INTERNAL_URL
+ENV MINIO_BUCKET=$MINIO_BUCKET
 
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile

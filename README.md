@@ -82,7 +82,7 @@ Do not reverse the migration/deploy order. `alembic current` should report `d4e5
 
 For Windows development, prefer the Compose worker service with its required environment configured. The live verification exercised an ARQ burst worker and expiration entry point; standard ARQ shutdown depends on Unix signals and was not certified on native Windows.
 
-The seed script has **no `--help` or dry-run mode**; `python -m app.seed` immediately creates tables if needed and writes demo accounts, catalog, and historical orders to the configured database. Run it only after verifying `DATABASE_URL` points to an isolated local/demo database. It creates `admin@example.com` / `Admin@123456` and `user@example.com` / `User@123456`; rotate/remove these accounts outside disposable development. Public `/register` creates customers, not admins.
+The seed script has **no `--help` or dry-run mode**; `python -m app.seed` immediately creates tables if needed and writes demo accounts, catalog, and historical orders to the configured database. Run it only after verifying `DATABASE_URL` points to an isolated local/demo database. Production demo seeding is refused even with `--force`; use `python -m app.cli create-admin`. Development accounts use generated passwords printed only at creation, or explicit `SEED_ADMIN_PASSWORD` / `SEED_CUSTOMER_PASSWORD`. Repeated runs preserve existing credentials. Public `/register` creates customers, not admins.
 
 ## Frontend and session behavior
 
@@ -96,7 +96,7 @@ Copy-Item .env.example .env.local
 pnpm dev
 ```
 
-Login sends `{identifier,password}` and accepts an email or username. The client keeps the access token in local storage and refreshes through the HttpOnly cookie, sharing one refresh attempt for simultaneous expired requests. Logout clears local credentials/private cache and calls the backend cookie-clearing endpoint; server-clear failures are visible. By architectural design, logout does not maintain a server-side denylist for stateless access tokens; issued access tokens remain valid until their natural short-lived expiration. Password changes use PATCH, invalidate refresh tokens on the backend, and return the client to login. Backend access tokens retain their existing expiration semantics.
+Login sends `{identifier,password}` and accepts an email or username. The client keeps access tokens in memory and refreshes through an HttpOnly cookie. Web Locks coordinate cookie mutations across supported same-origin tabs, with BroadcastChannel sharing token renewal. Tokens are never persisted in browser storage. Each device has its own database session and absolute refresh expiry. Legacy refresh cookies require login again after the session migration. Logout clears local credentials/private cache and calls the backend cookie-clearing endpoint; server-clear failures are visible. By architectural design, logout does not maintain a server-side denylist for stateless access tokens; issued access tokens remain valid until their natural short-lived expiration. Password changes use PATCH, invalidate refresh tokens on the backend, and return the client to login. Backend access tokens retain their existing expiration semantics.
 
 Products, categories, customers and admin orders consume `{items,total,limit,offset}` pages. Category selectors load all pages. Profile/product/category edits use PATCH; order status retains PUT. Product images use `{id,url}`. Upload retry after a saved product does not create the product again. Dashboard charts describe the recent-order sample and do not invent weekly revenue or growth comparisons.
 
@@ -114,7 +114,7 @@ From `backend/` with a local `SECRET_KEY` (or configured `.env`):
 .\.venv\Scripts\python.exe -m pytest -q -W error::sqlalchemy.exc.SAWarning -p no:cacheprovider --basetemp=../.superpowers/pytest-temp
 ```
 
-Ten MariaDB integration tests skip unless `TEST_DATABASE_URL` is set. Use a dedicated empty, disposable MariaDB database; never point them at production or shared data. Before running the suite, set `DATABASE_URL` to that test database and run `alembic upgrade head`; then set `TEST_DATABASE_URL` to the same migrated database. The fulfillment-migration test creates and drops a separate `migration_<random>` database on that server, so the test account also needs `CREATE` and `DROP` database privileges. Confirm the server and account are isolated before granting them. The checkout, PATCH/checkout, transition, uniqueness, and fulfillment cases are in `tests/integration/`. SQLite unit tests and mocked adapters alone do not establish live MariaDB locking, Redis, MinIO, or SMTP behavior. Each live run must record its isolated infrastructure and results separately. From `frontend/`, run `pnpm test`, `pnpm exec eslint . --max-warnings=0`, `pnpm exec tsc --noEmit` and `pnpm build`. The [BE–FE repair review](docs/reviews/2026-10-12-be-fe-flow-repair-review.md) records the available frontend and live-service evidence. SMTP and an interactive browser flow are not claimed as verified.
+MariaDB integration tests skip unless `TEST_DATABASE_URL` is set. Use a dedicated empty, disposable MariaDB database; never point them at production or shared data. Before running the suite, set `DATABASE_URL` to that test database and run `alembic upgrade head`; then set `TEST_DATABASE_URL` to the same migrated database. The fulfillment-migration test creates and drops a separate `migration_<random>` database on that server, so the test account also needs `CREATE` and `DROP` database privileges. Confirm the server and account are isolated before granting them. The checkout, PATCH/checkout, transition, uniqueness, and fulfillment cases are in `tests/integration/`. SQLite unit tests and mocked adapters alone do not establish live MariaDB locking, Redis, MinIO, or SMTP behavior. Each live run must record its isolated infrastructure and results separately. From `frontend/`, run `pnpm test`, `pnpm exec eslint . --max-warnings=0`, `pnpm exec tsc --noEmit` and `pnpm build`. The [BE–FE repair review](docs/reviews/2026-10-12-be-fe-flow-repair-review.md) records the available frontend and live-service evidence. SMTP and an interactive browser flow are not claimed as verified.
 
 ## License
 
@@ -142,3 +142,17 @@ Host ports can be changed with `MARIADB_PORT`, `REDIS_PORT`, `MINIO_PORT`,
 `MINIO_CONSOLE_PORT`, `API_PORT`, and `FRONTEND_PORT`. Update public URLs and CORS
 when changing ports. Use unique Compose project names for disposable test stacks.
 
+
+## Remediation verification and image delivery
+
+Run `python .github/scripts/compose_smoke.py` from the root for a disposable stack. Set `SMOKE_BROWSER_TESTS=1` after installing frontend dev dependencies and Chromium (`pnpm exec playwright install chromium`) to include browser acceptance. Use the backend virtualenv interpreter with `python .github/scripts/run_integration.py` for a separate disposable MariaDB server and all integration tests. Both runners preserve existing installations and remove only their own project resources.
+
+Product image URLs from the configured public storage host become same-origin `/storage/<bucket>/<object>` paths in the frontend. Next forwards only its configured bucket to `MINIO_INTERNAL_URL`; Docker uses `http://minio:9000`. Rebuild the frontend when the public image/API origin, internal storage origin, or bucket changes. This does not enable arbitrary private-IP fetching. Original public object URLs remain available to direct clients.
+
+Browsers without Web Locks/BroadcastChannel support single-tab login/refresh but cannot guarantee cross-tab serialization. Logout revokes its current device refresh session; password changes revoke all device refresh sessions. Existing short-lived access tokens retain their normal expiry.
+
+## Reproducible backend dependencies
+
+Docker and Linux CI use hashed Python 3.12 locks. From `backend/`, install with `python -m pip install --require-hashes -r requirements-dev-lock.txt`. Native Windows development uses `requirements-dev-windows-lock.txt`, generated and checked on Python 3.13, with the same hash-verification flag. Runtime-only equivalents are `requirements-lock.txt` and `requirements-windows-lock.txt`. Run `python -m pip check` after installing.
+
+Edit the `.in` files and regenerate with pip-tools 7.6.2 under the target platform/runtime. Linux runtime: `python -m piptools compile --generate-hashes --output-file requirements-lock.txt requirements.in`. Linux dev: use `--allow-unsafe` and `requirements-dev.in` with output `requirements-dev-lock.txt`. Windows runtime uses `requirements.in` with output `requirements-windows-lock.txt`; Windows dev uses `--allow-unsafe`, `requirements-dev-windows.in`, and output `requirements-dev-windows-lock.txt`. Keep bcrypt 4.0.1 until a separately verified upgrade.

@@ -125,3 +125,7 @@ migration and worker containers. Back up the database; never reset existing
 volumes to initialize an account. Disposable migration tests use a separate
 administrative account because they create and drop their own test databases.
 
+
+## Device sessions (2026-10-19)
+
+Apply Alembic revision `f8a1b2c3d4e5` before deploying the new API/worker and rebuilt frontend. Existing users remain intact; no device sessions can be inferred from old user-level versions. Refresh JWTs without `sid` require login again. New refresh expiry is absolute and does not extend on rotation. The old `users.refresh_version` column remains for a non-destructive rollout. Downgrading drops the new session table and requires reauthentication; it does not revoke already issued short-lived access tokens.

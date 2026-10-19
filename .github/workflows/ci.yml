@@ -36,7 +36,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       SECRET_KEY: ci-test-secret-key-32-characters-minimum
       VIETQR_BANK_ID: MB
-      VIETQR_ACCOUNT_NO: "0382912048"
+      VIETQR_ACCOUNT_NO: "0000000000"
       VIETQR_ACCOUNT_NAME: TRUELOOK
       VIETQR_WEBHOOK_SECRET: ci-test-webhook-secret-32-chars-min
       MINIO_ACCESS_KEY: ci-test-minio-access-key
@@ -51,13 +51,16 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
-          cache-dependency-path: backend/requirements-dev.txt
+          cache-dependency-path: |
+            backend/requirements-lock.txt
+            backend/requirements-dev-lock.txt
 
       - name: Install Dependencies
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install --require-hashes -r requirements-dev-lock.txt
+          pip check
 
       - name: Wait for Services
         working-directory: backend
@@ -83,6 +86,7 @@ jobs:
         working-directory: backend
         run: |
           ruff check .
+          ruff format --check app tests
 
       - name: Run Alembic Migrations
         working-directory: backend
@@ -146,7 +150,34 @@ jobs:
         run: |
           pnpm test
 
+      - name: ESLint
+        working-directory: frontend
+        run: pnpm exec eslint . --max-warnings=0
+
       - name: Next.js Production Build
         working-directory: frontend
         run: |
           pnpm run build
+
+  compose-smoke:
+    name: Isolated Compose Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+        working-directory: frontend
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: frontend
+      - run: python .github/scripts/compose_smoke.py
+        env:
+          SMOKE_BROWSER_TESTS: "1"
