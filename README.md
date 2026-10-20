@@ -149,7 +149,7 @@ Run `python .github/scripts/compose_smoke.py` from the root for a disposable sta
 
 Product image URLs from the configured public storage host become same-origin `/storage/<bucket>/<object>` paths in the frontend. Next forwards only its configured bucket to `MINIO_INTERNAL_URL`; Docker uses `http://minio:9000`. Rebuild the frontend when the public image/API origin, internal storage origin, or bucket changes. This does not enable arbitrary private-IP fetching. Original public object URLs remain available to direct clients.
 
-Browsers without Web Locks/BroadcastChannel support single-tab login/refresh but cannot guarantee cross-tab serialization. Logout revokes its current device refresh session; password changes revoke all device refresh sessions. Existing short-lived access tokens retain their normal expiry.
+Authentication coordination stores only a random nonce in browser storage for fencing delayed login/logout messages; it contains no token or user/session identity. Tokens remain in memory. Browsers without Web Locks/BroadcastChannel or usable coordination storage support single-tab login/refresh but cannot guarantee cross-tab serialization. Logout revokes its current device refresh session; password changes revoke all device refresh sessions. Existing short-lived access tokens retain their normal expiry.
 
 ## Reproducible backend dependencies
 

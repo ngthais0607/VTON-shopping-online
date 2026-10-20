@@ -167,6 +167,18 @@ class SmokeStack:
         self.compose(
             "exec", "-T", "arq_worker", "arq", "--check", "app.worker.WorkerSettings"
         )
+        self.compose(
+            "exec",
+            "-T",
+            "frontend",
+            "node",
+            "-e",
+            "require('fs').accessSync('.next',require('fs').constants.W_OK);"
+            "require('next/dist/server/config').default('phase-production-server',process.cwd()).then(c=>{"
+            "const u=new URL(process.env.NEXT_PUBLIC_IMAGE_HOST);"
+            "if(!c.images.remotePatterns.some(p=>p.hostname===u.hostname&&(p.port||'')===u.port)"
+            "||!c.images.remotePatterns.some(p=>p.hostname==='images.unsplash.com'))process.exit(1)})",
+        )
 
     def prepare_image(self):
         password = secrets.token_urlsafe(24)
@@ -176,14 +188,12 @@ class SmokeStack:
             "-T",
             "api",
             "python",
-            "-m",
-            "app.cli",
-            "create-admin",
-            "--email",
-            "smoke-admin@example.com",
-            "--username",
-            "smoke-admin",
-            input_text=password + "\n" + password + "\n",
+            "-c",
+            "import json,sys\nfrom unittest.mock import patch\nfrom app.cli import main\n"
+            "password=json.load(sys.stdin)['password']\n"
+            "with patch('app.cli.getpass.getpass', return_value=password):\n"
+            " raise SystemExit(main(['create-admin','--email','smoke-admin@example.com','--username','smoke-admin']))",
+            input_text=json.dumps({"password": password}),
         )
         origin = self.values["NEXT_PUBLIC_API_BASE_URL"] + "/api/v1"
 
@@ -278,7 +288,9 @@ def running_stack():
         try:
             stack.compose("config", "--quiet")
             print("Building isolated project " + stack.project, flush=True)
-            stack.compose("build", timeout=1200)
+            stack.compose(
+                "build", timeout=int(os.environ.get("SMOKE_BUILD_TIMEOUT", "1200"))
+            )
             print("Build complete; starting isolated services", flush=True)
             stack.compose("up", "-d", "--wait", "--wait-timeout", "240", timeout=300)
             stack.verify()

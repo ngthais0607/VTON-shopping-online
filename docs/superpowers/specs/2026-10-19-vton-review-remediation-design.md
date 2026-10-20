@@ -93,6 +93,8 @@ Retain one in-flight refresh per tab. Serialize refresh requests across same-ori
 
 Extend the existing BroadcastChannel protocol with validated token-renewal and session-change messages. Tokens stay in memory; never place access or refresh tokens in local/session storage. Coordinate login, logout, and refresh through the same lock where supported, fence pending refresh results using session generation, and prevent a refresh response from restoring a locally logged-out session. Preserve account-switch protections and avoid rebroadcast loops.
 
+Execution clarification after final review: persist only an opaque random coordination nonce, with no token or identity data. Rotate it on login/logout and attach it to peer messages; reconcile it before request/response generation checks. Reject messages from older nonces, including unknown session IDs and unscoped logout. Use session revision for same-session renewal, rather than database creation timestamp precision. When coordination storage is unavailable, preserve single-tab behavior without promising cross-tab synchronization.
+
 Browsers without Web Locks or BroadcastChannel still support login and single-tab refresh. A stale concurrent refresh may retry once with the latest cookie; the backend rejects replay without revoking unrelated sessions. Do not claim guaranteed cross-tab serialization where the required browser APIs are unavailable. Cover delayed peer messages and generation changes; a 401 from a stale request must not erase a newer established local session.
 
 ## 6. Dependencies and focused correctness
