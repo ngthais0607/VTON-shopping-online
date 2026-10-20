@@ -82,3 +82,26 @@ Keep `main`, `local-history`, `fix/mvp-hardening`, the current branch, and
 `be-fe-flow-repair` in its active worktree. Keep any candidate with unique commits,
 protection, active PR work, or unverifiable state. Remote deletion must use the
 verified-tip lease; local deletion uses `git branch -d`, never `-D`.
+
+## Verified publication and branch cleanup (2026-10-20)
+
+Published recovery anchor: `dc7df68f33382a34375938ca40f47b77587ba670` on
+[`codex/vton-review-remediation`](https://github.com/ngthais0607/VTON-shopping-online/tree/codex/vton-review-remediation).
+Fresh GitHub audit confirmed default `main`, no open PR heads/bases and no
+protection for the three candidates. Each local/remote tip was an ancestor of
+the published anchor; remote deletions used exact expected-tip leases and local
+deletions used `git branch -d`.
+
+| Branch | Preserved tip in published history | Actual result |
+|---|---|---|
+| `feature/fashion-catalog` | `ce6e9097d4aa378c5cbd920b8b3217264fd0d035` | deleted remote and local |
+| `feature/vton-security-integrity-optimization` | `5c6823db6ea3a5017f7b3a1b3b984b89f3d96d8c` | deleted remote and local |
+| `fix/fashion-review-fixes` | `fae43e441a24d799da9487c1b999156d76dc9fad` | deleted remote and local |
+
+Independent `git ls-remote --heads origin` confirmed only `main`,
+`fix/mvp-hardening` and the delivery branch remain remotely. Local `main`,
+`fix/mvp-hardening`, `local-history`, delivery branch and `be-fe-flow-repair`
+remain. The flow-repair worktree remains at `44b433a`; unique local history
+was preserved. No merge or PR was created. Both original untracked user documents
+remain outside commits. The ten document deletions and sixteen retained plans/specs
+are detailed above/in the linked inventory.

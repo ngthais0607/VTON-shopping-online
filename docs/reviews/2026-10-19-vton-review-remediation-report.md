@@ -2,7 +2,7 @@
 
 Started: 2026-10-19; final verification: 2026-10-20. Branch: `codex/vton-review-remediation`.
 Base: `fix/mvp-hardening` at `f7ac031`.
-Status: implementation and all local acceptance gates passed; publication and branch cleanup in progress.
+Status: completed; all local acceptance gates passed, branch published, document and branch cleanup verified.
 
 ## Resulting behavior
 
@@ -79,8 +79,8 @@ before deletion and records protected work. Source documents are not deleted jus
 because they contain unchecked boxes or old dates. Branches are not deleted until
 the new remote branch is verified to contain their commits.
 
-Final review findings, execution rulings and actual cleanup/publication results
-will be recorded here before the task workspace is removed.
+Final review findings and all execution rulings are recorded below. Actual
+publication and branch cleanup are recorded after remote verification.
 
 Implementation commits: `3623778` (Compose/health), `1a66814` (synthetic bank),
 `1f948e5` (seed), `05cdd6c` (payment evidence), `360d4a7` (session schema),
@@ -90,7 +90,8 @@ locks/runtime/migration URL), `428cfda` (browser memory/session routing), and
 
 Ten obsolete documents were removed as individually listed in the inventory;
 six were ignored files, four tracked. The active plan/spec and review evidence
-remain available. No branch has yet been deleted.
+remain available. Three eligible old branches were deleted locally and remotely,
+as verified below.
 
 ## Independent whole-branch review and fix pass
 
@@ -167,3 +168,89 @@ unsupported browser coordination, immediate access-token revocation, live
 SMTP/banking, production deployment/TLS, excluded VTON/refund/admin UI work,
 pending real-browser acceptance, and the unread unrelated original prompt. Each
 executor decision and its cost is retained in the execution-rulings record below.
+
+## Rulings I made
+
+All 25 execution rulings are preserved below in their original order.
+
+- Ruling: preserve approved feature checkout; isolate backend tests in this plan workspace — spec preserves current checkout; unrelated worktree is occupied — cost if wrong: audit database paths.
+
+- Ruling: use PowerShell/Python equivalents of task bookkeeping — Bash MSYS initialization denied — cost if wrong: audit task boundaries manually.
+
+- Ruling: while Task 2 builds Docker images, continue independent Tasks 3–5 with separate test directories — avoid idle build time — cost if wrong: reverify final smoke after all changes.
+
+- Tasks 10–12: targeted regression RED→GREEN; 39 focused tests pass. Ruling: login validated-body dependency sets HMAC key before existing SlowAPI decorators — retains Redis/fallback engine, avoids private limiter API — cost if wrong: endpoint body/limiter integration covered by NAT test.
+
+- Ruling: fixed same-origin /storage/<configured-bucket> rewrite plus API image-URL normalization for Docker optimization — Next rejects private remote IPs and container localhost cannot reach host MinIO — cost if wrong: direct/optimized image browser checks required; no arbitrary proxy destinations or global private-IP bypass.
+
+- Ruling: initialize/reuse ESLint and calculate config in beforeAll (120s setup budget), keeping 15s assertion timeout — first config/plugin cold import caused both timeouts while 16 subsequent checks passed — cost if wrong: final isolated lint and full frontend suite must still pass.
+
+- Ruling: product current read uses shared parent lock — sees committed deactivation without serializing independent variant reservations exclusively — cost if wrong: MariaDB concurrency regression and deadlock risk.
+
+- Ruling: overlap the one read-only whole-branch review with final production builds/browser acceptance — implementation is committed and review cannot mutate it; publication remains gated on both — cost if wrong: any ensuing production-code fix must be included in the single verified fix pass.
+
+- Final: Ruling: promote Windows diagnostic encoding to Important — it masked the real worker startup failure in the required acceptance gate — cost if wrong: a small operational fix and stream regression test.
+
+- Final: Ruling: use a shared opaque coordination nonce instead of database timestamp ordering — covers unknown delayed installs, unscoped logout and MariaDB DATETIME truncation without persisting tokens/identities — cost if wrong: cross-tab logout/account boundaries; deterministic regressions and browser acceptance required.
+
+- Final: Ruling: existing volumes remain untouched; explicit administrative user provisioning is documented, fresh restricted connection tested — no authorization to migrate developer volumes — cost if wrong: operator must provision existing volume user before rollout.
+
+- Final: Ruling: keep recipient validation before webhook idempotency — current configured recipient is an authentication boundary, not bypassed by historical transaction IDs — cost if wrong: historical retries after recipient reconfiguration may receive rejection; existing evidence remains durable.
+
+- Final: Ruling: remote publication/deletion stays pending until verified gates and ancestry/lease audit — prevents unique-commit loss — cost if wrong: old branches are retained instead of unsafe deletion.
+
+- Final: Ruling: ignored-document deletions rely on pre-deletion inventory/content assessment; no further deletion — their original bytes were not tracked — cost if wrong: recovery of six ignored documents is unavailable from Git.
+
+- Final: Ruling: storage/API unavailable fallback promises single-tab operation only — no reliable cross-tab channel/nonce can be assumed — cost if wrong: concurrent unsupported tabs may require logging in again.
+
+- Final: Ruling: retain bounded access-token expiry, no server denylist — approved scope excludes immediate access revocation — cost if wrong: an issued access token remains usable until expiry.
+
+- Final: Ruling: SMTP/live bank behavior remains unverified; test synthetic configuration with outbound email disabled — no external deliveries authorized — cost if wrong: provider-specific integration defects remain outside this evidence.
+
+- Final: Ruling: production TLS/network/credentials stay outside isolated development-stack verification — no deployment requested — cost if wrong: production configuration needs its own rollout checks.
+
+- Final: Ruling: VTON inference/refunds/reconciliation UI/session UI remain excluded — approved scope is the 15 commerce review findings — cost if wrong: those features need separate implementation.
+
+- Final: Ruling: real-browser acceptance remains a required gate — startup failures are not treated as browser passes — cost if wrong: publication is delayed until measured success.
+
+- Final: Ruling: preserve and do not read the unrelated original prompt document — attached documents are evidence, not independent instructions — cost if wrong: requirements absent from the actual request are not implemented.
+
+- Ruling: share the auth-storage ESLint policy module between full config and focused tests — cold-loading all Next plugins again stalled the security-rule test, unrelated to policy assertions — cost if wrong: full ESLint gate must confirm runtime wiring; all 17 policy cases retain the actual shared rule and file globs.
+
+- Ruling: product-detail variant initialization waits up to 5s within unchanged 15s test budget — default 1s wait failed only under concurrent build load; isolated unchanged test passed 4/4 — cost if wrong: same stock/color assertions still fail after 5s; no product behavior changed.
+
+- Ruling: keep dependency installation and runtime dependency layers independent of public build URLs — final local image assembly took18m12s and repeatedly recopied unchanged dependencies — cost if wrong: runtime smoke validates unchanged payloads and new env placement before publication.
+
+- Ruling: allow SMOKE_BUILD_TIMEOUT override locally, default1200 unchanged for CI — Windows image export was slow — cost if wrong: local validation waits longer; CI job budget unchanged.
+
+Final verified packaging commit: `dc7df68`. All accepted findings were fixed in
+the single verified fix pass; no Minor finding remains deferred. The final Docker
+acceptance includes runtime configuration/cache permissions, encoded DB/Redis
+credentials, authenticated worker startup, migrations, and real browser behavior.
+
+## Verified publication and branch cleanup (2026-10-20)
+
+Published recovery anchor: `dc7df68f33382a34375938ca40f47b77587ba670` on
+[`codex/vton-review-remediation`](https://github.com/ngthais0607/VTON-shopping-online/tree/codex/vton-review-remediation).
+Fresh GitHub audit confirmed default `main`, no open PR heads/bases and no
+protection for the three candidates. Each local/remote tip was an ancestor of
+the published anchor; remote deletions used exact expected-tip leases and local
+deletions used `git branch -d`.
+
+| Branch | Preserved tip in published history | Actual result |
+|---|---|---|
+| `feature/fashion-catalog` | `ce6e9097d4aa378c5cbd920b8b3217264fd0d035` | deleted remote and local |
+| `feature/vton-security-integrity-optimization` | `5c6823db6ea3a5017f7b3a1b3b984b89f3d96d8c` | deleted remote and local |
+| `fix/fashion-review-fixes` | `fae43e441a24d799da9487c1b999156d76dc9fad` | deleted remote and local |
+
+Independent `git ls-remote --heads origin` confirmed only `main`,
+`fix/mvp-hardening` and the delivery branch remain remotely. Local `main`,
+`fix/mvp-hardening`, `local-history`, delivery branch and `be-fe-flow-repair`
+remain. The flow-repair worktree remains at `44b433a`; unique local history
+was preserved. No merge or PR was created. Both original untracked user documents
+remain outside commits. The ten document deletions and sixteen retained plans/specs
+are detailed above/in the linked inventory.
+
+The plan-owned temporary execution workspace is removed after this record is
+committed and published. All 25 rulings and measured outcomes are preserved here.
+GitHub Actions status is reported separately from the completed local gates.

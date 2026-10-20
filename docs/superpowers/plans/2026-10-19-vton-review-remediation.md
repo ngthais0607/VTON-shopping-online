@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-19-vton-review-remediation-design.md` (approved 2026-10-19).
 
-**Status:** Approved; Native execution selected by the user. Core implementation and unit/integration/static gates passed; final image packaging/browser acceptance and publication remain in progress. Measured results and the completed review/fix pass are in the remediation report.
+**Status:** Approved Native execution; implementation, whole-branch review/fix pass, and all local acceptance gates completed on 2026-10-20. Publication and audited branch cleanup completed; see final remediation report and cleanup inventory.
 
 ## Global Constraints
 
@@ -203,11 +203,11 @@ At execution start, use `superpowers:using-git-worktrees` to inspect existing at
 
 **Interfaces:** Remote is `https://github.com/ngthais0607/VTON-shopping-online.git`; publish current branch with upstream, no merge to `main`. Candidate old branches: `feature/fashion-catalog`, `feature/vton-security-integrity-optimization`, `fix/fashion-review-fixes`.
 
-- [ ] Verify `git status --short`, commit list, and changed paths; ensure only preserved original untracked documents remain. Fetch origin and inspect default/protected branches, active worktrees, and open PRs using authenticated GitHub tools/API when available. Do not install/configure an unrelated account or expose credentials; retain remote candidates whose PR/protection state cannot be verified.
-- [ ] Push `git push -u origin codex/vton-review-remediation`; verify remote tip matches local HEAD with `git ls-remote`. This is the recovery anchor before any branch deletion. If publication fails, stop cleanup and report the specific blocker.
-- [ ] Fetch again immediately before cleanup. Record candidate tip OIDs, assert `git merge-base --is-ancestor <tip> origin/codex/vton-review-remediation` returns 0, and confirm no candidate is default/protected, attached to a worktree, or needed by an open PR. Retain any branch that advanced with unique work.
-- [ ] For each eligible remote candidate, delete only with an expected-tip lease using `git push --force-with-lease=refs/heads/<candidate>:<verified-oid> origin :refs/heads/<candidate>`. This lease guards a deletion; it is not authorization to overwrite history. If rejected because a tip changed, refetch and reassess; never bypass the lease/protection. Delete corresponding local branches with `git branch -d` only after published ancestry and local ancestry are verified. Never use `-D`.
-- [ ] Verify published branch, remaining local/remote branch lists, and preserved worktrees; append exact deleted/retained names and reasons to inventory. Commit report update and push it; verify remote HEAD again. Report implementation/tests, GitHub branch link, document deletions, branch deletions, and any retained blockers. No PR is required by the user's request; if a PR is separately requested and created, attach its URL to this chat.
+- [x] Verify `git status --short`, commit list, and changed paths; ensure only preserved original untracked documents remain. Fetch origin and inspect default/protected branches, active worktrees, and open PRs using authenticated GitHub tools/API when available. Do not install/configure an unrelated account or expose credentials; retain remote candidates whose PR/protection state cannot be verified.
+- [x] Push `git push -u origin codex/vton-review-remediation`; verify remote tip matches local HEAD with `git ls-remote`. This is the recovery anchor before any branch deletion. If publication fails, stop cleanup and report the specific blocker.
+- [x] Fetch again immediately before cleanup. Record candidate tip OIDs, assert `git merge-base --is-ancestor <tip> origin/codex/vton-review-remediation` returns 0, and confirm no candidate is default/protected, attached to a worktree, or needed by an open PR. Retain any branch that advanced with unique work.
+- [x] For each eligible remote candidate, delete only with an expected-tip lease using `git push --force-with-lease=refs/heads/<candidate>:<verified-oid> origin :refs/heads/<candidate>`. This lease guards a deletion; it is not authorization to overwrite history. If rejected because a tip changed, refetch and reassess; never bypass the lease/protection. Delete corresponding local branches with `git branch -d` only after published ancestry and local ancestry are verified. Never use `-D`.
+- [x] Verify published branch, remaining local/remote branch lists, and preserved worktrees; append exact deleted/retained names and reasons to inventory. Commit report update and push it; verify remote HEAD again. Report implementation/tests, GitHub branch link, document deletions, branch deletions, and any retained blockers. No PR is required by the user's request; if a PR is separately requested and created, attach its URL to this chat.
 
 ## Coverage and approval handoff
 
