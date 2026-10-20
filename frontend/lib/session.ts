@@ -3,8 +3,37 @@ let generation = 0;
 const listeners = new Set<() => void>();
 let sessionNotice: string | null = null;
 let locallyCleared = false;
-let latestSessionStart = -1;
 const revokedEpochs = new Set<string>();
+const EPOCH_KEY = 'truelook_auth_epoch';
+
+function newEpoch(): string { return crypto.randomUUID(); }
+function sharedEpoch(): string | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    let epoch = window.localStorage.getItem(EPOCH_KEY);
+    if (!epoch) {
+      epoch = newEpoch();
+      window.localStorage.setItem(EPOCH_KEY, epoch);
+    }
+    return epoch;
+  } catch { return null; }
+}
+let epoch = sharedEpoch() ?? newEpoch();
+
+// Persist only a random coordination nonce, never a token or user/session identity.
+function rotateEpoch(): void {
+  epoch = newEpoch();
+  try { window.localStorage.setItem(EPOCH_KEY, epoch); } catch { /* memory fallback */ }
+}
+function reconcileEpoch(notify = false): void {
+  const shared = sharedEpoch();
+  if (!shared || shared === epoch) return;
+  epoch = shared;
+  inMemoryAccessToken = null;
+  locallyCleared = true;
+  generation++;
+  if (notify) listeners.forEach(listener => listener());
+}
 
 interface TokenSession { sid: string; revision: number; started: number }
 function tokenSession(token: unknown): TokenSession | null {
@@ -16,18 +45,17 @@ function tokenSession(token: unknown): TokenSession | null {
   } catch { return null; }
 }
 
-function publish(message: unknown): void {
-  try { getOrCreateAuthChannel()?.postMessage(message); } catch { /* optional channel */ }
+function publish(message: object): void {
+  try { getOrCreateAuthChannel()?.postMessage({ ...message, epoch }); } catch { /* optional channel */ }
 }
 
 function acceptPeerToken(token: unknown, installed: boolean): void {
   const next = tokenSession(token);
   const current = tokenSession(inMemoryAccessToken);
-  if (!next || revokedEpochs.has(next.sid) || next.started < latestSessionStart) return;
+  if (!next || revokedEpochs.has(next.sid)) return;
   if (current?.sid === next.sid && current.revision >= next.revision) return;
   if (!installed && (locallyCleared || (current && current.sid !== next.sid))) return;
   if (current?.sid !== next.sid) generation++;
-  latestSessionStart = next.started;
   locallyCleared = false;
   inMemoryAccessToken = token as string;
   sessionNotice = null;
@@ -50,6 +78,8 @@ function getOrCreateAuthChannel(): BroadcastChannel | null {
     try {
       authChannel = new channelCtor(AUTH_CHANNEL_NAME);
       authChannel.onmessage = (event: MessageEvent) => {
+        reconcileEpoch(true);
+        if (event.data?.epoch !== epoch) return;
         if (event.data?.type === 'SYNC') {
           if (tokenSession(inMemoryAccessToken) && !locallyCleared) publish({ type: 'SESSION', token: inMemoryAccessToken });
         }
@@ -57,10 +87,8 @@ function getOrCreateAuthChannel(): BroadcastChannel | null {
           acceptPeerToken(event.data.token, event.data.type === 'SESSION');
         }
         if (event.data?.type === 'LOGOUT') {
-          const current = tokenSession(inMemoryAccessToken);
           if (typeof event.data.sid === 'string') {
             revokedEpochs.add(event.data.sid);
-            if (current && current.sid !== event.data.sid) return;
           }
           inMemoryAccessToken = null;
           locallyCleared = true;
@@ -68,7 +96,7 @@ function getOrCreateAuthChannel(): BroadcastChannel | null {
           listeners.forEach(listener => listener());
         }
       };
-      authChannel.postMessage({ type: 'SYNC' });
+      authChannel.postMessage({ type: 'SYNC', epoch });
     } catch {
       authChannel = null;
     }
@@ -93,10 +121,12 @@ export function setSessionNotice(message: string | null): void {
 }
 
 export function getAccessToken(): string | null {
+  reconcileEpoch();
   return inMemoryAccessToken;
 }
 
 export function setAccessToken(token: string): void {
+  rotateEpoch();
   generation++;
   sessionNotice = null;
   renewAccessToken(token);
@@ -108,7 +138,6 @@ export function renewAccessToken(token: string): void {
   const current = tokenSession(inMemoryAccessToken);
   if (next) {
     if (current && current.sid !== next.sid) generation++;
-    latestSessionStart = Math.max(latestSessionStart, next.started);
   }
   locallyCleared = false;
   inMemoryAccessToken = token;
@@ -117,23 +146,19 @@ export function renewAccessToken(token: string): void {
 }
 
 export function clearAccessToken(): void {
+  reconcileEpoch();
   const current = tokenSession(inMemoryAccessToken);
   if (current) revokedEpochs.add(current.sid);
   locallyCleared = true;
   generation++;
   inMemoryAccessToken = null;
-  const channel = getOrCreateAuthChannel();
-  if (channel) {
-    try {
-      channel.postMessage(current ? { type: 'LOGOUT', sid: current.sid, started: current.started } : { type: 'LOGOUT' });
-    } catch {
-      // Ignore errors if channel is already closed
-    }
-  }
+  rotateEpoch();
+  publish(current ? { type: 'LOGOUT', sid: current.sid } : { type: 'LOGOUT' });
   listeners.forEach(listener => listener());
 }
 
 export function getSessionGeneration(): number {
+  reconcileEpoch();
   return generation;
 }
 

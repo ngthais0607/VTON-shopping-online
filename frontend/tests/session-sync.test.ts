@@ -14,10 +14,11 @@ it('accepts newer peer renewal but ignores replay after logout', async () => {
   const sid = 'a'.repeat(32);
   session.setAccessToken(token(sid, 0));
   const peer = new BroadcastChannel('truelook_auth_sync');
-  peer.postMessage({ type: 'RENEW', token: token(sid, 1) });
+  const epoch = localStorage.getItem('truelook_auth_epoch');
+  peer.postMessage({ type: 'RENEW', token: token(sid, 1), epoch });
   await vi.waitFor(() => expect(session.getAccessToken()).toBe(token(sid, 1)));
   session.clearAccessToken();
-  peer.postMessage({ type: 'RENEW', token: token(sid, 2) });
+  peer.postMessage({ type: 'RENEW', token: token(sid, 2), epoch });
   await new Promise(resolve => setTimeout(resolve, 20));
   expect(session.getAccessToken()).toBeNull();
   peer.close();

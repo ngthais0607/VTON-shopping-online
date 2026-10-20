@@ -19,6 +19,14 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def configure_output():
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(
+                encoding="utf-8", errors="backslashreplace", newline="\n"
+            )
+
+
 def available_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -34,7 +42,7 @@ class SmokeStack:
             "MARIADB_USER": "smokeapp",
             "MARIADB_PASSWORD": "app @:/ $ " + secrets.token_hex(20),
             "MARIADB_DATABASE": "smokeapp",
-            "REDIS_PASSWORD": "smoke $ @:/ " + secrets.token_hex(12),
+            "REDIS_PASSWORD": "smoke $ @:/ + %20 " + secrets.token_hex(12),
             "SECRET_KEY": secrets.token_hex(32),
             "MINIO_ROOT_USER": "smokeadmin",
             "MINIO_ROOT_PASSWORD": secrets.token_hex(20),
@@ -156,6 +164,9 @@ class SmokeStack:
             "running"
             in self.compose("ps", "arq_worker", "--format", "{{.State}}").stdout
         )
+        self.compose(
+            "exec", "-T", "arq_worker", "arq", "--check", "app.worker.WorkerSettings"
+        )
 
     def prepare_image(self):
         password = secrets.token_urlsafe(24)
@@ -268,8 +279,10 @@ def running_stack():
             stack.compose("config", "--quiet")
             print("Building isolated project " + stack.project, flush=True)
             stack.compose("build", timeout=1200)
+            print("Build complete; starting isolated services", flush=True)
             stack.compose("up", "-d", "--wait", "--wait-timeout", "240", timeout=300)
             stack.verify()
+            print("Runtime readiness and authenticated worker passed", flush=True)
             yield stack
         except Exception:
             result = stack.compose("logs", "--tail", "80", check=False)
@@ -280,6 +293,7 @@ def running_stack():
 
 
 if __name__ == "__main__":
+    configure_output()
     with running_stack() as stack:
         if os.environ.get("SMOKE_BROWSER_TESTS") == "1":
             stack.browser_tests()

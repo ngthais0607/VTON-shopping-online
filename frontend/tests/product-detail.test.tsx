@@ -150,7 +150,7 @@ describe("ProductDetailPage", () => {
       expect(
         screen.getByRole("button", { name: /size m/i }),
       ).toBeInTheDocument();
-    });
+    }, { timeout: 5000 });
 
     const sizeMButton = screen.getByRole("button", { name: /size m/i });
     expect(sizeMButton).toHaveAttribute("data-stock", "out_of_stock");

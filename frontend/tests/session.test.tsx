@@ -126,7 +126,7 @@ it('broadcasts LOGOUT message via BroadcastChannel on clearAccessToken', async (
   session.clearAccessToken();
   expect(session.getAccessToken()).toBeNull();
 
-  await vi.waitFor(() => expect(messages).toEqual([{ type: 'LOGOUT' }]));
+  await vi.waitFor(() => expect(messages).toEqual([{ type: 'LOGOUT', epoch: localStorage.getItem('truelook_auth_epoch') }]));
   peer.close();
 });
 
@@ -139,10 +139,13 @@ it('clears in-memory access token when receiving LOGOUT from BroadcastChannel', 
   const unsubscribe = session.subscribeSession(() => { notified = true; });
 
   const peer = new BroadcastChannel('truelook_auth_sync');
-  peer.postMessage({ type: 'LOGOUT' });
+  localStorage.setItem('truelook_auth_epoch', 'peer-logout-epoch');
+  peer.postMessage({ type: 'LOGOUT', epoch: 'peer-logout-epoch' });
 
-  await vi.waitFor(() => expect(session.getAccessToken()).toBeNull());
-  expect(notified).toBe(true);
+  await vi.waitFor(() => {
+    expect(session.getAccessToken()).toBeNull();
+    expect(notified).toBe(true);
+  });
 
   unsubscribe();
   peer.close();

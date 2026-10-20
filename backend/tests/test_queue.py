@@ -1,5 +1,6 @@
 import asyncio
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
 
@@ -43,6 +44,17 @@ def test_parse_redis_settings():
     assert settings.host == "redis_host"
     assert settings.port == 6380
     assert settings.database == 2
+
+
+@pytest.mark.parametrize("password", ["space $ @:/ +", "literal%20percent"])
+def test_queue_url_decodes_credentials_exactly_once(password):
+    user = "worker@tenant"
+    settings = parse_redis_settings(
+        f"rediss://{quote(user, safe='')}:{quote(password, safe='')}@redis:6380/3"
+    )
+    assert settings.username == user
+    assert settings.password == password
+    assert settings.ssl and settings.database == 3
 
 
 def test_parse_redis_settings_preserves_credentials_and_tls():

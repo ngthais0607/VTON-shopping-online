@@ -2,12 +2,13 @@
 import path from 'node:path';
 import { ESLint } from 'eslint';
 import { beforeAll, expect, it } from 'vitest';
+import { authStorageConfig } from '../eslint-auth-storage.mjs';
 
 let eslint: ESLint;
 beforeAll(async () => {
-  eslint = new ESLint({ cwd: process.cwd() });
+  eslint = new ESLint({ cwd: process.cwd(), overrideConfigFile: true, overrideConfig: authStorageConfig });
   await eslint.calculateConfigForFile(path.resolve('app/auth-lint-probe.tsx'));
-}, 120000);
+});
 
 const expressions = [
   "localStorage.getItem('token')",

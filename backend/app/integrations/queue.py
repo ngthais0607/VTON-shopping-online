@@ -1,5 +1,6 @@
 import asyncio
 from typing import Protocol
+from urllib.parse import unquote
 
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
@@ -39,7 +40,13 @@ class _UnavailableTaskQueue:
 
 
 def parse_redis_settings(url: str) -> RedisSettings:
-    return RedisSettings.from_dsn(url)
+    settings = RedisSettings.from_dsn(url)
+    # ARQ's parser leaves URL credentials encoded; Redis expects the raw values.
+    if settings.username is not None:
+        settings.username = unquote(settings.username)
+    if settings.password is not None:
+        settings.password = unquote(settings.password)
+    return settings
 
 
 def create_task_queue(redis_url: str) -> TaskQueue:

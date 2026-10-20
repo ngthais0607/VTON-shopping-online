@@ -109,6 +109,7 @@ export async function logoutSession(): Promise<void> {
 export async function loginSession(identifier: string, password: string): Promise<void> {
     const generation = getSessionGeneration();
     await withSessionLock(async () => {
+        if (generation !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
         const response = await apiPost<{access_token: string}>('/users/login', {identifier, password});
         if (generation !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
         if (!response.access_token) throw new ApiError('Invalid session response', 401);
