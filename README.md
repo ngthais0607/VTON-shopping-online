@@ -50,3 +50,5 @@ Upload admin nhận PNG/JPEG/WebP giải mã được, tối đa 5 MiB, 8192 pix
 Với project demo hiện tại dùng cổng riêng: `RUN_ADMIN_CRUD_E2E=1`, `RUN_DEMO_WALKTHROUGH=1`, `E2E_BASE_URL=http://localhost:13000`, `E2E_API_URL=http://localhost:18000/api/v1`. Dùng origin localhost đúng CORS cấu hình, không trộn với 127.0.0.1. Các cổng mặc định trong phần chạy nhanh là cấu hình khác.
 
 Sao lưu DB **và ảnh catalog** theo [hướng dẫn backup/restore](docs/DEMO_BACKUP.md); không dùng việc seed lại làm bằng chứng khôi phục ảnh admin.
+
+MinIO được build từ đúng commit release đã khóa trong [docker/minio](docker/minio/README.md), vì image public cũ không còn pull được trên máy sạch. Không cần cài Go ở host; Docker build xử lý compiler và cache. Dùng `docker compose up --build` cho lần đầu.
