@@ -1,9 +1,11 @@
 import logging
+import warnings
 from io import BytesIO
 from pathlib import PurePosixPath
 from typing import BinaryIO
 from uuid import uuid4
 
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ResourceNotFoundError
@@ -14,6 +16,8 @@ from app.integrations.storage import ProductStorage
 logger = logging.getLogger(__name__)
 
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+MAX_IMAGE_DIMENSION = 8192
+MAX_IMAGE_PIXELS = 24_000_000
 
 SUPPORTED_IMAGE_FORMATS = {
     "jpeg": {
@@ -57,6 +61,73 @@ def sniff_image_type(data: bytes) -> str | None:
     return None
 
 
+def _check_image_dimensions(width: int, height: int) -> None:
+    if (
+        width > MAX_IMAGE_DIMENSION
+        or height > MAX_IMAGE_DIMENSION
+        or width * height > MAX_IMAGE_PIXELS
+    ):
+        raise BusinessRuleError(
+            "Product image must not exceed 8192 pixels per side or 24 megapixels",
+            code="image_dimensions_exceeded",
+        )
+
+
+def _webp_dimensions(payload: bytes) -> tuple[int, int]:
+    """Read the bounded WebP header before its native decoder allocates a canvas."""
+    chunk = payload[12:16]
+    chunk_size = int.from_bytes(payload[16:20], "little")
+    if len(payload) < 20 + chunk_size:
+        raise ValueError("Incomplete WebP chunk")
+    if chunk == b"VP8X" and chunk_size >= 10:
+        return (
+            1 + int.from_bytes(payload[24:27], "little"),
+            1 + int.from_bytes(payload[27:30], "little"),
+        )
+    if chunk == b"VP8L" and chunk_size >= 5 and payload[20] == 0x2F:
+        packed = int.from_bytes(payload[21:25], "little")
+        return 1 + (packed & 0x3FFF), 1 + ((packed >> 14) & 0x3FFF)
+    if chunk == b"VP8 " and chunk_size >= 10 and payload[23:26] == b"\x9d\x01\x2a":
+        return (
+            int.from_bytes(payload[26:28], "little") & 0x3FFF,
+            int.from_bytes(payload[28:30], "little") & 0x3FFF,
+        )
+    raise ValueError("Invalid WebP header")
+
+
+def validate_image_payload(payload: bytes, expected_format: str) -> None:
+    try:
+        if expected_format == "webp":
+            _check_image_dimensions(*_webp_dimensions(payload))
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(BytesIO(payload)) as image:
+                _check_image_dimensions(*image.size)
+                if (image.format or "").lower() != expected_format:
+                    raise BusinessRuleError(
+                        "Product image content does not match its format",
+                        code="invalid_product_image",
+                    )
+                if getattr(image, "n_frames", 1) != 1:
+                    raise BusinessRuleError(
+                        "Animated product images are not supported",
+                        code="animated_product_image_unsupported",
+                    )
+                image.verify()
+            with Image.open(BytesIO(payload)) as image:
+                image.load()
+    except (Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
+        raise BusinessRuleError(
+            "Product image exceeds the pixel limit",
+            code="image_dimensions_exceeded",
+        ) from exc
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError, EOFError) as exc:
+        raise BusinessRuleError(
+            "Product image is invalid or incomplete",
+            code="invalid_product_image",
+        ) from exc
+
+
 def store_product_image(
     db: Session,
     storage: ProductStorage,
@@ -76,7 +147,7 @@ def store_product_image(
             code="invalid_image_kind",
         )
 
-    product = service.get_product(db, product_id)
+    product = service.get_product(db, product_id, is_admin=True)
 
     if size is not None and size > MAX_IMAGE_SIZE_BYTES:
         raise BusinessRuleError(
@@ -118,6 +189,7 @@ def store_product_image(
             code="invalid_product_image",
         )
 
+    validate_image_payload(payload, sniffed_type)
     canonical_ext = spec["canonical_ext"]
     image_id = str(uuid4())
     object_name = f"products/{image_id}{canonical_ext}"
@@ -194,7 +266,7 @@ def delete_product_image(
     product_id: int,
     image_id: str,
 ) -> None:
-    service.get_product(db, product_id)
+    service.get_product(db, product_id, is_admin=True)
     image = (
         db.query(ProductImage)
         .filter(

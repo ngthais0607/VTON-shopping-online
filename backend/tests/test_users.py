@@ -24,6 +24,11 @@ from app.integrations.queue import get_task_queue
 from app.seed import seed_database
 
 
+@pytest.fixture(autouse=True)
+def seed_storage(monkeypatch, product_storage):
+    monkeypatch.setattr("app.seed.MinioProductStorage", lambda _: product_storage)
+
+
 class RecordingQueue:
     def __init__(self, error: Exception | None = None) -> None:
         self.calls: list[tuple[str, tuple[object, ...]]] = []

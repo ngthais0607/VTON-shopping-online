@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import event, update
 
-from app.features.orders.model import Order, Payment
+from app.features.orders.model import Order, OrderItem, Payment
 from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 
@@ -176,6 +176,48 @@ def test_recent_orders_endpoint_allows_legacy_null_created_at(
 
     assert response.status_code == 200
     assert response.json()[0]["created_at"] is None
+
+
+def test_recent_orders_support_cart_orders_without_legacy_summary(
+    client, db_session, mock_admin_auth
+):
+    shirt, trousers = _product("Cotton shirt"), _product("Linen trousers")
+    db_session.add_all([shirt, trousers])
+    db_session.flush()
+    order = Order(
+        total_amount=30,
+        currency="VND",
+        status="confirmed",
+        payment_method="cod",
+        customer_name="Customer",
+        customer_phone="123",
+        shipping_address="Address",
+    )
+    for product, quantity in ((shirt, 1), (trousers, 2)):
+        variant = product.variants[0]
+        order.items.append(
+            OrderItem(
+                product_id=product.id,
+                variant_id=variant.id,
+                sku=variant.sku,
+                size=variant.size,
+                color_name=variant.color_name,
+                product_name=product.name,
+                unit_price=10,
+                quantity=quantity,
+                subtotal=10 * quantity,
+            )
+        )
+    db_session.add(order)
+    db_session.flush()
+
+    response = client.get("/api/v1/dashboard/recent-orders")
+
+    assert response.status_code == 200
+    summary = response.json()[0]
+    assert "Cotton shirt" in summary["product_name"]
+    assert "Linen trousers" in summary["product_name"]
+    assert summary["quantity"] == 3
 
 
 def test_recent_orders_reads_summary_columns_and_only_latest_payment(db_session):

@@ -61,6 +61,7 @@ it('submits once when two submit events occur before the response', async () => 
   fireEvent.submit(form);
   fireEvent.submit(form);
   expect(post).toHaveBeenCalledTimes(1);
+  expect(post.mock.calls[0][1].payment_method).toBe('cod');
   await act(async () => resolve({ message: 'ok', orders: [order, { ...order, id: 12 }], total_amount: 50, payment_method: 'cod', vietqr: null }));
   await waitFor(() => expect(push).toHaveBeenCalledWith('/store/orders/success?order_ids=11,12'));
   expect(JSON.parse(localStorage.getItem('truelook_cart_v2')!)).toEqual([]);

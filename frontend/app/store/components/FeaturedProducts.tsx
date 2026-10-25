@@ -432,19 +432,6 @@ export function FeaturedProducts({
     const reviews = p.review_count ?? 0;
     const stock = getAvailableStock(p);
     
-    let badge = undefined;
-    let badgeColor = undefined;
-    if (p.id % 4 === 0) {
-      badge = "New Arrival";
-      badgeColor = "bg-emerald-100 text-emerald-700";
-    } else if (p.id % 3 === 0) {
-      badge = "Sale";
-      badgeColor = "bg-rose-100 text-rose-700";
-    } else if (p.id % 5 === 0) {
-      badge = "Best Seller";
-      badgeColor = "bg-amber-100 text-amber-700";
-    }
-    
     const img = getProductImageUrl(p);
     
     return {
@@ -453,12 +440,9 @@ export function FeaturedProducts({
       name: p.name,
       category: p.category?.name || "General",
       price: p.price,
-      originalPrice: p.id % 3 === 0 ? Math.round(p.price * 1.25) : undefined,
       rating,
       reviews,
       stock,
-      badge,
-      badgeColor,
       img,
       description: p.description || "Premium quality item for everyday use."
     };

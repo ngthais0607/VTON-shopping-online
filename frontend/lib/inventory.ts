@@ -1,11 +1,14 @@
 import type { Product, ProductVariant } from "@/lib/types";
 
-type InventorySnapshot = Pick<
+type InventorySnapshot = Partial<Pick<
   Product,
-  "stock_quantity" | "reserved_quantity" | "sold_quantity"
->;
+  "stock_quantity" | "reserved_quantity" | "sold_quantity" | "available_stock"
+>>;
 
 export function getAvailableStock(item: InventorySnapshot | ProductVariant): number {
+  if (item.stock_quantity == null && typeof item.available_stock === "number") {
+    return Math.max(0, item.available_stock);
+  }
   const stock = item.stock_quantity ?? 0;
   const reserved = item.reserved_quantity ?? 0;
   const sold = item.sold_quantity ?? 0;

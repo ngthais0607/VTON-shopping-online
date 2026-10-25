@@ -1,9 +1,9 @@
 "use client";
-import { displayDate } from '@/lib/utils';
+import { displayDate, formatCurrency } from '@/lib/utils';
 
 
 import { useState, useEffect } from "react";
-import { apiDelete, apiPost, apiPatch, apiUpload } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, apiPatch, apiUpload } from "@/lib/api";
 import { useProducts } from "@/hooks/use-products";
 import { useCategoryOptions } from "@/hooks/use-categories";
 import { getAvailableStock } from "@/lib/inventory";
@@ -66,7 +66,7 @@ import {
 } from "@/lib/types";
 import { format } from "date-fns";
 import Image from "next/image";
-import { ImageUploader } from "@/components/image-uploader";
+import { AdminProductImages } from "@/components/admin/product-images";
 import { VariantMatrixGenerator, BulkVariantPayload } from "@/components/admin/variant-matrix-generator";
 import { VariantStockDialog } from "@/components/admin/variant-stock-dialog";
 
@@ -122,13 +122,15 @@ export default function ProductsPage() {
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [loadingProduct, setLoadingProduct] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [formData, setFormData] = useState<ProductFormData>({
     name: "",
     price: 0,
-    currency: "USD",
+    currency: "VND",
     category_id: null,
     stock_quantity: 0,
     reserved_quantity: 0,
@@ -143,7 +145,7 @@ export default function ProductsPage() {
   });
 
   const hasActiveVariants = (p: Product | null | undefined) =>
-    Boolean(p?.variants && p.variants.some((v) => v.is_active));
+    p?.variants ? p.variants.some((v) => v.is_active) : null;
 
   // Filters and sorting are now handled backend-side.
   // We keep filteredProducts as a direct passthrough of products to preserve visual mapping.
@@ -159,7 +161,7 @@ export default function ProductsPage() {
     setFormData({
       name: "",
       price: 0,
-      currency: "USD",
+      currency: "VND",
       category_id: null,
       stock_quantity: 0,
       reserved_quantity: 0,
@@ -185,6 +187,7 @@ export default function ProductsPage() {
     if (selectedImage) {
       const imageFormData = new FormData();
       imageFormData.append("file", selectedImage);
+      imageFormData.append("is_primary", "true");
       await apiUpload<{ id: string; url: string }>(
         `/products/${createdProduct.id}/upload-image`,
         imageFormData,
@@ -197,7 +200,14 @@ export default function ProductsPage() {
     setEditingProduct(null);
   };
 
-  const openEditProduct = (product: Product) => {
+  const openEditProduct = async (product: Product) => {
+    setSaveError(null);
+    if (product.slug) {
+      setLoadingProduct(true);
+      try { product = await apiGet<Product>(`/products/by-slug/${product.slug}`); }
+      catch (error) { setSaveError(error instanceof Error ? error.message : 'Unable to load product'); return; }
+      finally { setLoadingProduct(false); }
+    }
     setSelectedImage(null);
     setEditingProduct(product);
     setFormData({
@@ -218,6 +228,13 @@ export default function ProductsPage() {
     });
     setCreateDialogOpen(true);
   };
+  const openProductDetails = async (product: Product) => {
+    setLoadingProduct(true);
+    setSaveError(null);
+    try { setSelectedProduct(product.slug ? await apiGet<Product>(`/products/by-slug/${product.slug}`) : product); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'Unable to load product'); }
+    finally { setLoadingProduct(false); }
+  };
   const handleUpdateProduct = async () => {
     if (!editingProduct) return;
     const { stock_quantity, reserved_quantity, sold_quantity, ...patchPayload } = formData;
@@ -228,6 +245,7 @@ export default function ProductsPage() {
     if (selectedImage) {
       const imageFormData = new FormData();
       imageFormData.append("file", selectedImage);
+      imageFormData.append("is_primary", "true");
       await apiUpload<{ id: string; url: string }>(
         `/products/${editingProduct.id}/upload-image`,
         imageFormData,
@@ -249,7 +267,7 @@ export default function ProductsPage() {
   };
 
   const runSave = async (action: () => Promise<void>) => {
-    if (saving) return;
+    if (saving || imageBusy) return;
     setSaving(true); setSaveError(null);
     try { await action(); } catch (error) { setSaveError(error instanceof Error ? error.message : 'Save failed'); }
     finally { setSaving(false); }
@@ -261,6 +279,7 @@ export default function ProductsPage() {
       <Header title="Products" subtitle="Manage your product catalog" />
 
       <main className="flex-1 p-8">
+        {loadingProduct && <p role="status" className="text-sm text-slate-500">Loading product details...</p>}
         {productsError && <p role="alert"><span>{productsError.message}</span> <button onClick={()=>mutateProducts()}>Retry products</button></p>}
         {categoriesError && <p role="alert"><span>{categoriesError.message}</span> <button onClick={()=>retryCategories()}>Retry categories</button></p>}
         {categoriesLoading && <p>Loading categories...</p>}
@@ -290,6 +309,7 @@ export default function ProductsPage() {
             <Dialog
               open={createDialogOpen}
               onOpenChange={(open) => {
+                if (saving || imageBusy) return;
                 setCreateDialogOpen(open);
                 if (!open) {
                   setEditingProduct(null);
@@ -359,9 +379,7 @@ export default function ProductsPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="USD">USD</SelectItem>
-                          <SelectItem value="EUR">EUR</SelectItem>
-                          <SelectItem value="GBP">GBP</SelectItem>
+                          <SelectItem value="VND">VND</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -371,7 +389,7 @@ export default function ProductsPage() {
                       Category
                     </label>
                     <Select
-                      value={formData.category_id?.toString() || undefined}
+                      value={formData.category_id?.toString() || ""}
                       onValueChange={(value) =>
                         updateFormData(
                           "category_id",
@@ -427,7 +445,7 @@ export default function ProductsPage() {
                           <SelectItem value="inactive">Inactive (Bản nháp)</SelectItem>
                         </SelectContent>
                       </Select>
-                      {(!editingProduct || !hasActiveVariants(editingProduct)) && (
+                      {(!editingProduct || hasActiveVariants(editingProduct) === false) && (
                         <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded">
                           Thêm biến thể rồi kích hoạt
                         </span>
@@ -520,10 +538,15 @@ export default function ProductsPage() {
                     />
                   </div>
                   {saveError && <p role="alert">{saveError}</p>}
-                  <ImageUploader
+                  <AdminProductImages
                     onFileSelected={setSelectedImage}
+                    onBusyChange={setImageBusy}
                     productId={editingProduct?.id}
-                    currentImageUrl={editingProduct?.images && editingProduct.images.length > 0 ? editingProduct.images[0].url : undefined}
+                    images={editingProduct?.images}
+                    onImagesChange={(images) => {
+                      setEditingProduct(current => current ? { ...current, images } : current);
+                      void mutateProducts();
+                    }}
                     onUploadSuccess={(url) => {
                       if (url && !url.startsWith("blob:")) {
                         mutateProducts();
@@ -535,6 +558,7 @@ export default function ProductsPage() {
                 <div className="flex gap-2 justify-end">
                   <Button
                     variant="outline"
+                    disabled={saving || imageBusy}
                     onClick={() => { setCreateDialogOpen(false); setSelectedImage(null); }}
                   >
                     Cancel
@@ -543,7 +567,7 @@ export default function ProductsPage() {
                     onClick={
                       editingProduct ? () => runSave(handleUpdateProduct) : () => runSave(handleCreateProduct)
                     }
-                    disabled={saving || !formData.name || formData.price <= 0}
+                    disabled={saving || imageBusy || !formData.name || formData.price <= 0}
                   >
                     {editingProduct ? "Update Product" : "Create Product"}
                   </Button>
@@ -652,7 +676,7 @@ export default function ProductsPage() {
                         {product.category?.name || "N/A"}
                       </TableCell>
                       <TableCell className="text-slate-900 font-medium">
-                        ${product.price.toFixed(2)} {product.currency}
+                        {formatCurrency(product.price, product.currency)}
                       </TableCell>
                       <TableCell className="text-slate-600">
                         {product.stock_quantity}
@@ -675,7 +699,7 @@ export default function ProductsPage() {
                           >
                             {product.is_active ? "Active" : "Inactive"}
                           </Badge>
-                          {!hasActiveVariants(product) && (
+                          {hasActiveVariants(product) === false && (
                             <Badge
                               variant="outline"
                               className="text-[11px] bg-amber-50 text-amber-700 border-amber-200"
@@ -697,7 +721,7 @@ export default function ProductsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => setSelectedProduct(product)}
+                              onClick={() => openProductDetails(product)}
                             >
                               View Details
                             </DropdownMenuItem>
@@ -784,7 +808,7 @@ export default function ProductsPage() {
                 <div className="relative aspect-square overflow-hidden bg-slate-100">
                   {product.images.length > 0 ? (
                     <Image
-                      src={product.images[product.images.length - 1].url}
+                      src={product.images[0].url}
                       alt={product.name}
                       fill
                       className="object-cover"
@@ -804,7 +828,7 @@ export default function ProductsPage() {
                     >
                       {product.is_active ? "Active" : "Inactive"}
                     </Badge>
-                    {!hasActiveVariants(product) && (
+                    {hasActiveVariants(product) === false && (
                       <Badge
                         variant="outline"
                         className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shadow-sm"
@@ -822,7 +846,7 @@ export default function ProductsPage() {
                     {product.category?.name}
                   </p>
                   <p className="text-lg font-bold text-slate-900 mt-2">
-                    ${product.price.toFixed(2)}
+                    {formatCurrency(product.price, product.currency)}
                   </p>
                   <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
                     <div className="text-center">
@@ -849,7 +873,7 @@ export default function ProductsPage() {
                       size="sm"
                       variant="outline"
                       className="flex-1 text-xs"
-                      onClick={() => setSelectedProduct(product)}
+                      onClick={() => openProductDetails(product)}
                     >
                       View
                     </Button>
@@ -967,9 +991,7 @@ export default function ProductsPage() {
                   <div className="relative aspect-square rounded-lg overflow-hidden bg-slate-100">
                     <Image
                       src={
-                        selectedProduct.images[
-                          selectedProduct.images.length - 1
-                        ].url
+                        selectedProduct.images[0].url
                       }
                       alt={selectedProduct.name}
                       fill
@@ -986,8 +1008,7 @@ export default function ProductsPage() {
                 <div>
                   <p className="text-sm text-slate-600">Price</p>
                   <p className="text-2xl font-bold text-slate-900">
-                    ${selectedProduct.price.toFixed(2)}{" "}
-                    {selectedProduct.currency}
+                    {formatCurrency(selectedProduct.price, selectedProduct.currency)}
                   </p>
                 </div>
                 <div>
@@ -1008,7 +1029,7 @@ export default function ProductsPage() {
                     >
                       {selectedProduct.is_active ? "Active" : "Inactive"}
                     </Badge>
-                    {!hasActiveVariants(selectedProduct) && (
+                    {hasActiveVariants(selectedProduct) === false && (
                       <Badge
                         variant="outline"
                         className="text-[11px] bg-amber-50 text-amber-700 border-amber-200"
@@ -1149,6 +1170,8 @@ export default function ProductsPage() {
       {matrixProduct && (
         <Dialog open={matrixDialogOpen} onOpenChange={setMatrixDialogOpen}>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-0 bg-transparent shadow-none">
+            <DialogTitle className="sr-only">Clothing size and color variants</DialogTitle>
+            <DialogDescription className="sr-only">Generate size and color combinations for this product.</DialogDescription>
             <VariantMatrixGenerator
               productId={matrixProduct.id}
               productSlug={matrixProduct.slug || "product"}

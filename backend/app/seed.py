@@ -1,8 +1,8 @@
 import os
-import random
 import secrets
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 # Ensure backend directory is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
@@ -18,6 +18,7 @@ from app.features.orders.model import Order, OrderItem, Payment
 from app.features.products.model import Product, ProductImage
 from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
+from app.integrations.storage import MinioProductStorage
 
 
 def seed_database(db=None, force: bool = False):
@@ -35,6 +36,9 @@ def seed_database(db=None, force: bool = False):
         should_close = True
 
     try:
+        storage = MinioProductStorage(settings)
+        storage.ensure_bucket()
+
         # 1. Seed Admin User
         admin_user = (
             db.query(User)
@@ -107,6 +111,23 @@ def seed_database(db=None, force: bool = False):
                     ).delete()
                     db.delete(lp)
             lcat.is_deleted = True
+        db.commit()
+
+        # Retire previously seeded shoes/accessories without deleting order history.
+        retired_slugs = [
+            "giay",
+            "giay-sneaker",
+            "giay-cao-got",
+            "giay-loafer",
+            "phu-kien",
+            "tui-xach",
+            "that-lung",
+            "kinh-mat",
+        ]
+        for category in db.query(Category).filter(Category.slug.in_(retired_slugs)):
+            category.is_deleted = True
+            for product in db.query(Product).filter_by(category_id=category.id):
+                product.is_active = False
         db.commit()
 
         # 4. Seed Fashion Categories & Subcategories
@@ -199,50 +220,6 @@ def seed_database(db=None, force: bool = False):
                     },
                 ],
             },
-            {
-                "name": "Giày",
-                "slug": "giay",
-                "description": "Sneaker, cao gót, loafer da thật cao cấp",
-                "children": [
-                    {
-                        "name": "Giày sneaker",
-                        "slug": "giay-sneaker",
-                        "description": "Sneaker đế êm ái linh hoạt mọi địa hình",
-                    },
-                    {
-                        "name": "Giày cao gót",
-                        "slug": "giay-cao-got",
-                        "description": "Giày cao gót mũi nhọn quý phái",
-                    },
-                    {
-                        "name": "Giày loafer",
-                        "slug": "giay-loafer",
-                        "description": "Giày loafer lười da bò phong cách cổ điển",
-                    },
-                ],
-            },
-            {
-                "name": "Phụ kiện",
-                "slug": "phu-kien",
-                "description": "Túi xách, thắt lưng da và kính mát thời trang",
-                "children": [
-                    {
-                        "name": "Túi xách",
-                        "slug": "tui-xach",
-                        "description": "Túi tote, túi đeo chéo da và canvas",
-                    },
-                    {
-                        "name": "Thắt lưng",
-                        "slug": "that-lung",
-                        "description": "Thắt lưng da khóa kim loại bền bỉ",
-                    },
-                    {
-                        "name": "Kính mát",
-                        "slug": "kinh-mat",
-                        "description": "Kính mát phân cực chống tia UV400",
-                    },
-                ],
-            },
         ]
 
         category_map = {}
@@ -286,7 +263,7 @@ def seed_database(db=None, force: bool = False):
 
         print(f"[OK] Seeded {len(category_map)} fashion categories & subcategories.")
 
-        # 5. Seed 18 Curated Fashion Products with Variants and Size Charts
+        # 5. Seed 12 Curated Fashion Products with Variants and Size Charts
         apparel_size_chart = {
             "unit": "cm",
             "measurements": [
@@ -317,24 +294,6 @@ def seed_database(db=None, force: bool = False):
             ],
         }
 
-        shoes_size_chart = {
-            "unit": "cm",
-            "measurements": [
-                {"size": "38", "foot_length": 24.0},
-                {"size": "39", "foot_length": 24.5},
-                {"size": "40", "foot_length": 25.0},
-                {"size": "41", "foot_length": 25.5},
-                {"size": "42", "foot_length": 26.0},
-            ],
-        }
-
-        accessory_size_chart = {
-            "unit": "cm",
-            "measurements": [
-                {"size": "ONE_SIZE", "width": 35, "height": 40, "depth": 10},
-            ],
-        }
-
         products_data = [
             {
                 "name": "Áo Thun Cotton Compact Basic",
@@ -348,7 +307,7 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Giặt máy nước lạnh, không dùng chất tẩy mạnh, phơi bóng râm.",
                 "category_slug": "ao-thun",
                 "size_chart": apparel_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "ao-thun-cotton-compact-basic.svg",
                 "variants": [
                     ("S", "Trắng", "#FFFFFF", 30),
                     ("M", "Trắng", "#FFFFFF", 45),
@@ -371,7 +330,7 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Ủi ở nhiệt độ trung bình, giặt tay hoặc giặt máy chế độ nhẹ.",
                 "category_slug": "ao-so-mi",
                 "size_chart": apparel_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "ao-so-mi-oxford-dai-tay.svg",
                 "variants": [
                     ("S", "Trắng", "#FFFFFF", 20),
                     ("M", "Trắng", "#FFFFFF", 35),
@@ -393,7 +352,7 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Giặt mặt trái, không vắt xoắn mạnh, là hơi nước nhiệt độ vừa.",
                 "category_slug": "ao-polo",
                 "size_chart": apparel_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1625910513413-7e44a0342629?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "ao-polo-pique-thoang-khi.svg",
                 "variants": [
                     ("M", "Xanh Navy", "#000080", 25),
                     ("L", "Xanh Navy", "#000080", 30),
@@ -414,7 +373,7 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Giặt riêng với đồ sáng màu trong lần giặt đầu, phơi mặt trái.",
                 "category_slug": "quan-jeans",
                 "size_chart": bottoms_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1542272604-780c96856592?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "quan-jeans-slim-fit-co-gian.svg",
                 "variants": [
                     ("29", "Xanh Indigo", "#1A2B4C", 20),
                     ("30", "Xanh Indigo", "#1A2B4C", 30),
@@ -436,7 +395,7 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Khuyên giặt khô hoặc giặt nhẹ, treo móc chuyên dụng.",
                 "category_slug": "quan-tay",
                 "size_chart": bottoms_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "quan-tay-xep-ly-cao-cap.svg",
                 "variants": [
                     ("29", "Xám Đậm", "#333333", 15),
                     ("30", "Xám Đậm", "#333333", 25),
@@ -457,7 +416,7 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Giặt máy nhiệt độ thường, là ở nhiệt độ cao khi vải còn ẩm.",
                 "category_slug": "quan-short",
                 "size_chart": bottoms_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1591195853828-11db59a44f6b?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "quan-short-kaki-chino.svg",
                 "variants": [
                     ("29", "Be", "#D2B48C", 20),
                     ("30", "Be", "#D2B48C", 30),
@@ -478,7 +437,7 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Giặt tay nhẹ nhàng bằng dầu gội hoặc nước giặt dịu nhẹ.",
                 "category_slug": "dam-dang-xoe",
                 "size_chart": dress_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "dam-xoe-hoa-nhi-vintage.svg",
                 "variants": [
                     ("XS", "Vàng Pastel", "#FFFACD", 15),
                     ("S", "Vàng Pastel", "#FFFACD", 25),
@@ -499,33 +458,13 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Treo móc kẹp chân váy, là hơi nước nhẹ nhàng.",
                 "category_slug": "chan-vay-chu-a",
                 "size_chart": dress_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1583496661160-fb5886a0aaaa?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "chan-vay-xep-ly-chu-a.svg",
                 "variants": [
                     ("S", "Đen", "#000000", 25),
                     ("M", "Đen", "#000000", 30),
                     ("L", "Đen", "#000000", 15),
                     ("S", "Nâu Tây", "#8B4513", 20),
                     ("M", "Nâu Tây", "#8B4513", 20),
-                ],
-            },
-            {
-                "name": "Đầm Dạ Hội Lụa Satin Cổ V",
-                "slug": "dam-da-hoi-lua-satin-co-v",
-                "price": 1250000.0,
-                "description": "Thiết kế đầm dạ hội trơn chất liệu satin bóng kiêu sa, đường xẻ tà quyến rũ cho buổi tiệc đêm.",
-                "brand": "TrueLook Couture",
-                "gender": "female",
-                "material": "100% Silk Satin",
-                "fit": "Slim Fit",
-                "care_instructions": "Chỉ giặt khô tại tiệm giặt uy tín, không để tiếp xúc chất cồn.",
-                "category_slug": "dam-da-hoi",
-                "size_chart": dress_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=800&h=1000&fit=crop&q=80",
-                "variants": [
-                    ("S", "Đỏ Rượu", "#800020", 12),
-                    ("M", "Đỏ Rượu", "#800020", 15),
-                    ("S", "Đen Tuyền", "#0B0B0B", 14),
-                    ("M", "Đen Tuyền", "#0B0B0B", 18),
                 ],
             },
             {
@@ -540,7 +479,7 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Giặt tay nhẹ với nước lạnh, giũ thẳng khi phơi để giữ nếp sợi tự nhiên.",
                 "category_slug": "ao-blazer",
                 "size_chart": apparel_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "ao-blazer-linen-2-hang-khuy.svg",
                 "variants": [
                     ("S", "Be Tự Nhiên", "#E8DCC4", 15),
                     ("M", "Be Tự Nhiên", "#E8DCC4", 25),
@@ -561,13 +500,33 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Không giặt nước nóng, lộn trái khi giặt và phơi.",
                 "category_slug": "ao-hoodie",
                 "size_chart": apparel_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "ao-hoodie-ni-bong-phom-rong.svg",
                 "variants": [
                     ("M", "Xám Ghi", "#9E9E9E", 25),
                     ("L", "Xám Ghi", "#9E9E9E", 30),
                     ("XL", "Xám Ghi", "#9E9E9E", 20),
                     ("M", "Đen", "#1C1C1C", 30),
                     ("L", "Đen", "#1C1C1C", 25),
+                ],
+            },
+            {
+                "name": "Đầm Dạ Hội Lụa Satin Cổ V",
+                "slug": "dam-da-hoi-lua-satin-co-v",
+                "price": 1250000.0,
+                "description": "Thiết kế đầm dạ hội trơn chất liệu satin bóng kiêu sa, đường xẻ tà quyến rũ cho buổi tiệc đêm.",
+                "brand": "TrueLook Couture",
+                "gender": "female",
+                "material": "100% Silk Satin",
+                "fit": "Slim Fit",
+                "care_instructions": "Chỉ giặt khô tại tiệm giặt uy tín, không để tiếp xúc chất cồn.",
+                "category_slug": "dam-da-hoi",
+                "size_chart": dress_size_chart,
+                "image_asset": "dam-da-hoi-lua-satin-co-v.svg",
+                "variants": [
+                    ("S", "Đỏ Rượu", "#800020", 12),
+                    ("M", "Đỏ Rượu", "#800020", 15),
+                    ("S", "Đen Tuyền", "#0B0B0B", 14),
+                    ("M", "Đen Tuyền", "#0B0B0B", 18),
                 ],
             },
             {
@@ -582,134 +541,13 @@ def seed_database(db=None, force: bool = False):
                 "care_instructions": "Giặt tay nhẹ nhàng hoặc giặt máy chu kỳ ngắn với túi giặt.",
                 "category_slug": "ao-khoac-bomber",
                 "size_chart": apparel_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1548883354-7622d03aca27?w=800&h=1000&fit=crop&q=80",
+                "image_asset": "ao-khoac-bomber-kaki-lot-du.svg",
                 "variants": [
                     ("M", "Xanh Rêu", "#3D5229", 20),
                     ("L", "Xanh Rêu", "#3D5229", 25),
                     ("XL", "Xanh Rêu", "#3D5229", 15),
                     ("M", "Đen", "#000000", 25),
                     ("L", "Đen", "#000000", 20),
-                ],
-            },
-            {
-                "name": "Sneaker Da Classic Retro",
-                "slug": "sneaker-da-classic-retro",
-                "price": 890000.0,
-                "description": "Giày sneaker tối giản chất liệu da microfiber cao cấp, đế cao su lưu hóa êm ái chống trơn trượt.",
-                "brand": "TrueLook Footwear",
-                "gender": "unisex",
-                "material": "Da Microfiber & Cao su đúc",
-                "fit": "True to size",
-                "care_instructions": "Dùng khăn ẩm lau sạch, tránh phơi trực tiếp dưới ánh nắng gắt.",
-                "category_slug": "giay-sneaker",
-                "size_chart": shoes_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1549298916-b41d501d3772?w=800&h=1000&fit=crop&q=80",
-                "variants": [
-                    ("38", "Trắng", "#FFFFFF", 15),
-                    ("39", "Trắng", "#FFFFFF", 25),
-                    ("40", "Trắng", "#FFFFFF", 30),
-                    ("41", "Trắng", "#FFFFFF", 28),
-                    ("42", "Trắng", "#FFFFFF", 20),
-                    ("40", "Trắng Phối Xanh", "#E6F0FA", 18),
-                    ("41", "Trắng Phối Xanh", "#E6F0FA", 20),
-                ],
-            },
-            {
-                "name": "Giày Cao Gót Mũi Nhọn 7cm",
-                "slug": "giay-cao-got-mui-nhon-7cm",
-                "price": 590000.0,
-                "description": "Giày cao gót thanh lịch với độ cao 7cm hoàn hảo cho vóc dáng, đệm lót gót êm chân không gây đau mỏi.",
-                "brand": "TrueLook Elegance",
-                "gender": "female",
-                "material": "Da bóng tổng hợp cao cấp",
-                "fit": "Standard",
-                "care_instructions": "Lau sạch bằng khăn mềm khô, bảo quản nơi thoáng mát trong hộp giày.",
-                "category_slug": "giay-cao-got",
-                "size_chart": shoes_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=800&h=1000&fit=crop&q=80",
-                "variants": [
-                    ("35", "Đen", "#000000", 10),
-                    ("36", "Đen", "#000000", 18),
-                    ("37", "Đen", "#000000", 25),
-                    ("38", "Đen", "#000000", 20),
-                    ("36", "Nude", "#E3BC9A", 15),
-                    ("37", "Nude", "#E3BC9A", 20),
-                ],
-            },
-            {
-                "name": "Giày Loafer Da Đế Cao Su",
-                "slug": "giay-loafer-da-de-cao-su",
-                "price": 950000.0,
-                "description": "Loafer penny cổ điển làm từ da bò tấm dập vân mềm, đế cao su chống mài mòn cho quý ông thanh lịch.",
-                "brand": "TrueLook Footwear",
-                "gender": "male",
-                "material": "Da bò tự nhiên",
-                "fit": "Standard",
-                "care_instructions": "Đánh xi dưỡng da định kỳ mỗi tháng, dùng cây giữ phom giày khi không sử dụng.",
-                "category_slug": "giay-loafer",
-                "size_chart": shoes_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1614252369475-531eba835eb1?w=800&h=1000&fit=crop&q=80",
-                "variants": [
-                    ("39", "Nâu Đen", "#3B2F2F", 12),
-                    ("40", "Nâu Đen", "#3B2F2F", 20),
-                    ("41", "Nâu Đen", "#3B2F2F", 22),
-                    ("42", "Nâu Đen", "#3B2F2F", 16),
-                    ("40", "Đen", "#1A1A1A", 18),
-                    ("41", "Đen", "#1A1A1A", 20),
-                ],
-            },
-            {
-                "name": "Túi Tote Canvas Đa Năng",
-                "slug": "tui-tote-canvas-da-nang",
-                "price": 250000.0,
-                "description": "Túi tote vải bố 16oz dày dặn có ngăn chứa đồ tiện dụng và khóa kéo an toàn, quai đeo chịu lực 15kg.",
-                "brand": "TrueLook Essentials",
-                "gender": "unisex",
-                "material": "Canvas Cotton 16oz",
-                "fit": "Freesize",
-                "care_instructions": "Giặt tay nước lạnh, phơi tự nhiên, không sấy nhiệt.",
-                "category_slug": "tui-xach",
-                "size_chart": accessory_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1544816155-12df9643f363?w=800&h=1000&fit=crop&q=80",
-                "variants": [
-                    ("ONE_SIZE", "Trắng Kem", "#FAF0E6", 40),
-                    ("ONE_SIZE", "Đen", "#000000", 35),
-                ],
-            },
-            {
-                "name": "Thắt Lưng Da Khóa Kim Loại",
-                "slug": "that-lung-da-khoa-kim-loai",
-                "price": 350000.0,
-                "description": "Thắt lưng da bò nguyên tấm xử lý cạnh sơn bóng thủ công, mặt khóa hợp kim không gỉ bền màu.",
-                "brand": "TrueLook Accessories",
-                "gender": "male",
-                "material": "Da bò nguyên tấm & Hợp kim kẽm",
-                "fit": "Điều chỉnh",
-                "care_instructions": "Lau bằng khăn mềm hơi ẩm, tránh tiếp xúc trực tiếp với nước mưa lâu ngày.",
-                "category_slug": "that-lung",
-                "size_chart": accessory_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1624222247344-550fb60583dc?w=800&h=1000&fit=crop&q=80",
-                "variants": [
-                    ("ONE_SIZE", "Đen", "#000000", 30),
-                    ("ONE_SIZE", "Nâu Cà Phê", "#4A2C2A", 25),
-                ],
-            },
-            {
-                "name": "Kính Mát Phân Cực UV400",
-                "slug": "kinh-mat-phan-cuc-uv400",
-                "price": 420000.0,
-                "description": "Kính mát mắt vuông hiện đại gọng acetate cao cấp, tròng kính phân cực TAC bảo vệ mắt chống chói.",
-                "brand": "TrueLook Eyewear",
-                "gender": "unisex",
-                "material": "Gọng Acetate, Tròng Polarized TAC",
-                "fit": "Standard",
-                "care_instructions": "Lau tròng kính bằng khăn chuyên dụng, cất vào hộp cứng khi không dùng.",
-                "category_slug": "kinh-mat",
-                "size_chart": accessory_size_chart,
-                "image_url": "https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&h=1000&fit=crop&q=80",
-                "variants": [
-                    ("ONE_SIZE", "Đen Khói", "#2B2B2B", 35),
-                    ("ONE_SIZE", "Đồi Mồi", "#5C4033", 25),
                 ],
             },
         ]
@@ -754,6 +592,12 @@ def seed_database(db=None, force: bool = False):
                 prod.is_active = True
                 db.commit()
 
+            # Upload bundled assets on every run so storage can be restored independently.
+            object_name = f"products/demo/{pdata['image_asset']}"
+            asset = Path(__file__).parent / "seed_assets" / pdata["image_asset"]
+            with asset.open("rb") as stream:
+                storage.put(object_name, stream, "image/svg+xml")
+
             # Seed Image if not existing
             img = (
                 db.query(ProductImage)
@@ -764,11 +608,19 @@ def seed_database(db=None, force: bool = False):
                 img = ProductImage(
                     id=f"img_{prod.id}_1",
                     product_id=prod.id,
-                    object_name=pdata["image_url"],
+                    object_name=object_name,
+                    kind="flat_lay",
                     is_primary=True,
                     sort_order=0,
                 )
                 db.add(img)
+                db.commit()
+
+            elif img.object_name.startswith(
+                ("https://images.unsplash.com/", "products/demo/")
+            ):
+                img.object_name = object_name
+                img.kind = "flat_lay"
                 db.commit()
 
             # Seed Variants
@@ -806,97 +658,74 @@ def seed_database(db=None, force: bool = False):
             f"[OK] Seeded {len(created_products)} fashion products with variant matrices."
         )
 
-        # 6. Seed Historical Orders across 30 Days (Idempotent: only if count < 15)
-        existing_orders_count = db.query(Order).count()
-        if existing_orders_count < 15 and created_products:
-            statuses = ["paid", "paid", "paid", "pending", "cancelled", "expired"]
-            now = datetime.now(timezone.utc)
-
-            # Gather all active variants across products
-            all_variants = (
+        # Three deterministic examples; repeated seeding preserves orders and stock.
+        now = datetime.now(timezone.utc)
+        scenarios = [("confirmed", "cod"), ("delivered", "cod"), ("paid", "vietqr")]
+        for i, (status, method) in enumerate(scenarios):
+            code = f"truelook-demo-order-{i + 1}"
+            if db.query(Order).filter_by(public_code=code).first():
+                continue
+            prod = created_products[i]
+            variant = (
                 db.query(ProductVariant)
-                .filter(ProductVariant.is_active.is_(True))
-                .all()
+                .filter_by(product_id=prod.id, is_active=True)
+                .order_by(ProductVariant.id)
+                .first()
             )
-            if all_variants:
-                for i in range(35):
-                    days_ago = random.randint(0, 28)
-                    created_date = now - timedelta(
-                        days=days_ago, hours=random.randint(1, 12)
-                    )
-
-                    selected_var = random.choice(all_variants)
-                    selected_prod = (
-                        db.query(Product)
-                        .filter(Product.id == selected_var.product_id)
-                        .first()
-                    )
-                    qty = random.randint(1, 2)
-                    unit_price = float(selected_var.price or selected_prod.price)
-                    total = unit_price * qty
-                    status = random.choice(statuses)
-
-                    order = Order(
-                        user_id=customer.id if customer else None,
-                        product_id=selected_prod.id,
-                        product_name=selected_prod.name,
-                        unit_price=unit_price,
-                        quantity=qty,
-                        total_amount=total,
-                        currency="VND",
-                        status=status,
-                        customer_name=customer.full_name
-                        if customer
-                        else "Khách Hàng Mẫu",
-                        customer_phone="0912345678",
-                        shipping_address="72 Lê Thánh Tôn, Bến Nghé, Quận 1, TP. Hồ Chí Minh",
-                        notes="Đơn hàng mẫu thử nghiệm",
-                        payment_method="vietqr",
-                        created_at=created_date,
-                        paid_at=created_date + timedelta(minutes=5)
-                        if status == "paid"
-                        else None,
-                        expires_at=created_date + timedelta(minutes=30)
-                        if status == "pending"
-                        else None,
-                    )
-                    db.add(order)
-                    db.commit()
-                    db.refresh(order)
-
-                    order_item = OrderItem(
+            total = variant.price
+            created = now - timedelta(days=2 - i)
+            paid = status in {"delivered", "paid"}
+            order = Order(
+                public_code=code,
+                user_id=customer.id,
+                product_id=prod.id,
+                product_name=prod.name,
+                unit_price=total,
+                quantity=1,
+                total_amount=total,
+                currency="VND",
+                status=status,
+                customer_name=customer.full_name,
+                customer_phone="0912345678",
+                shipping_address="72 Le Thanh Ton, Quan 1, TP Ho Chi Minh",
+                notes="Demo sample order",
+                payment_method=method,
+                created_at=created,
+                paid_at=created if paid else None,
+            )
+            db.add(order)
+            db.flush()
+            db.add(
+                OrderItem(
+                    order_id=order.id,
+                    product_id=prod.id,
+                    variant_id=variant.id,
+                    sku=variant.sku,
+                    size=variant.size,
+                    color_name=variant.color_name,
+                    product_name=prod.name,
+                    unit_price=total,
+                    quantity=1,
+                    subtotal=total,
+                )
+            )
+            if paid:
+                variant.sold_quantity += 1
+                db.add(
+                    Payment(
                         order_id=order.id,
-                        product_id=selected_prod.id,
-                        variant_id=selected_var.id,
-                        sku=selected_var.sku,
-                        size=selected_var.size,
-                        color_name=selected_var.color_name,
-                        product_name=selected_prod.name,
-                        unit_price=unit_price,
-                        quantity=qty,
-                        subtotal=total,
+                        provider=method,
+                        amount=total,
+                        currency="VND",
+                        status="paid",
+                        paid_at=created,
+                        created_at=created,
                     )
-                    db.add(order_item)
-                    if status == "paid":
-                        selected_var.sold_quantity += qty
-                    elif status == "pending":
-                        selected_var.reserved_quantity += qty
-                    db.commit()
-
-                    if status == "paid":
-                        payment = Payment(
-                            order_id=order.id,
-                            provider="vietqr",
-                            amount=total,
-                            currency="VND",
-                            status="completed",
-                            paid_at=order.paid_at,
-                            created_at=created_date,
-                        )
-                        db.add(payment)
-                        db.commit()
-
-                print("[OK] Seeded 35 fashion historical orders with variant metadata!")
+                )
+            else:
+                variant.reserved_quantity += 1
+            db.commit()
+        print("[OK] Demo orders ready: COD confirmed, COD delivered, VietQR paid.")
 
         print("[SUCCESS] All TrueLook fashion database seeding completed successfully!")
 

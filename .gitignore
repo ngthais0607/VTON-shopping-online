@@ -38,6 +38,7 @@ dist/
 *.tsbuildinfo
 test-results/
 playwright-report/
+demo-backups/
 next-env.d.ts
 
 # Superpowers and specifications

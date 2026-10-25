@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy.exc import DatabaseError
 
 from app.core.config import Settings
@@ -18,9 +19,194 @@ from app.integrations.storage import MinioProductStorage, get_product_storage
 from app.main import create_app
 from tests.factories import make_product
 
-VALID_PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
-VALID_JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 32
-VALID_WEBP_BYTES = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 20
+
+def image_bytes(format="PNG", size=(32, 32)):
+    output = BytesIO()
+    Image.new("RGB", size, "navy").save(output, format=format)
+    return output.getvalue()
+
+
+VALID_PNG_BYTES = image_bytes()
+VALID_JPEG_BYTES = image_bytes("JPEG")
+VALID_WEBP_BYTES = image_bytes("WEBP")
+
+
+@pytest.mark.parametrize(
+    "payload,filename,content_type",
+    [
+        (b"\x89PNG\r\n\x1a\n" + bytes(32), "broken.png", "image/png"),
+        (b"\xff\xd8\xff\xe0" + bytes(32), "broken.jpg", "image/jpeg"),
+        (b"RIFF\x24\x00\x00\x00WEBPVP8 " + bytes(20), "broken.webp", "image/webp"),
+        (VALID_PNG_BYTES[:40], "truncated.png", "image/png"),
+        (VALID_JPEG_BYTES[:-20], "truncated.jpg", "image/jpeg"),
+        (VALID_WEBP_BYTES[:-12], "truncated.webp", "image/webp"),
+    ],
+)
+def test_header_only_replacement_preserves_cover(
+    db_session, payload, filename, content_type
+):
+    product = persist_product(db_session)
+    cover = ProductImage(
+        id="existing-cover",
+        product_id=product.id,
+        object_name="products/cover.png",
+        is_primary=True,
+    )
+    db_session.add(cover)
+    db_session.commit()
+    storage = FakeProductStorage()
+    with pytest.raises(BusinessRuleError) as error:
+        store_product_image(
+            db_session,
+            storage,
+            product.id,
+            BytesIO(payload),
+            filename,
+            content_type,
+            is_primary=True,
+        )
+    assert error.value.code == "invalid_product_image"
+    assert storage.put_objects == storage.deleted == []
+    assert db_session.query(ProductImage).count() == 1
+    db_session.refresh(cover)
+    assert cover.is_primary is True
+
+
+@pytest.mark.parametrize("size", [(8193, 1), (1, 8193), (6000, 4001)])
+def test_rejects_excessive_image_dimensions(size):
+    from app.features.products.images import validate_image_payload
+
+    header = MagicMock(format="PNG", size=size, n_frames=1)
+    header.__enter__.return_value = header
+    with patch("app.features.products.images.Image.open", return_value=header):
+        with pytest.raises(BusinessRuleError) as error:
+            validate_image_payload(VALID_PNG_BYTES, "png")
+    assert error.value.code == "image_dimensions_exceeded"
+    header.load.assert_not_called()
+
+
+@pytest.mark.parametrize("size", [(8192, 1), (6000, 4000)])
+def test_accepts_image_dimension_boundaries(size):
+    from app.features.products.images import validate_image_payload
+
+    header = MagicMock(format="PNG", size=size, n_frames=1)
+    header.__enter__.return_value = header
+    with patch("app.features.products.images.Image.open", return_value=header):
+        validate_image_payload(VALID_PNG_BYTES, "png")
+    header.load.assert_called_once()
+
+
+def test_rejects_real_animated_png():
+    from app.features.products.images import validate_image_payload
+
+    output = BytesIO()
+    Image.new("RGB", (32, 32), "red").save(
+        output,
+        format="PNG",
+        save_all=True,
+        append_images=[Image.new("RGB", (32, 32), "blue")],
+        duration=100,
+        loop=0,
+    )
+    with pytest.raises(BusinessRuleError) as error:
+        validate_image_payload(output.getvalue(), "png")
+    assert error.value.code == "animated_product_image_unsupported"
+
+
+def test_decompression_warning_is_rejected():
+    import warnings
+
+    from app.features.products.images import validate_image_payload
+
+    def warn_on_open(*args):
+        warnings.warn("too many pixels", Image.DecompressionBombWarning)
+
+    with patch("app.features.products.images.Image.open", side_effect=warn_on_open):
+        with pytest.raises(BusinessRuleError) as error:
+            validate_image_payload(VALID_PNG_BYTES, "png")
+    assert error.value.code == "image_dimensions_exceeded"
+
+
+def test_decode_failure_and_format_mismatch_are_rejected():
+    from app.features.products.images import validate_image_payload
+
+    with pytest.raises(BusinessRuleError):
+        validate_image_payload(VALID_PNG_BYTES, "jpeg")
+    with patch(
+        "PIL.PngImagePlugin.PngImageFile.load", side_effect=OSError("truncated")
+    ):
+        with pytest.raises(BusinessRuleError) as error:
+            validate_image_payload(VALID_PNG_BYTES, "png")
+    assert error.value.code == "invalid_product_image"
+
+
+@pytest.mark.parametrize("chunk", [b"VP8X", b"VP8L", b"VP8 "])
+def test_oversized_webp_never_constructs_native_decoder(chunk):
+    from app.features.products.images import validate_image_payload
+
+    if chunk == b"VP8X":
+        body = bytes(4) + (8999).to_bytes(3, "little") * 2
+    elif chunk == b"VP8L":
+        body = b"\x2f" + (8999 | (8999 << 14)).to_bytes(4, "little")
+    else:
+        body = b"\x10\x00\x00\x9d\x01\x2a" + (9000).to_bytes(2, "little") * 2
+    packed = chunk + len(body).to_bytes(4, "little") + body
+    payload = b"RIFF" + (len(packed) + 4).to_bytes(4, "little") + b"WEBP" + packed
+    with patch(
+        "PIL.WebPImagePlugin._webp.WebPAnimDecoder",
+        side_effect=AssertionError("decoder allocated"),
+    ) as decoder:
+        with pytest.raises(BusinessRuleError) as error:
+            validate_image_payload(payload, "webp")
+    assert error.value.code == "image_dimensions_exceeded"
+    decoder.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "options", [{}, {"lossless": True}, {"icc_profile": b"profile"}]
+)
+def test_accepts_real_webp_header_variants(options):
+    from app.features.products.images import validate_image_payload
+
+    output = BytesIO()
+    Image.new("RGB", (32, 32), "navy").save(output, format="WEBP", **options)
+    validate_image_payload(output.getvalue(), "webp")
+
+
+def test_primary_image_is_returned_first_after_replacement(db_session):
+    product = make_product(db_session)
+    db_session.add_all(
+        [
+            ProductImage(
+                id="old-photo",
+                product_id=product.id,
+                object_name="old.png",
+                is_primary=False,
+            ),
+            ProductImage(
+                id="new-photo",
+                product_id=product.id,
+                object_name="new.png",
+                is_primary=True,
+            ),
+        ]
+    )
+    db_session.commit()
+    db_session.expire_all()
+    assert db_session.get(Product, product.id).images[0].id == "new-photo"
+
+
+def test_admin_can_upload_images_to_a_draft_product(db_session, product_storage):
+    product = make_product(db_session, is_active=False)
+    image = store_product_image(
+        db_session,
+        product_storage,
+        product.id,
+        BytesIO(VALID_PNG_BYTES),
+        "draft.png",
+        "image/png",
+    )
+    assert image.product_id == product.id
 
 
 def test_image_delete_commit_failure_preserves_object(db_session, monkeypatch):

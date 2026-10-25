@@ -5,14 +5,14 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest';
 import { ImageUploader } from '../components/image-uploader';
 import ProductsPage from '../app/products/page';
-const {upload,post,patch,remove,productState,categoryState} = vi.hoisted(()=>({upload:vi.fn(),post:vi.fn(),patch:vi.fn(),remove:vi.fn(),productState:{error:null as Error|null,products:[] as any[],total:0},categoryState:{error:null as Error|null}}));
-vi.mock('@/lib/api',()=>({apiUpload:upload,apiPost:post,apiPatch:patch,apiPut:patch,apiDelete:remove}));
+const {get,upload,post,patch,remove,productState,categoryState} = vi.hoisted(()=>({get:vi.fn(),upload:vi.fn(),post:vi.fn(),patch:vi.fn(),remove:vi.fn(),productState:{error:null as Error|null,products:[] as any[],total:0},categoryState:{error:null as Error|null}}));
+vi.mock('@/lib/api',()=>({apiGet:get,apiUpload:upload,apiPost:post,apiPatch:patch,apiPut:patch,apiDelete:remove}));
 vi.mock('@/components/ui/dropdown-menu',()=>({DropdownMenu:({children}:any)=><div>{children}</div>,DropdownMenuTrigger:({children}:any)=><>{children}</>,DropdownMenuContent:({children}:any)=><div>{children}</div>,DropdownMenuItem:({children,onClick}:any)=><button onClick={onClick}>{children}</button>}));
 vi.mock('@/hooks/use-products',()=>({useProducts:()=>({isLoading:false,mutate:async()=>{},...productState})}));
 vi.mock('@/hooks/use-categories',()=>({useCategoryOptions:()=>({categories:[],mutate:async()=>{},...categoryState})}));
 vi.mock('@/components/header',()=>({Header:()=>null}));
 vi.mock('next/image',()=>({default:({src,alt}:{src:string;alt:string})=><img src={src} alt={alt}/>}));
-beforeEach(()=>{productState.error=null;productState.products=[];productState.total=0;categoryState.error=null;remove.mockReset();upload.mockReset();post.mockReset();patch.mockReset();URL.createObjectURL=vi.fn(()=> 'blob:preview');URL.revokeObjectURL=vi.fn();});
+beforeEach(()=>{productState.error=null;productState.products=[];productState.total=0;categoryState.error=null;remove.mockReset();get.mockReset();upload.mockReset();post.mockReset();patch.mockReset();URL.createObjectURL=vi.fn(()=> 'blob:preview');URL.revokeObjectURL=vi.fn();});
 const existingProduct={id:7,name:'Existing',price:10,currency:'USD',stock_quantity:10,reserved_quantity:0,sold_quantity:0,is_active:true,category:null,images:[],created_at:null,updated_at:null};
 it('reports a delete failure on the product page',async()=>{
   productState.products=[existingProduct];productState.total=1;remove.mockRejectedValue(new Error('Delete unavailable'));
@@ -66,6 +66,15 @@ it('displays the persisted image returned by the server', async()=>{
   fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[new File(['png'],'p.png',{type:'image/png'})]}});
   await waitFor(()=>expect(screen.getByAltText('Product Preview')).toHaveAttribute('src','https://images.example.test/p.png'));
   expect(saved).toHaveBeenCalledWith('https://images.example.test/p.png');
+  expect(upload.mock.calls[0][1].get('is_primary')).toBe('true');
+});
+
+it('rejects files above the backend 5MB limit before upload', async () => {
+  const { container } = render(<ImageUploader productId={7} onUploadSuccess={() => {}} />);
+  const file = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.png', { type: 'image/png' });
+  fireEvent.change(container.querySelector('input[type=file]')!, { target: { files: [file] } });
+  expect(await screen.findByText(/must not exceed 5MB/)).toBeInTheDocument();
+  expect(upload).not.toHaveBeenCalled();
 });
 it('retries an image failure without creating the product twice', async()=>{
   post.mockResolvedValue({id:7,name:'New product',price:10,currency:'USD',stock_quantity:0,reserved_quantity:0,sold_quantity:0,is_active:true,category:null,description:null,images:[],created_at:null,updated_at:null});
@@ -92,7 +101,7 @@ it('retains a file input after preview and releases local previews', async()=>{
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
 });
 it('displays warning badge when product has no active variants', async () => {
-  productState.products = [existingProduct];
+  productState.products = [{ ...existingProduct, variants: [] }];
   productState.total = 1;
   render(<ProductsPage />);
   expect(screen.getByText('Chưa hiển thị trên cửa hàng vì chưa có biến thể')).toBeInTheDocument();
@@ -101,4 +110,30 @@ it('shows activation guidance when creating a product without active variants', 
   render(<ProductsPage />);
   fireEvent.click(screen.getByRole('button', { name: 'Create Product' }));
   expect(screen.getByText('Thêm biến thể rồi kích hoạt')).toBeInTheDocument();
+});
+
+it('uses the same primary cover in the admin grid as the product response', () => {
+  productState.products = [{ ...existingProduct, images: [{ id: 'cover', url: '/cover.png', is_primary: true }, { id: 'old', url: '/old.png', is_primary: false }] }];
+  productState.total = 1;
+  render(<ProductsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Grid' }));
+  expect(screen.getByAltText('Existing')).toHaveAttribute('src', '/cover.png');
+});
+
+it('fetches full admin detail before editing a product from a summary row', async () => {
+  productState.products = [{ ...existingProduct, slug: 'existing' }];
+  productState.total = 1;
+  get.mockResolvedValue({ ...existingProduct, slug: 'existing', variants: [{ id: 101, is_active: true }] });
+  render(<ProductsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Product' }));
+  expect(await screen.findByRole('button', { name: 'Update Product' })).toBeInTheDocument();
+  expect(get).toHaveBeenCalledWith('/products/by-slug/existing');
+  expect(screen.queryByText('Thêm biến thể rồi kích hoạt')).not.toBeInTheDocument();
+});
+
+it('does not claim a summary without variant details has no variants', () => {
+  productState.products = [existingProduct];
+  productState.total = 1;
+  render(<ProductsPage />);
+  expect(screen.queryByText('Chưa hiển thị trên cửa hàng vì chưa có biến thể')).not.toBeInTheDocument();
 });

@@ -47,6 +47,7 @@ export interface Product {
   images: ProductImage[];
   image_url?: string;
   variants?: ProductVariant[];
+  available_stock?: number;
   price_min?: number;
   price_max?: number;
   available_sizes?: string[];

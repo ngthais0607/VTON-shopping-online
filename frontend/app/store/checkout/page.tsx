@@ -40,7 +40,7 @@ export default function CheckoutPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
   const [notes, setNotes] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"vietqr" | "cod">("vietqr");
+  const [paymentMethod, setPaymentMethod] = useState<"vietqr" | "cod">("cod");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

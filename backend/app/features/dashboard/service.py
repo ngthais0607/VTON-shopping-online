@@ -11,7 +11,7 @@ from app.features.dashboard.schemas import (
     RecentOrderSummary,
 )
 from app.features.orders.constants import OrderStatus
-from app.features.orders.model import Order, Payment
+from app.features.orders.model import Order, OrderItem, Payment
 from app.features.products.model import Product
 from app.features.products.schemas import CategorySummary
 from app.features.products.variant_model import ProductVariant
@@ -92,6 +92,18 @@ def get_metrics(db: Session, use_cache: bool = True) -> DashboardMetrics:
 
 
 def get_recent_orders(db: Session, limit: int) -> list[RecentOrderSummary]:
+    cart_names = (
+        select(func.group_concat(OrderItem.product_name))
+        .where(OrderItem.order_id == Order.id)
+        .correlate(Order)
+        .scalar_subquery()
+    )
+    cart_quantity = (
+        select(func.sum(OrderItem.quantity))
+        .where(OrderItem.order_id == Order.id)
+        .correlate(Order)
+        .scalar_subquery()
+    )
     latest_payment_status = (
         select(Payment.status)
         .where(Payment.order_id == Order.id)
@@ -103,8 +115,10 @@ def get_recent_orders(db: Session, limit: int) -> list[RecentOrderSummary]:
     rows = db.execute(
         select(
             Order.id,
-            Order.product_name,
-            Order.quantity,
+            func.coalesce(Order.product_name, cart_names, "Order").label(
+                "product_name"
+            ),
+            func.coalesce(Order.quantity, cart_quantity, 0).label("quantity"),
             Order.total_amount,
             Order.currency,
             Order.status,

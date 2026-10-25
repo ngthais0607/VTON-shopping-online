@@ -45,7 +45,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
 def create_app(settings: Settings | None = None) -> FastAPI:
     application_settings = settings or get_settings()
     application = FastAPI(
-        title="AI-VTON E-Commerce Platform",
+        title="TrueLook E-Commerce Platform",
         lifespan=lifespan,
         responses=COMMON_ERROR_RESPONSES,
     )

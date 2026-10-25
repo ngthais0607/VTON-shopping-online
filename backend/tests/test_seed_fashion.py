@@ -1,12 +1,24 @@
+import pytest
 from sqlalchemy.orm import Session
 
 from app.features.categories.model import Category
-from app.features.products.model import Product
+from app.features.orders.model import Order
+from app.features.products.model import Product, ProductImage
 from app.features.products.variant_model import ProductVariant
 from app.seed import seed_database
 
 
-def test_seed_database_fashion_catalog_and_idempotence(db_session: Session):
+@pytest.fixture(autouse=True)
+def seed_storage(monkeypatch, product_storage):
+    monkeypatch.setattr(
+        "app.seed.MinioProductStorage", lambda _: product_storage, raising=False
+    )
+    return product_storage
+
+
+def test_seed_database_fashion_catalog_and_idempotence(
+    db_session: Session, seed_storage
+):
     # Run seed once
     seed_database(db=db_session, force=True)
 
@@ -21,10 +33,20 @@ def test_seed_database_fashion_catalog_and_idempotence(db_session: Session):
         "keyboard",
         "appliances",
         "furniture",
+        "sneaker",
+        "giày",
+        "túi",
+        "phụ kiện",
     ]
     for cat in categories:
         for term in forbidden_terms:
             assert term not in cat.name.lower(), f"Forbidden category found: {cat.name}"
+    assert {cat.slug for cat in categories if cat.parent_id is None} == {
+        "ao",
+        "quan",
+        "vay-dam",
+        "ao-khoac",
+    }
 
     # Assert subcategories exist with parent_id
     subcategories = [c for c in categories if c.parent_id is not None]
@@ -32,7 +54,7 @@ def test_seed_database_fashion_catalog_and_idempotence(db_session: Session):
 
     # 2. Assert products are 100% fashion apparel/accessories
     products = db_session.query(Product).filter(Product.is_active.is_(True)).all()
-    assert len(products) >= 16, "Expected at least 16 fashion products"
+    assert len(products) == 12, "Expected 12 curated demo products"
 
     for p in products:
         # Check no legacy electronics exist
@@ -80,6 +102,16 @@ def test_seed_database_fashion_catalog_and_idempotence(db_session: Session):
     initial_prod_count = len(products)
     initial_cat_count = len(categories)
     initial_variant_count = db_session.query(ProductVariant).count()
+    orders = db_session.query(Order).all()
+    assert len(orders) == 3
+    assert {o.status for o in orders} == {"confirmed", "delivered", "paid"}
+    assert {o.payment_method for o in orders} == {"cod", "vietqr"}
+    assert all(
+        i.object_name.startswith("products/demo/")
+        for i in db_session.query(ProductImage)
+    )
+    assert len(seed_storage.put_objects) == 12
+    assert all(payload.startswith(b"<svg") for payload in seed_storage.put_payloads)
 
     # 3. Test Idempotence: Run seed a second time
     seed_database(db=db_session, force=True)
@@ -89,6 +121,7 @@ def test_seed_database_fashion_catalog_and_idempotence(db_session: Session):
         db_session.query(Category).filter(Category.is_deleted.is_(False)).count()
     )
     second_variant_count = db_session.query(ProductVariant).count()
+    assert db_session.query(Order).count() == 3
 
     assert second_prod_count == initial_prod_count, (
         f"Products duplicated: {initial_prod_count} vs {second_prod_count}"

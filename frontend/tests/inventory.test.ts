@@ -8,6 +8,9 @@ import {
 import type { Product, ProductVariant } from "@/lib/types";
 
 describe("getAvailableStock", () => {
+  it("uses the public catalog available_stock without private inventory counters", () => {
+    expect(getAvailableStock({ available_stock: 75 } as Product)).toBe(75);
+  });
   it("subtracts reserved and sold quantities from total stock", () => {
     expect(
       getAvailableStock({

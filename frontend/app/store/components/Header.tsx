@@ -101,26 +101,6 @@ export function Header({ onShopNow }: HeaderProps) {
           >
             Products
           </button>
-          <a
-            href="#features"
-            onClick={(e) => {
-              e.preventDefault();
-              document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
-            }}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/80 transition-all rounded-full"
-          >
-            Features
-          </a>
-          <a
-            href="#customer-love"
-            onClick={(e) => {
-              e.preventDefault();
-              document.getElementById("customer-love")?.scrollIntoView({ behavior: "smooth" });
-            }}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/80 transition-all rounded-full"
-          >
-            Reviews
-          </a>
           <Link
             href="/store/about"
             className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/80 transition-all rounded-full"
@@ -280,28 +260,6 @@ export function Header({ onShopNow }: HeaderProps) {
               >
                 Products
               </button>
-              <a
-                href="#features"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setMobileOpen(false);
-                  document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="block px-3 py-2.5 text-sm font-medium text-slate-600 rounded-xl hover:bg-sky-50"
-              >
-                Features
-              </a>
-              <a
-                href="#customer-love"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setMobileOpen(false);
-                  document.getElementById("customer-love")?.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="block px-3 py-2.5 text-sm font-medium text-slate-600 rounded-xl hover:bg-sky-50"
-              >
-                Reviews
-              </a>
               <Link
                 href="/store/about"
                 onClick={() => setMobileOpen(false)}

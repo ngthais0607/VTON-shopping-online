@@ -10,16 +10,19 @@ interface ImageUploaderProps {
   productId?: number;
   currentImageUrl?: string;
   onUploadSuccess: (url: string) => void;
+  onImageUploaded?: (image: ProductImage) => void;
   onFileSelected?: (file: File | null) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onFileSelected }: ImageUploaderProps) {
+export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onImageUploaded, onFileSelected, onBusyChange }: ImageUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const localPreview = useRef<string | null>(null);
+  const busyRef = useRef(false);
   useEffect(() => () => { if (localPreview.current) URL.revokeObjectURL(localPreview.current); }, []);
   useEffect(() => { setPreviewUrl(currentImageUrl || null); }, [currentImageUrl, productId]);
 
@@ -34,23 +37,33 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
   };
 
   const processFile = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
+    if (busyRef.current) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
       setError("Please select a valid image file (PNG, JPG, WEBP)");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Product image must not exceed 5MB");
       return;
     }
 
     setError(null);
     setUploading(true);
+    busyRef.current = true;
+    onBusyChange?.(true);
     onFileSelected?.(file);
 
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("is_primary", "true");
 
       let uploadedUrl: string;
+      let uploadedImage: ProductImage | undefined;
       if (productId) {
         const response = await apiUpload<ProductImage>(`/products/${productId}/upload-image`, formData);
         uploadedUrl = response.url;
+        uploadedImage = response;
         onFileSelected?.(null);
       } else {
         if (localPreview.current) URL.revokeObjectURL(localPreview.current);
@@ -59,12 +72,16 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
       }
 
       setPreviewUrl(uploadedUrl);
+      if (uploadedImage) onImageUploaded?.(uploadedImage);
       onUploadSuccess(uploadedUrl);
     } catch (err: any) {
       console.error("Upload failed", err);
       setError(err.message || "Failed to upload image to MinIO");
     } finally {
       setUploading(false);
+      busyRef.current = false;
+      onBusyChange?.(false);
+      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
@@ -98,7 +115,8 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
           <input
             ref={inputRef}
             type="file"
-            accept="image/*"
+            accept="image/png,image/jpeg,image/webp"
+            disabled={uploading}
             className="hidden"
             onChange={handleChange}
           />
@@ -112,11 +130,13 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
             src={previewUrl}
             alt="Product Preview"
             fill
+            sizes="(max-width: 640px) 90vw, 560px"
             className="object-contain"
           />
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-xs">
             <button
               type="button"
+              disabled={uploading}
               onClick={() => inputRef.current?.click()}
               className="px-3 py-1.5 bg-white text-slate-800 text-xs font-semibold rounded-lg shadow-sm hover:bg-slate-100 transition-colors"
             >
@@ -160,15 +180,15 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onF
                 <p className="text-xs font-bold text-slate-800">
                   Click to upload or drag & drop
                 </p>
-                <p className="text-[11px] text-slate-400">PNG, JPG, WEBP up to 10MB</p>
+                <p className="text-[11px] text-slate-400">PNG, JPG, WEBP up to 5MB</p>
               </div>
             </>
           )}
         </div>
       )}
 
-      {error && <p className="text-xs text-rose-500 font-medium">{error}</p>}
-      {productId && previewUrl && <p className="text-xs text-slate-500">Saved images can be replaced. Removing a saved image is currently unavailable.</p>}
+      {error && <p role="alert" className="text-xs text-rose-500 font-medium">{error}</p>}
+      {uploading && previewUrl && <p role="status" className="text-xs text-indigo-600">Uploading image...</p>}
     </div>
   );
 }

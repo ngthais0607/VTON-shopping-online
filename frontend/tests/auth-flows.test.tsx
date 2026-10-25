@@ -26,3 +26,14 @@ it('validates the bcrypt byte boundary and NUL for new passwords', () => {
   expect(registerSchema.safeParse({...user,password:'é'.repeat(37)}).success).toBe(false);
   expect(registerSchema.safeParse({...user,password:'abc\0defghi'}).success).toBe(false);
 });
+
+it('navigates after admin identity resolves without a delayed redirect', async () => {
+  push.mockClear();
+  post.mockResolvedValue({ access_token: 'test' });
+  get.mockResolvedValue({ id: 1, role: 'admin' });
+  render(<AuthContainer defaultTab="signin" />);
+  fireEvent.change(screen.getByPlaceholderText('Email or Username'), { target: { value: 'admin' } });
+  fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'old' } });
+  fireEvent.submit(screen.getByPlaceholderText('Password').closest('form')!);
+  await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'), { timeout: 150 });
+});

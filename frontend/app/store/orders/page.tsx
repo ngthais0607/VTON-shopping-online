@@ -215,7 +215,7 @@ export default function CustomerOrdersPage() {
                                         <CreditCard className="w-3.5 h-3.5" />
                                         {order.status === "pending" ? "Pay & Track" : "Track Order"}
                                     </button>
-                                    {order.status === "pending" && (
+                                    {((order.payment_method === "vietqr" && order.status === "pending") || (order.payment_method === "cod" && order.status === "confirmed")) && (
                                         <button
                                             onClick={() => handleCancelOrder(order.id)}
                                             disabled={cancellingId === order.id}

@@ -240,7 +240,7 @@ export default function CustomerAccountPage() {
                 }`}
               >
                 <Heart className={`w-4 h-4 ${activeTab === 'wishlist' ? 'text-sky-600' : 'text-slate-400'}`} />
-                <span>Wishlist</span>
+                <span>Saved on this browser</span>
                 {wishlist.length > 0 && (
                   <span className="ml-auto px-2 py-0.5 text-xs rounded-full bg-rose-100 text-rose-700 font-bold">
                     {wishlist.length}
@@ -411,8 +411,8 @@ export default function CustomerAccountPage() {
               <div className="bg-white rounded-2xl p-6 md:p-8 border border-sky-100 shadow-sm">
                 <div className="flex items-center justify-between pb-6 border-b border-slate-100 mb-6">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">Saved Wishlist</h2>
-                    <p className="text-slate-500 text-sm">Your favorite saved items for quick access.</p>
+                    <h2 className="text-xl font-bold text-slate-900">Saved on this browser</h2>
+                    <p className="text-slate-500 text-sm">Stored only in this browser. These items are not synced to your account or other devices.</p>
                   </div>
                   <Heart className="w-8 h-8 text-rose-400/40" />
                 </div>

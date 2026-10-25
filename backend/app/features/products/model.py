@@ -171,7 +171,10 @@ class Product(Base):
         "ProductVariant", back_populates="product", cascade="all, delete-orphan"
     )
     images = relationship(
-        "ProductImage", back_populates="product", cascade="all, delete-orphan"
+        "ProductImage",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="(ProductImage.is_primary.desc(), ProductImage.sort_order.asc(), ProductImage.id.asc())",
     )
     orders = relationship("Order", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")

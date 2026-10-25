@@ -1,14 +1,11 @@
 import Link from "next/link";
-import { Zap, Twitter, Instagram, Github, Youtube, Mail, Phone, MapPin } from "lucide-react";
+import { Zap } from "lucide-react";
 
 const linkGroups = [
   {
     title: "Shop",
     items: [
-      { label: "New Arrivals", href: "/store" },
-      { label: "Best Sellers", href: "/store" },
-      { label: "Sale Items", href: "/store" },
-      { label: "Gift Cards", href: "/store/help" },
+      { label: "Catalog", href: "/store" },
     ]
   },
   {
@@ -24,9 +21,6 @@ const linkGroups = [
     title: "Company",
     items: [
       { label: "About Us", href: "/store/about" },
-      { label: "Blog", href: "/store/blog" },
-      { label: "Careers", href: "/store/careers" },
-      { label: "Press", href: "/store/press" },
     ]
   },
   {
@@ -37,13 +31,6 @@ const linkGroups = [
       { label: "Cookie Policy", href: "/store/cookie" },
     ]
   }
-];
-
-const socials = [
-  { icon: Twitter, label: "Twitter", href: "https://twitter.com" },
-  { icon: Instagram, label: "Instagram", href: "https://instagram.com" },
-  { icon: Github, label: "GitHub", href: "https://github.com" },
-  { icon: Youtube, label: "YouTube", href: "https://youtube.com" },
 ];
 
 export function Footer() {
@@ -63,38 +50,9 @@ export function Footer() {
             </Link>
 
             <p className="text-xs text-slate-400 leading-relaxed">
-              Premium retail experience. Curated high-quality products with trusted warranty and fast doorstep delivery worldwide.
+              TrueLook shop demo. Explore the catalog, choose product variants and try Cash on Delivery checkout. No real orders are fulfilled.
             </p>
 
-            <div className="space-y-2 text-xs text-slate-400 pt-2">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span>123 TrueLook Plaza, Suite 400, New York, NY</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span>support@truelook.com</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Phone className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span>+1 (800) 888-9999</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-3">
-              {socials.map(({ icon: Icon, label, href }) => (
-                <a
-                  key={label}
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={label}
-                  className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 hover:bg-indigo-600 hover:text-white transition-all shadow-xs"
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                </a>
-              ))}
-            </div>
           </div>
 
           {/* Navigation Links */}
@@ -123,8 +81,8 @@ export function Footer() {
         <div className="mt-14 pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
           <p>© 2026 TrueLook E-Commerce Platform. All rights reserved.</p>
           <div className="flex items-center gap-3">
-            <span className="text-slate-500">Payments Secured By</span>
-            {["VietQR", "Visa", "Mastercard", "PayPal"].map((name) => (
+            <span className="text-slate-500">Demo checkout</span>
+            {["COD", "VietQR simulation"].map((name) => (
               <span key={name} className="px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 font-semibold text-[11px] border border-slate-700/60">
                 {name}
               </span>

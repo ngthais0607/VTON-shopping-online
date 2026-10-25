@@ -41,7 +41,7 @@ export default function RootLayout({
         <LayoutClientWrapper>
           {children}
         </LayoutClientWrapper>
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+        {process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === 'true' && <Analytics />}
       </body>
     </html>
   );

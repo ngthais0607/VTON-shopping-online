@@ -36,7 +36,6 @@ interface VariantMatrixGeneratorProps {
 }
 
 const APPAREL_PRESET = ["XS", "S", "M", "L", "XL", "XXL"];
-const SHOES_PRESET = ["36", "37", "38", "39", "40", "41", "42", "43", "44", "45"];
 const FREESIZE_PRESET = ["ONE_SIZE"];
 
 const POPULAR_COLORS: ColorDefinition[] = [
@@ -164,15 +163,6 @@ export function VariantMatrixGenerator({
             className="text-xs rounded-xl border-slate-200 hover:bg-sky-50 hover:text-sky-700"
           >
             Quần áo (XS - XXL)
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => applyPreset(SHOES_PRESET)}
-            className="text-xs rounded-xl border-slate-200 hover:bg-sky-50 hover:text-sky-700"
-          >
-            Giày dép (36 - 45)
           </Button>
           <Button
             type="button"

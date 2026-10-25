@@ -10,9 +10,6 @@ import { useCategoryOptions } from "@/hooks/use-categories";
 import { Header } from "./components/Header";
 import { HeroSection } from "./components/HeroSection";
 import { FeaturedProducts } from "./components/FeaturedProducts";
-import { FeaturesSection } from "./components/FeaturesSection";
-import { TrustSection } from "./components/TrustSection";
-import { CTASection } from "./components/CTASection";
 import { Footer } from "./components/Footer";
 
 function StorefrontContent() {
@@ -120,15 +117,6 @@ function StorefrontContent() {
                     />}
                 </div>
                 
-                <div id="features">
-                    <FeaturesSection />
-                </div>
-                
-                <div id="customer-love">
-                    <TrustSection />
-                </div>
-                
-                <CTASection onShopNow={scrollToProducts} />
             </main>
             
             <Footer />

@@ -8,6 +8,13 @@ from app.features.users.model import User
 from app.seed import seed_database
 
 
+@pytest.fixture(autouse=True)
+def seed_storage(monkeypatch, product_storage):
+    monkeypatch.setattr(
+        "app.seed.MinioProductStorage", lambda _: product_storage, raising=False
+    )
+
+
 @pytest.mark.parametrize("force", [False, True])
 def test_seed_refuses_production_from_settings_even_with_force(
     monkeypatch, tmp_path, force

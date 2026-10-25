@@ -1,6 +1,6 @@
 // Path: frontend/app/orders/page.tsx
 "use client";
-import { displayDate } from '@/lib/utils';
+import { displayDate, formatCurrency } from '@/lib/utils';
 
 
 import { useEffect, useState } from "react";
@@ -135,7 +135,7 @@ export default function OrdersPage() {
                         {order.quantity ?? (order.items ? order.items.reduce((acc, it) => acc + it.quantity, 0) : 1)}
                       </TableCell>
                       <TableCell className="font-semibold text-slate-900">
-                        ${orderTotal.toFixed(2)}
+                        {formatCurrency(orderTotal, order.currency)}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -224,7 +224,7 @@ export default function OrdersPage() {
                           {it.sku && <span className="text-slate-400 font-mono block text-[10px]">SKU: {it.sku}</span>}
                           <span className="text-slate-500 block text-[11px]">Qty: {it.quantity}</span>
                         </div>
-                        <span className="font-medium text-slate-900">${(it.subtotal ?? (it.unit_price * it.quantity)).toFixed(2)}</span>
+                        <span className="font-medium text-slate-900">{formatCurrency(it.subtotal ?? (it.unit_price * it.quantity), selectedOrder.currency)}</span>
                       </div>
                     ))}
                   </div>
@@ -236,7 +236,7 @@ export default function OrdersPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Unit Price:</span>
-                      <span className="font-medium text-slate-900">${(selectedOrder.unit_price ?? 0).toFixed(2)}</span>
+                      <span className="font-medium text-slate-900">{formatCurrency(selectedOrder.unit_price ?? 0, selectedOrder.currency)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Quantity:</span>
@@ -246,7 +246,7 @@ export default function OrdersPage() {
                 )}
                 <div className="flex justify-between border-t pt-2 mt-2">
                   <span className="font-semibold text-slate-700">Total Amount:</span>
-                  <span className="font-bold text-slate-900">${(selectedOrder.total ?? selectedOrder.total_amount ?? 0).toFixed(2)}</span>
+                  <span className="font-bold text-slate-900">{formatCurrency(selectedOrder.total ?? selectedOrder.total_amount ?? 0, selectedOrder.currency)}</span>
                 </div>
               </div>
 

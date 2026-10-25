@@ -7,13 +7,13 @@ import { VariantStockDialog } from "@/components/admin/variant-stock-dialog";
 import type { ProductVariant } from "@/lib/types";
 
 describe("VariantMatrixGenerator", () => {
-  it("renders size presets (Apparel, Shoes, ONE_SIZE) and default colors", () => {
+  it("renders clothing size presets without shoe sizes", () => {
     const handleGenerate = vi.fn();
     render(<VariantMatrixGenerator productId={1} onGenerate={handleGenerate} />);
 
     expect(screen.getByText("Tạo biến thể hàng loạt (Variant Matrix)")).toBeInTheDocument();
     expect(screen.getByText("Quần áo (XS - XXL)")).toBeInTheDocument();
-    expect(screen.getByText("Giày dép (36 - 45)")).toBeInTheDocument();
+    expect(screen.queryByText("Giày dép (36 - 45)")).not.toBeInTheDocument();
     expect(screen.getByText("Freesize (ONE_SIZE)")).toBeInTheDocument();
   });
 
