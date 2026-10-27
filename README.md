@@ -47,6 +47,8 @@ The backend uses synchronous SQLAlchemy/PyMySQL and MinIO clients. It is not a f
 
 Dependencies are pinned in backend hash-locked requirements and the frontend pnpm lockfile. Docker builds use Python 3.12 and Node.js 22; pnpm is pinned to 10.33.4. The native Windows Python lockfiles target Python 3.13.
 
+MinIO is built from the official `RELEASE.2024-01-18T22-51-28Z` source, pinned to commit `19387cafab76133c2e7642de4aac8c81b9f4f8c7` in `docker/minio/Dockerfile`. This avoids relying on a Docker Hub release image that clean runners cannot pull. The first build downloads the upstream source and Go modules; the server release, ports, and `/data` volume stay the same. The image includes the upstream license and uses the HTTP readiness endpoint for its health check.
+
 <a id="key-features"></a>
 ## ✨ Key Features
 
