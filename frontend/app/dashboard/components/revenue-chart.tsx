@@ -10,32 +10,22 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
+import { formatCurrency } from "@/lib/utils";
 
 interface RevenueChartProps {
-  data?: { name: string; revenue: number }[];
+  data: { name: string; revenue: number }[];
 }
 
-const defaultData = [
-  { name: "Mon", revenue: 2400 },
-  { name: "Tue", revenue: 1398 },
-  { name: "Wed", revenue: 9800 },
-  { name: "Thu", revenue: 3908 },
-  { name: "Fri", revenue: 4800 },
-  { name: "Sat", revenue: 3800 },
-  { name: "Sun", revenue: 7300 },
-];
-
-export function RevenueChart({ data = defaultData }: RevenueChartProps) {
+export function RevenueChart({ data }: RevenueChartProps) {
+  if (data.length === 0) return <div className="bg-white p-6 rounded-2xl border border-slate-200"><h3>Revenue history</h3><p>No revenue history data is available.</p></div>;
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-base font-bold text-slate-900">Revenue Analytics</h3>
-          <p className="text-xs text-slate-500">Weekly revenue performance trend</p>
+          <p className="text-xs text-slate-500">Revenue for the supplied period</p>
         </div>
-        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
-          +18.4% vs last week
-        </span>
+
       </div>
 
       <div className="w-full h-64">
@@ -49,10 +39,10 @@ export function RevenueChart({ data = defaultData }: RevenueChartProps) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} />
-            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} tickFormatter={(v) => `$${v}`} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b" }} tickFormatter={(v) => formatCurrency(Number(v))} />
             <Tooltip
               contentStyle={{ backgroundColor: "#0f172a", borderRadius: "12px", border: "none", color: "#fff", fontSize: "12px" }}
-              formatter={(val: number) => [`$${val.toLocaleString()}`, "Revenue"]}
+              formatter={(val: number) => [formatCurrency(Number(val)), "Revenue"]}
             />
             <Area type="monotone" dataKey="revenue" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
           </AreaChart>

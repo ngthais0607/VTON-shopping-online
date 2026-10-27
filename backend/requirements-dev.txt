@@ -1,0 +1,3 @@
+# Linux / Python 3.12 development; Windows: requirements-dev-windows-lock.txt
+--require-hashes
+-r requirements-dev-lock.txt

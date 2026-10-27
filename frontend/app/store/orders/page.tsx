@@ -1,47 +1,67 @@
 "use client";
+import { displayDate, formatCurrency } from '@/lib/utils';
 
-import { useEffect, useState } from "react";
+
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet } from "@/lib/api";
-import { Order, User } from "@/lib/types";
+import { apiGet, apiPost, ApiError } from "@/lib/api";
+import { Order, Page, User } from "@/lib/types";
+import { getOrderStatusPresentation } from "@/lib/order-status";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
-import { ShoppingBag, ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCw, CreditCard } from "lucide-react";
+import { ShoppingBag, ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCw, CreditCard, Truck } from "lucide-react";
 import { format } from "date-fns";
 
 export default function CustomerOrdersPage() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
+    const [cancellingId, setCancellingId] = useState<number | null>(null);
     const router = useRouter();
 
-    async function loadData() {
+    const loadData = useCallback(async () => {
+        setError(null);
         try {
             // 1. Lấy thông tin user hiện tại để lấy ID
             const user = await apiGet<User>("/users/me");
             setCurrentUser(user);
 
             // 2. Lấy đơn hàng của riêng user này thông qua API /orders/user/{user_id}
-            const ordersData = await apiGet<Order[]>(`/orders/user/${user.id}`);
-            setOrders(ordersData);
+            const ordersData = await apiGet<Page<Order> | Order[]>(`/orders/user/${user.id}?limit=20&offset=0`);
+            setOrders(Array.isArray(ordersData) ? ordersData : ordersData.items);
         } catch (err) {
             console.error("Failed to load customer orders", err);
             // Nếu token hết hạn hoặc chưa đăng nhập, tự động đẩy về trang Login
-            router.push("/login");
+            if (err instanceof ApiError && err.status === 401) router.push("/login?next=/store/orders");
+            else setError(err instanceof Error ? err.message : "Unable to load orders");
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }
+    }, [router]);
 
     useEffect(() => {
-        loadData();
-    }, []);
+        void loadData();
+    }, [loadData]);
 
     const handleRefresh = () => {
         setRefreshing(true);
-        loadData();
+        void loadData();
+    };
+
+    const handleCancelOrder = async (orderId: number) => {
+        if (!window.confirm("Are you sure you want to cancel this order?")) return;
+        setCancellingId(orderId);
+        try {
+            await apiPost(`/orders/${orderId}/cancel`, {});
+            await loadData();
+        } catch (err) {
+            alert(err instanceof Error ? err.message : "Failed to cancel order");
+        } finally {
+            setCancellingId(null);
+        }
     };
 
     const getStatusBadgeClass = (status: string) => {
@@ -50,6 +70,12 @@ export default function CustomerOrdersPage() {
                 return "bg-emerald-50 text-emerald-700 border-emerald-200";
             case "pending":
                 return "bg-amber-50 text-amber-700 border-amber-200";
+            case "confirmed":
+                return "bg-blue-50 text-blue-700 border-blue-200";
+            case "shipped":
+                return "bg-sky-50 text-sky-700 border-sky-200";
+            case "delivered":
+                return "bg-emerald-50 text-emerald-700 border-emerald-200";
             case "expired":
                 return "bg-slate-100 text-slate-500 border-slate-200";
             case "cancelled":
@@ -65,6 +91,12 @@ export default function CustomerOrdersPage() {
                 return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
             case "pending":
                 return <Clock className="w-4 h-4 text-amber-600" />;
+            case "confirmed":
+                return <CheckCircle2 className="w-4 h-4 text-blue-600" />;
+            case "shipped":
+                return <Truck className="w-4 h-4 text-sky-600" />;
+            case "delivered":
+                return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
             case "cancelled":
                 return <XCircle className="w-4 h-4 text-rose-600" />;
             default:
@@ -104,7 +136,7 @@ export default function CustomerOrdersPage() {
                 </div>
 
                 {/* Nội dung danh sách đơn hàng */}
-                {loading ? (
+                {error ? <p role="alert">{error}<button onClick={handleRefresh}>Retry</button></p> : loading ? (
                     <div className="bg-white border border-sky-100 rounded-3xl p-12 text-center shadow-xs">
                         <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600 mx-auto mb-3" />
                         <p className="text-sm font-semibold text-slate-500">Loading your orders...</p>
@@ -139,13 +171,19 @@ export default function CustomerOrdersPage() {
                                             Order #{order.id}
                                         </span>
                                         <span className="text-xs text-slate-400 font-semibold">
-                                            {format(new Date(order.created_at), "MMM dd, yyyy HH:mm")}
+                                            {displayDate(order.created_at, "MMM dd, yyyy HH:mm")}
                                         </span>
                                     </div>
-                                    <h3 className="text-lg font-bold text-slate-900">{order.product_name}</h3>
+                                    <h3 className="text-lg font-bold text-slate-900">
+                                        {order.product_name || (order.items && order.items.length > 0 ? (order.items.length === 1 ? order.items[0].product_name : `${order.items[0].product_name} (+${order.items.length - 1} items)`) : `Order #${order.id}`)}
+                                    </h3>
                                     <div className="flex items-center gap-4 text-sm text-slate-500 font-medium">
-                                        <span>Quantity: <strong className="text-slate-800">{order.quantity}</strong></span>
-                                        <span>Unit Price: <strong className="text-slate-800">${order.unit_price.toFixed(2)}</strong></span>
+                                        <span>Quantity: <strong className="text-slate-800">{order.quantity ?? (order.items ? order.items.reduce((s, it) => s + it.quantity, 0) : 1)}</strong></span>
+                                        {order.unit_price != null ? (
+                                            <span>Unit Price: <strong className="text-slate-800">{formatCurrency(order.unit_price, order.currency)}</strong></span>
+                                        ) : (order.items && order.items.length > 0 ? (
+                                            <span className="text-xs text-sky-600 font-semibold">{order.items.length} items</span>
+                                        ) : null)}
                                     </div>
                                 </div>
 
@@ -153,7 +191,7 @@ export default function CustomerOrdersPage() {
                                 <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 min-w-[150px] border-t md:border-t-0 pt-3 md:pt-0">
                                     <div className="text-left md:text-right">
                                         <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-0.5">Total Amount</p>
-                                        <p className="text-xl font-black text-slate-950">${order.total.toFixed(2)}</p>
+                                        <p className="text-xl font-black text-slate-950">{formatCurrency(order.total, order.currency)}</p>
                                     </div>
 
                                     <div className="flex items-center gap-2">
@@ -163,20 +201,30 @@ export default function CustomerOrdersPage() {
                                             )}`}
                                         >
                                             {getStatusIcon(order.status)}
-                                            {order.status}
+                                            {getOrderStatusPresentation(order.status).label}
                                         </span>
                                     </div>
                                 </div>
 
                                 {/* Nút xem chi tiết & theo dõi đơn hàng */}
-                                <div className="md:border-l md:border-sky-100 md:pl-4 flex items-center justify-stretch md:justify-center w-full md:w-auto pt-2 md:pt-0">
+                                <div className="md:border-l md:border-sky-100 md:pl-4 flex flex-col sm:flex-row md:flex-col items-center justify-stretch md:justify-center gap-2 w-full md:w-auto pt-2 md:pt-0">
                                     <button
-                                        onClick={() => router.push(`/store/orders/${order.id}`)}
+                                        onClick={() => router.push(`/store/orders/${order.public_code}`)}
                                         className="w-full md:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-sky-500/20 active:scale-95 transition-all cursor-pointer"
                                     >
                                         <CreditCard className="w-3.5 h-3.5" />
                                         {order.status === "pending" ? "Pay & Track" : "Track Order"}
                                     </button>
+                                    {((order.payment_method === "vietqr" && order.status === "pending") || (order.payment_method === "cod" && order.status === "confirmed")) && (
+                                        <button
+                                            onClick={() => handleCancelOrder(order.id)}
+                                            disabled={cancellingId === order.id}
+                                            className="w-full md:w-auto px-3 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                                        >
+                                            <XCircle className="w-3.5 h-3.5" />
+                                            {cancellingId === order.id ? "Cancelling..." : "Cancel Order"}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))}

@@ -19,10 +19,15 @@ __pycache__/
 venv/
 ENV/
 .pytest_cache/
+.pytest_temp/
+.pytest-tmp/
+.ruff_cache/
 *.db
 *.sqlite
 *.sqlite3
 server.log
+.worktrees/
+*.be-fe-verification-infrastructure.json
 
 # Node / Next.js
 node_modules/
@@ -31,6 +36,9 @@ out/
 build/
 dist/
 *.tsbuildinfo
+test-results/
+playwright-report/
+demo-backups/
 next-env.d.ts
 
 # Superpowers and specifications
@@ -42,3 +50,4 @@ docs/superpowers/
 .vscode/
 .idea/
 *.swp
+.agents/

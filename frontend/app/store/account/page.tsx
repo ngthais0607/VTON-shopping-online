@@ -1,31 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { apiGet, apiPut } from '@/lib/api';
+import { apiGet, apiPatch } from '@/lib/api';
 import { User, Package, Heart, CheckCircle2, Clock, XCircle, ArrowRight, ShieldCheck, Key, Save, AlertCircle, RefreshCw } from 'lucide-react';
 
-interface UserProfile {
-  id: number;
-  username: string;
-  email: string;
-  first_name?: string;
-  last_name?: string;
-  role: string;
-  created_at?: string;
-}
-
-interface OrderItem {
-  id: number;
-  product_id: number;
-  product_name: string;
-  unit_price: number;
-  quantity: number;
-  total_amount: number;
-  status: string;
-  payment_status: string;
-  created_at: string;
-}
+import type { User as UserProfile, Order as OrderItem, Page } from '@/lib/types';
 
 export default function CustomerAccountPage() {
   const [activeTab, setActiveTab] = useState<'profile' | 'orders' | 'wishlist'>('profile');
@@ -48,12 +28,19 @@ export default function CustomerAccountPage() {
   // Wishlist state
   const [wishlist, setWishlist] = useState<any[]>([]);
 
-  useEffect(() => {
-    fetchProfile();
-    loadWishlist();
+  const fetchUserOrders = useCallback(async (userId: number) => {
+    setOrdersLoading(true);
+    try {
+      const data = await apiGet<Page<OrderItem> | OrderItem[]>(`/orders/user/${userId}`);
+      setOrders(Array.isArray(data) ? data : (data?.items ?? []));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load your orders');
+    } finally {
+      setOrdersLoading(false);
+    }
   }, []);
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -63,36 +50,29 @@ export default function CustomerAccountPage() {
       setLastName(data.last_name || '');
       setUsername(data.username || '');
       setEmail(data.email || '');
-      fetchUserOrders(data.id);
+      void fetchUserOrders(data.id);
     } catch (err: any) {
       setError(err.message || 'Failed to load user profile. Please log in.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchUserOrders]);
 
-  const fetchUserOrders = async (userId: number) => {
-    setOrdersLoading(true);
+  function loadWishlist() {
     try {
-      const data = await apiGet<OrderItem[]>(`/orders/user/${userId}`);
-      setOrders(data);
-    } catch (err) {
-      console.error('Failed to load user orders', err);
-    } finally {
-      setOrdersLoading(false);
-    }
-  };
-
-  const loadWishlist = () => {
-    try {
-      const stored = localStorage.getItem('luxestore_wishlist');
+      const stored = localStorage.getItem('truelook_wishlist') || localStorage.getItem('luxestore_wishlist');
       if (stored) {
         setWishlist(JSON.parse(stored));
       }
     } catch (e) {
       console.error('Failed to load wishlist from localStorage', e);
     }
-  };
+  }
+
+  useEffect(() => {
+    void fetchProfile();
+    loadWishlist();
+  }, [fetchProfile]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,7 +80,7 @@ export default function CustomerAccountPage() {
     setSaveSuccess(null);
     setError(null);
     try {
-      const updated = await apiPut<UserProfile>('/users/me', {
+      const updated = await apiPatch<UserProfile>('/users/me', {
         username,
         email,
         first_name: firstName,
@@ -128,6 +108,12 @@ export default function CustomerAccountPage() {
         return (
           <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-amber-700 bg-amber-50 rounded-full border border-amber-200">
             <Clock className="w-3.5 h-3.5" /> Pending Payment
+          </span>
+        );
+      case 'confirmed':
+        return (
+          <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-blue-700 bg-blue-50 rounded-full border border-blue-200">
+            <CheckCircle2 className="w-3.5 h-3.5" /> COD Confirmed
           </span>
         );
       case 'expired':
@@ -254,7 +240,7 @@ export default function CustomerAccountPage() {
                 }`}
               >
                 <Heart className={`w-4 h-4 ${activeTab === 'wishlist' ? 'text-sky-600' : 'text-slate-400'}`} />
-                <span>Wishlist</span>
+                <span>Saved on this browser</span>
                 {wishlist.length > 0 && (
                   <span className="ml-auto px-2 py-0.5 text-xs rounded-full bg-rose-100 text-rose-700 font-bold">
                     {wishlist.length}
@@ -425,8 +411,8 @@ export default function CustomerAccountPage() {
               <div className="bg-white rounded-2xl p-6 md:p-8 border border-sky-100 shadow-sm">
                 <div className="flex items-center justify-between pb-6 border-b border-slate-100 mb-6">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">Saved Wishlist</h2>
-                    <p className="text-slate-500 text-sm">Your favorite saved items for quick access.</p>
+                    <h2 className="text-xl font-bold text-slate-900">Saved on this browser</h2>
+                    <p className="text-slate-500 text-sm">Stored only in this browser. These items are not synced to your account or other devices.</p>
                   </div>
                   <Heart className="w-8 h-8 text-rose-400/40" />
                 </div>

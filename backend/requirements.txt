@@ -1,22 +1,3 @@
-fastapi[standard]
-uvicorn
-sqlalchemy
-passlib[bcrypt]
-bcrypt==4.0.1
-python-multipart
-minio
-python-dotenv
-httpx
-apscheduler
-pyjwt
-pytest
-httpx
-alembic==1.13.1
-pymysql
-cryptography
-slowapi
-redis
-arq
-aiosmtplib
-jinja2
-
+# Linux / Python 3.12 runtime; editable inputs: requirements.in
+--require-hashes
+-r requirements-lock.txt

@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1050" viewBox="0 0 1280 1050" role="img" aria-labelledby="title description">
+  <title id="title">TrueLook application architecture</title>
+  <desc id="description">Next.js storefront and admin dashboard call the FastAPI API. The API uses MariaDB through SQLAlchemy, Redis for caching, rate limits and queued jobs, and MinIO for product images. Next.js rewrites and optimizes images from MinIO. An ARQ worker consumes Redis jobs, updates orders in MariaDB and sends optional SMTP notifications.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#64748b"/></marker>
+    <marker id="blue-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#2563eb"/></marker>
+    <style>
+      text{font-family:Inter,"Segoe UI",Arial,sans-serif}
+      .eyebrow{font-size:13px;font-weight:700;letter-spacing:2px;fill:#64748b}
+      .heading{font-size:25px;font-weight:700;fill:#0f172a}
+      .detail{font-size:17px;fill:#475569}
+      .edge{fill:none;stroke:#64748b;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}
+      .label{font-size:15px;font-weight:500;fill:#475569}
+      .chip{font-size:15px;font-weight:600;fill:#e2e8f0;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="1280" height="1050" rx="24" fill="#f8fafc"/>
+  <text x="56" y="49" class="eyebrow">TRUELOOK / SYSTEM OVERVIEW</text>
+  <text x="56" y="89" font-size="31" font-weight="750" fill="#0f172a">One commerce platform. Clear service boundaries.</text>
+
+  <path d="M640 230V320" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#blue-arrow)"/>
+  <text x="664" y="281" class="label">REST /api/v1 · JSON + bearer auth</text>
+  <path class="edge" d="M340 520V566H225V620"/>
+  <text x="208" y="598" text-anchor="end" class="label">SQLAlchemy / PyMySQL</text>
+  <path class="edge" d="M640 520V620"/>
+  <text x="660" y="580" class="label">Cache · rate limits · enqueue</text>
+  <path class="edge" d="M940 520V566H1055V620"/>
+  <text x="1080" y="597" class="label">S3 API</text>
+  <path class="edge" d="M900 175H1240V685H1215" stroke-dasharray="6 6"/>
+  <text x="948" y="143" class="label">Image rewrite</text>
+  <text x="948" y="165" class="label">+ optimization</text>
+  <path class="edge" d="M640 750V830"/>
+  <text x="663" y="797" class="label">Consume jobs</text>
+  <path class="edge" d="M480 890H225V750"/>
+  <text x="255" y="876" class="label">Order expiration · SQL</text>
+  <path class="edge" d="M800 890H895" stroke-dasharray="6 6"/>
+  <text x="816" y="877" class="label">Send</text>
+
+  <rect x="380" y="120" width="520" height="110" rx="18" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <rect x="406" y="151" width="45" height="40" rx="6" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+  <path d="M407 162H450" stroke="#2563eb" stroke-width="1.5"/>
+  <circle cx="413" cy="157" r="1.5" fill="#2563eb"/><circle cx="419" cy="157" r="1.5" fill="#2563eb"/>
+  <text x="470" y="162" class="heading">Storefront + admin dashboard</text>
+  <text x="470" y="190" class="detail">Next.js 16 · React 19 · browser client</text>
+  <text x="470" y="212" font-size="14" fill="#2563eb">In-memory access token · HttpOnly refresh cookie</text>
+
+  <rect x="250" y="320" width="780" height="200" rx="20" fill="#0f172a"/>
+  <text x="280" y="359" font-size="27" font-weight="700" fill="#fff">FastAPI application</text>
+  <text x="280" y="387" font-size="17" fill="#cbd5e1">Routers → feature services → domain rules / integrations</text>
+  <rect x="280" y="414" width="167" height="35" rx="9" fill="#1e293b"/><text x="363" y="437" class="chip">Users + sessions</text>
+  <rect x="460" y="414" width="232" height="35" rx="9" fill="#1e293b"/><text x="576" y="437" class="chip">Catalog + variant inventory</text>
+  <rect x="705" y="414" width="295" height="35" rx="9" fill="#1e293b"/><text x="852" y="437" class="chip">Orders + COD / VietQR payments</text>
+  <rect x="280" y="462" width="167" height="33" rx="9" fill="#1e293b"/><text x="363" y="484" class="chip">Categories</text>
+  <rect x="460" y="462" width="232" height="33" rx="9" fill="#1e293b"/><text x="576" y="484" class="chip">Dashboard + reviews</text>
+  <rect x="705" y="462" width="295" height="33" rx="9" fill="#1e293b"/><text x="852" y="484" class="chip">Image validation + storage</text>
+
+  <rect x="65" y="620" width="320" height="130" rx="18" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="65" y="620" width="320" height="6" rx="3" fill="#2563eb"/>
+  <text x="90" y="662" class="heading">MariaDB 11.2</text>
+  <text x="90" y="692" class="detail">Accounts · catalog · orders</text>
+  <text x="90" y="720" font-size="15" fill="#64748b">Transactions · constraints · Alembic</text>
+
+  <rect x="480" y="620" width="320" height="130" rx="18" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="480" y="620" width="320" height="6" rx="3" fill="#e11d48"/>
+  <text x="505" y="662" class="heading">Redis 7</text>
+  <text x="505" y="692" class="detail">Cache · rate limits · ARQ queue</text>
+  <text x="505" y="720" font-size="15" fill="#64748b">Authenticated shared infrastructure</text>
+
+  <rect x="895" y="620" width="320" height="130" rx="18" fill="#fff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <rect x="895" y="620" width="320" height="6" rx="3" fill="#0d9488"/>
+  <text x="920" y="662" class="heading">MinIO</text>
+  <text x="920" y="692" class="detail">Product-image object storage</text>
+  <text x="920" y="720" font-size="15" fill="#64748b">Public catalog images · S3-compatible</text>
+
+  <rect x="480" y="830" width="320" height="120" rx="18" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="505" y="871" class="heading">ARQ worker</text>
+  <text x="505" y="901" class="detail">Email jobs + expiration cron</text>
+  <text x="505" y="927" font-size="15" fill="#6d28d9">Welcome · order · payment notifications</text>
+
+  <rect x="895" y="830" width="320" height="120" rx="18" fill="#fff" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="920" y="871" class="heading">SMTP delivery</text>
+  <text x="920" y="901" class="detail">Optional configured mail server</text>
+  <text x="920" y="927" font-size="15" fill="#64748b">Console mode is available for demos</text>
+
+  <path d="M56 988H1224" stroke="#e2e8f0"/>
+  <text x="56" y="1019" font-size="14" fill="#64748b">CURRENT IMPLEMENTATION</text>
+  <text x="1224" y="1019" text-anchor="end" font-size="14" fill="#64748b">Solid: application traffic · Dashed: image delivery / optional email</text>
+</svg>

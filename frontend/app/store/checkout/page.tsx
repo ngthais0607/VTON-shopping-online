@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useCart } from "../context/CartContext";
-import { apiPost, apiGet } from "@/lib/api";
+import { apiPost } from "@/lib/api";
 import { checkoutSchema } from "@/lib/validations/checkout";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
@@ -26,18 +26,21 @@ import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User } from "@/lib/types";
+import { CheckoutResponse, CheckoutCommand } from "@/lib/types";
+import { useSession } from "@/hooks/use-session";
+import { formatCurrency } from "@/lib/utils";
 
 export default function CheckoutPage() {
-  const { cartItems, totalAmount, clearCart } = useCart();
+  const { cartItems, totalAmount, clearCart, isLoaded } = useCart();
+  const submissionPending = useRef(false);
   const router = useRouter();
 
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const { user: currentUser } = useSession();
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
   const [notes, setNotes] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"vietqr" | "cod">("vietqr");
+  const [paymentMethod, setPaymentMethod] = useState<"vietqr" | "cod">("cod");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,31 +48,21 @@ export default function CheckoutPage() {
   // VietQR Modal state
   const [vietqrModalOpen, setVietqrModalOpen] = useState(false);
   const [createdOrderIds, setCreatedOrderIds] = useState<number[]>([]);
+  const [createdOrderCodes, setCreatedOrderCodes] = useState<string[]>([]);
   const [vietqrData, setVietqrData] = useState<VietQRData | null>(null);
 
   useEffect(() => {
-    async function loadUser() {
-      try {
-        const token = localStorage.getItem("token");
-        if (token) {
-          const user = await apiGet<User>("/users/me").catch(() => null);
-          if (user) {
-            setCurrentUser(user);
-            setCustomerName(user.first_name || user.username || "");
-          }
-        }
-      } catch (err) {
-        console.error("Failed to load user info", err);
-      }
+    if (currentUser) {
+      setCustomerName(name => name || currentUser.first_name || currentUser.username || "");
     }
-    loadUser();
-  }, []);
+  }, [currentUser]);
 
-  const shippingFee = totalAmount > 0 ? (totalAmount > 100 ? 0 : 15) : 0;
-  const grandTotal = totalAmount + shippingFee;
+  const shippingFee = 0;
+  const grandTotal = totalAmount;
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLoaded || submissionPending.current) return;
     if (cartItems.length === 0) {
       setError("Your cart is empty. Please add items to checkout.");
       return;
@@ -88,50 +81,59 @@ export default function CheckoutPage() {
     }
 
     setError(null);
+    submissionPending.current = true;
     setSubmitting(true);
 
     try {
-      const payload = {
+      const payload: CheckoutCommand = {
         items: cartItems.map((item) => ({
-          product_id: item.product.id,
+          variant_id: item.variantId,
           quantity: item.quantity,
         })),
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        shipping_address: shippingAddress,
+        customer_name: validation.data.fullName,
+        customer_phone: validation.data.phone,
+        shipping_address: validation.data.address,
         notes,
         payment_method: paymentMethod,
       };
 
-      const response = await apiPost<{
-        orders: { id: number }[];
-        vietqr?: VietQRData;
-      }>("/orders/checkout-cart", payload);
+      const response = await apiPost<CheckoutResponse>("/orders/checkout-cart", payload);
 
       const orderIds = response.orders.map((o) => o.id);
+      const publicCodes = response.orders
+        .map((o) => o.public_code)
+        .filter((c): c is string => Boolean(c));
       setCreatedOrderIds(orderIds);
+      setCreatedOrderCodes(publicCodes);
 
       // Clear cart from context
       clearCart();
 
-      if (paymentMethod === "vietqr" && response.vietqr) {
+      if (response.payment_method === "vietqr" && response.vietqr) {
         setVietqrData(response.vietqr);
         setVietqrModalOpen(true);
       } else {
         // COD order completed
-        router.push(`/store/orders/success?order_ids=${orderIds.join(",")}`);
+        const parts: string[] = [];
+        if (publicCodes.length) parts.push(`codes=${publicCodes.join(",")}`);
+        if (orderIds.length) parts.push(`order_ids=${orderIds.join(",")}`);
+        router.push(`/store/orders/success${parts.length ? `?${parts.join("&")}` : ""}`);
       }
     } catch (err: any) {
-      console.error("Checkout error", err);
+
       setError(err.message || "Failed to complete checkout. Please try again.");
     } finally {
+      submissionPending.current = false;
       setSubmitting(false);
     }
   };
 
-  const handlePaymentSuccess = () => {
+  const handleContinue = () => {
     setVietqrModalOpen(false);
-    router.push(`/store/orders/success?order_ids=${createdOrderIds.join(",")}`);
+    const parts: string[] = [];
+    if (createdOrderCodes.length) parts.push(`codes=${createdOrderCodes.join(",")}`);
+    if (createdOrderIds.length) parts.push(`order_ids=${createdOrderIds.join(",")}`);
+    router.push(`/store/orders/success${parts.length ? `?${parts.join("&")}` : ""}`);
   };
 
   return (
@@ -149,7 +151,7 @@ export default function CheckoutPage() {
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Complete Your Order</h1>
         </div>
 
-        {cartItems.length === 0 ? (
+        {!isLoaded ? <p>Loading cart...</p> : cartItems.length === 0 ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200/80 max-w-md mx-auto my-12 shadow-xs">
             <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4 text-slate-400">
               <ShoppingBag className="w-8 h-8" />
@@ -293,7 +295,7 @@ export default function CheckoutPage() {
                   </>
                 ) : (
                   <>
-                    <span>Place Order · ${grandTotal.toLocaleString()}</span>
+                    <span>Place Order · {formatCurrency(grandTotal)}</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -307,20 +309,28 @@ export default function CheckoutPage() {
               </h3>
 
               <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                {cartItems.map(({ product, quantity }) => (
-                  <div key={product.id} className="flex gap-3 items-center">
+                {cartItems.map(({ product, quantity, variant, variantId }) => (
+                  <div key={variantId || product.id} className="flex gap-3 items-center">
                     <div className="w-14 h-14 rounded-xl bg-slate-100 relative overflow-hidden flex-shrink-0 border border-slate-100">
-                      {product.images?.[0]?.url || product.image_url ? (
-                        <Image src={product.images?.[0]?.url || product.image_url || ""} alt={product.name} fill className="object-cover" />
+                      {variant?.image_url || product.images?.[0]?.url || product.image_url ? (
+                        <Image src={variant?.image_url || product.images?.[0]?.url || product.image_url || ""} alt={product.name} fill className="object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400">No Pic</div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-slate-800 text-xs truncate">{product.name}</h4>
+                      {(variant?.size || variant?.color_name) && (
+                        <p className="text-[11px] text-slate-500 font-medium">
+                          {[variant.size && `Size ${variant.size}`, variant.color_name && `Màu ${variant.color_name}`].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                      {variant?.sku && (
+                        <p className="text-[10px] text-slate-400 font-mono">SKU: {variant.sku}</p>
+                      )}
                       <p className="text-[11px] text-slate-400">Qty: {quantity}</p>
                     </div>
-                    <span className="font-bold text-slate-900 text-xs">${(product.price * quantity).toLocaleString()}</span>
+                    <span className="font-bold text-slate-900 text-xs">{formatCurrency((variant?.price ?? product.price) * quantity, product.currency)}</span>
                   </div>
                 ))}
               </div>
@@ -328,17 +338,17 @@ export default function CheckoutPage() {
               <div className="space-y-2 border-t border-slate-100 pt-4 text-xs text-slate-600">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold text-slate-900">${totalAmount.toLocaleString()}</span>
+                  <span className="font-semibold text-slate-900">{formatCurrency(totalAmount)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Shipping Fee</span>
                   <span className="font-semibold text-slate-900">
-                    {shippingFee === 0 ? <span className="text-emerald-600 font-bold">Free</span> : `$${shippingFee}`}
+                    {shippingFee === 0 ? <span className="text-emerald-600 font-bold">Miễn phí</span> : formatCurrency(shippingFee)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm font-extrabold text-slate-900 pt-2 border-t border-slate-100">
                   <span>Total</span>
-                  <span className="text-indigo-600 text-base">${grandTotal.toLocaleString()}</span>
+                  <span className="text-indigo-600 text-base">{formatCurrency(grandTotal)}</span>
                 </div>
               </div>
 
@@ -356,11 +366,10 @@ export default function CheckoutPage() {
       {/* VietQR Payment Modal */}
       {vietqrData && (
         <VietQRModal
-          orderIds={createdOrderIds}
           vietqrData={vietqrData}
           isOpen={vietqrModalOpen}
           onClose={() => setVietqrModalOpen(false)}
-          onPaymentSuccess={handlePaymentSuccess}
+          onContinue={handleContinue}
         />
       )}
     </div>

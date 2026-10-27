@@ -1,68 +1,87 @@
-import os
+import uuid
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from dotenv import load_dotenv
-from fastapi import FastAPI
 
-load_dotenv()
-from app.features.orders.model import Order, Payment
-from app.features.products.model import Product, ProductImage
-from app.features.users.model import User
-from app.features.categories.model import Category
-
-from app.core.database import Base, engine
-from app.features.users.router import router as user_router
-from app.features.products.router import router as product_router
-from app.features.categories.router import router as categories_router
-from app.features.orders.router import router as order_router
-from app.integrations.minio_client import ensure_bucket_exists
-
-from app.features.dashboard.router import router as dashboard_router
-
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
-Base.metadata.create_all(bind=engine)
+from app.core.config import Settings, get_settings
+from app.core.errors import COMMON_ERROR_RESPONSES, register_error_handlers
+from app.core.rate_limiter import limiter
+from app.features.categories.router import router as categories_router
+from app.features.dashboard.router import router as dashboard_router
+from app.features.health.router import router as health_router
+from app.features.orders.router import router as order_router
+from app.features.products.router import router as product_router
+from app.features.products.variant_router import router as variant_router
+from app.features.users.router import router as user_router
+from app.integrations.queue import ArqTaskQueue, create_task_queue
+from app.integrations.storage import MinioProductStorage
+
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    yield
-    # Shutdown
+async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
+    try:
+        application.state.product_storage.ensure_bucket()
+        yield
+    finally:
+        queue = application.state.task_queue
+        if isinstance(queue, ArqTaskQueue):
+            await queue.aclose()
 
 
-from slowapi.errors import RateLimitExceeded
-from slowapi import _rate_limit_exceeded_handler
-from app.core.rate_limiter import limiter
+def create_app(settings: Settings | None = None) -> FastAPI:
+    application_settings = settings or get_settings()
+    application = FastAPI(
+        title="TrueLook E-Commerce Platform",
+        lifespan=lifespan,
+        responses=COMMON_ERROR_RESPONSES,
+    )
 
-app = FastAPI(
-    title="AI-VTON E-Commerce Platform",
-    lifespan=lifespan
-)
+    application.state.settings = application_settings
+    application.state.product_storage = MinioProductStorage(application_settings)
+    application.state.task_queue = create_task_queue(application_settings.redis_url)
+    application.state.limiter = limiter
+    application.add_exception_handler(
+        RateLimitExceeded,
+        _rate_limit_exceeded_handler,
+    )
+    register_error_handlers(application)
 
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    application.add_middleware(RequestIDMiddleware)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=application_settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000")
-cors_origins = [o.strip() for o in cors_origins_str.split(",") if o.strip()]
+    application.include_router(health_router)
+    application.include_router(product_router)
+    application.include_router(variant_router)
+    application.include_router(user_router)
+    application.include_router(categories_router)
+    application.include_router(order_router)
+    application.include_router(dashboard_router)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    @application.get("/")
+    def root() -> dict[str, str]:
+        return {"message": "AI-VTON API is running"}
 
-ensure_bucket_exists()
-
-app.include_router(product_router)
-app.include_router(user_router)
-app.include_router(categories_router)
-app.include_router(order_router)
-app.include_router(dashboard_router)
+    return application
 
 
-@app.get("/")
-def root():
-    return {
-        "message": "AI-VTON API is running"
-    }
+app = create_app()

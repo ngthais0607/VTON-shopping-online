@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import { useSession } from '@/hooks/use-session';
 import { LogOut } from 'lucide-react';
 
 export function Sidebar() {
@@ -26,10 +27,15 @@ export function Sidebar() {
     { name: 'Settings', href: '/settings', icon: Settings },
   ];
   const router = useRouter();
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    router.push("/login");
-    router.refresh();
+  const { logout } = useSession();
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push("/login");
+      router.refresh();
+    } catch {
+      // The shared session notice reports server logout failure.
+    }
   };
 
   return (

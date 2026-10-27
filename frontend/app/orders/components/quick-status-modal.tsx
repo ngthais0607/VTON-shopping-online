@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { Order } from "@/lib/types";
+import { useSWRConfig } from 'swr';
 import { apiPut } from "@/lib/api";
 import {
   Dialog,
@@ -22,12 +23,17 @@ interface QuickStatusModalProps {
 
 const statusOptions: { label: string; value: Order["status"]; icon: any; color: string }[] = [
   { label: "Pending", value: "pending", icon: Clock, color: "text-amber-600 bg-amber-50 border-amber-200" },
-  { label: "Paid / Confirmed", value: "paid", icon: CheckCircle2, color: "text-blue-600 bg-blue-50 border-blue-200" },
+  { label: "COD Confirmed", value: "confirmed", icon: CheckCircle2, color: "text-blue-600 bg-blue-50 border-blue-200" },
+  { label: "Paid", value: "paid", icon: CheckCircle2, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+  { label: "Shipped", value: "shipped", icon: Truck, color: "text-blue-600 bg-blue-50 border-blue-200" },
+  { label: "Delivered", value: "delivered", icon: Check, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   { label: "Cancelled", value: "cancelled", icon: XCircle, color: "text-rose-600 bg-rose-50 border-rose-200" },
   { label: "Expired", value: "expired", icon: XCircle, color: "text-slate-600 bg-slate-50 border-slate-200" },
 ];
 
 export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: QuickStatusModalProps) {
+  const {mutate} = useSWRConfig();
+  const [error, setError] = useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
 
   if (!order) return null;
@@ -39,12 +45,14 @@ export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: Qu
     }
 
     setLoadingStatus(newStatus);
+    setError(null);
     try {
       await apiPut(`/orders/${order.id}/status`, { status: newStatus });
+      await mutate(key => typeof key === "string" && key.startsWith("/dashboard"));
       onStatusUpdated();
       onClose();
     } catch (err: any) {
-      alert(err.message || "Failed to update order status.");
+      setError(err.message || "Failed to update order status.");
     } finally {
       setLoadingStatus(null);
     }
@@ -62,6 +70,7 @@ export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: Qu
           </DialogDescription>
         </DialogHeader>
 
+        {error && <p role="alert">{error}</p>}
         <div className="space-y-2.5 py-4">
           {statusOptions.map((opt) => {
             const Icon = opt.icon;

@@ -6,56 +6,17 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, registerSchema, LoginFormData, RegisterFormData } from "@/lib/validations/auth";
-import { apiPost, apiGet } from "@/lib/api";
+import { safeReturnPath } from '@/lib/session';
+import { apiPost, apiGet, loginSession } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Mail, User, Lock, Eye, EyeOff, AlertCircle, Sparkles, Star, ShieldCheck, Truck } from "lucide-react";
+import { Mail, User, Lock, Eye, EyeOff, AlertCircle, Sparkles, ShieldCheck, Truck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Toaster, toast } from "sonner";
-import Image from "next/image";
 
 interface AuthContainerProps {
     defaultTab: "signin" | "signup";
 }
-
-const promoProducts = [
-    {
-        id: 1,
-        name: "Arc Pro Watch",
-        category: "Wearables",
-        originalPrice: "$349",
-        memberPrice: "$299",
-        rating: 4.9,
-        img: "https://images.unsplash.com/photo-1631863552122-3072cf599a46?w=200&h=200&fit=crop&auto=format",
-        badge: "Hot",
-        badgeColor: "bg-rose-50 border-rose-100 text-rose-600",
-        rotation: "rotate-[-2deg] hover:rotate-0 hover:-translate-y-0.5",
-    },
-    {
-        id: 2,
-        name: "Studio Headphones",
-        category: "Audio",
-        originalPrice: "$189",
-        memberPrice: "$159",
-        rating: 4.8,
-        img: "https://images.unsplash.com/photo-1755719401551-9e2b4be00555?w=200&h=200&fit=crop&auto=format",
-        badge: "Popular",
-        badgeColor: "bg-indigo-50 border-indigo-100 text-indigo-600",
-        rotation: "rotate-[1deg] hover:rotate-0 hover:-translate-y-0.5",
-    },
-    {
-        id: 3,
-        name: "Noir Perfume",
-        category: "Fragrance",
-        originalPrice: "$124",
-        memberPrice: "$99",
-        rating: 4.7,
-        img: "https://images.unsplash.com/photo-1768025719875-48ed072f3084?w=200&h=200&fit=crop&auto=format",
-        badge: "Sale",
-        badgeColor: "bg-amber-50 border-amber-100 text-amber-600",
-        rotation: "rotate-[-1deg] hover:rotate-0 hover:-translate-y-0.5",
-    },
-];
 
 export function AuthContainer({ defaultTab }: AuthContainerProps) {
     const router = useRouter();
@@ -107,17 +68,14 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
             }
         }
 
+        const validation = activeTab === "signin" ? loginSchema.safeParse(formData) : registerSchema.safeParse({ ...formData, username: formData.email.split('@')[0] });
+        if (!validation.success) { setError(validation.error.issues[0]?.message || 'Invalid input'); return; }
         setLoading(true);
 
         try {
             if (activeTab === "signin") {
                 // Login action
-                const response = await apiPost<{ access_token: string; token_type: string }, any>("/users/login", {
-                    email: formData.email,
-                    password: formData.password,
-                });
-
-                localStorage.setItem("token", response.access_token);
+                await loginSession(formData.email, formData.password);
 
                 try {
                     const me = await apiGet<{ role?: string }>("/users/me");
@@ -125,25 +83,18 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                         toast.success("Welcome Admin!", {
                             description: "Redirecting to admin dashboard...",
                         });
-                        setTimeout(() => {
-                            router.push("/dashboard");
-                            router.refresh();
-                        }, 800);
+                        router.push("/dashboard");
                         return;
                     }
                 } catch (err) {
                     console.error("Failed to check user role", err);
                 }
 
-                toast.success("Welcome to LuxeStore!", {
-                    description: "Redirecting to storefront...",
+                toast.success("Welcome to TrueLook!", {
+                    description: "Redirecting to homepage...",
                 });
-                
-                // Wait briefly for the toast to be seen before redirecting
-                setTimeout(() => {
-                    router.push("/store");
-                    router.refresh();
-                }, 800);
+
+                router.push(safeReturnPath(new URLSearchParams(window.location.search).get("next")) || "/store");
             } else {
                 // Register action
                 const parts = formData.fullName.trim().split(/\s+/);
@@ -163,7 +114,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                 toast.success("Account created successfully!", {
                     description: "Switching to login form...",
                 });
-                
+
                 // Switch to Sign In tab and preset values
                 setTimeout(() => {
                     setActiveTab("signin");
@@ -184,7 +135,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
     };
 
     const handleSocialClick = (platform: string) => {
-        toast.info(`${platform} login is not configured for this demo storefront.`, {
+        toast.info(`${platform} login is not configured for this demo homepage.`, {
             description: "Please register/sign in using your email address instead.",
         });
     };
@@ -192,14 +143,14 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
     return (
         <div className="w-full max-w-5xl mx-auto px-4">
             <Toaster position="top-right" richColors closeButton />
-            
+
             {/* Outer border wrapper for high-fidelity gradient border matching storefront page */}
             <div className="p-[1px] bg-gradient-to-br from-indigo-500/20 via-violet-300/30 to-indigo-500/20 rounded-[32px] shadow-[0_32px_80px_rgba(99,102,241,0.06)]">
                 <div className="bg-white/95 backdrop-blur-2xl rounded-[31px] overflow-hidden w-full grid md:grid-cols-12 relative min-h-[660px]">
-                    
+
                     {/* Left Side: Brand Promo Panel (visible on desktop) - Grid columns: 5 */}
                     <div className="hidden md:flex md:col-span-5 flex-col justify-between p-10 bg-gradient-to-br from-indigo-50/20 via-slate-50/40 to-indigo-50/25 text-slate-800 relative overflow-hidden select-none border-r border-slate-100">
-                        
+
                         {/* Soft Ambient Glows aligned with storefront theme */}
                         <div className="absolute top-[-20%] left-[-20%] w-[120%] h-[120%] bg-indigo-200/20 rounded-full blur-[80px] pointer-events-none animate-pulse duration-[8s]" />
                         <div className="absolute bottom-[-10%] right-[-10%] w-[90%] h-[90%] bg-violet-200/15 rounded-full blur-[90px] pointer-events-none" />
@@ -208,105 +159,50 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                         <div className="space-y-4 relative z-10">
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-[10px] font-bold tracking-wide text-indigo-700">
                                 <Sparkles className="h-3 w-3 text-indigo-600" />
-                                LuxeStore VIP Club
+                                TrueLook Fashion
                             </span>
-                            
+
                             <h2 className="text-2xl font-extrabold tracking-tight leading-snug text-slate-900">
-                                Join & Save on Top Brands
+                                Quần áo cho mỗi ngày
                             </h2>
-                            
+
                             <p className="text-slate-500 text-xs leading-relaxed">
-                                Get instant access to exclusive member-only pricing on wearables, audio, and more.
+                                Đăng nhập để đặt quần áo, chọn size và màu, rồi theo dõi đơn hàng của bạn.
                             </p>
                         </div>
 
-                        {/* Middle: Interactive Overlapping Store Products Showcase */}
-                        <div className="relative py-4 z-10 flex flex-col gap-3 items-center justify-center">
-                            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">
-                                Featured Member Discounts
-                            </p>
-                            
-                            <div className="w-full max-w-[285px] space-y-3">
-                                {promoProducts.map((product) => (
-                                    <div 
-                                        key={product.id}
-                                        className={`bg-white border border-slate-150 p-2.5 rounded-2xl flex items-center gap-3 shadow-[0_8px_30px_rgba(0,0,0,0.02)] hover:shadow-[0_12px_36px_rgba(99,102,241,0.05)] transition-all duration-300 transform ${product.rotation}`}
-                                    >
-                                        <div className="relative w-11 h-11 shrink-0 border border-slate-100 rounded-xl overflow-hidden bg-slate-50">
-                                            <Image 
-                                                src={product.img} 
-                                                alt={product.name} 
-                                                fill
-                                                sizes="44px"
-                                                className="object-cover"
-                                            />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between gap-1">
-                                                <span className="text-[9px] text-slate-400 font-semibold truncate">{product.category}</span>
-                                                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border ${product.badgeColor}`}>{product.badge}</span>
-                                            </div>
-                                            <h4 className="font-bold text-[11px] text-slate-800 truncate mt-0.5">{product.name}</h4>
-                                            
-                                            {/* Star Rating */}
-                                            <div className="flex items-center gap-0.5 text-[8px] text-amber-500 mt-1">
-                                                <Star className="h-2.5 w-2.5 fill-current" />
-                                                <span className="font-semibold">{product.rating}</span>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Price display */}
-                                        <div className="text-right shrink-0 pl-1">
-                                            <span className="text-[9px] text-slate-400 line-through font-medium block">{product.originalPrice}</span>
-                                            <span className="text-xs text-indigo-600 font-extrabold block">{product.memberPrice}</span>
-                                        </div>
-                                    </div>
-                                ))}
-
-                                {/* Welcome voucher ticket to fill space nicely */}
-                                <div className="mt-4 p-3 rounded-2xl bg-indigo-50/50 border border-dashed border-indigo-200/50 flex items-center justify-between relative overflow-hidden shadow-sm">
-                                    {/* Circular cutouts on sides to look like a ticket */}
-                                    <div className="absolute left-[-6px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-slate-50 rounded-full border-r border-slate-200/60" />
-                                    <div className="absolute right-[-6px] top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-slate-50 rounded-full border-l border-slate-200/60" />
-                                    
-                                    <div className="pl-1">
-                                        <span className="text-[8px] uppercase tracking-wider text-indigo-500 font-bold">Signup Offer</span>
-                                        <h4 className="font-extrabold text-[11px] text-slate-800 mt-0.5">$20 Voucher</h4>
-                                    </div>
-                                    <div className="pr-1 text-right">
-                                        <span className="text-[9px] font-mono font-black text-indigo-600 bg-white border border-indigo-100 px-1.5 py-0.5 rounded-lg shadow-sm">
-                                            WELCOME20
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
+                        <div className="relative z-10 py-10 space-y-4 text-sm text-slate-600">
+                            <p>Áo thun · Áo sơ mi · Áo polo</p>
+                            <p>Quần jeans · Quần tây · Quần short</p>
+                            <p>Váy · Đầm · Áo khoác</p>
+                            <p className="text-xs text-slate-400">Bản demo cửa hàng quần áo thời trang.</p>
                         </div>
 
                         {/* Bottom features list */}
                         <div className="space-y-2 pt-4 border-t border-slate-200/60 relative z-10">
                             <div className="flex items-center gap-2.5 text-[11px] text-slate-600 font-semibold">
                                 <Truck className="h-4 w-4 text-indigo-500 shrink-0" />
-                                <span>Free Express Shipping &gt; $50</span>
+                                <span>Đặt hàng demo bằng COD</span>
                             </div>
                             <div className="flex items-center gap-2.5 text-[11px] text-slate-600 font-semibold">
                                 <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
-                                <span>100% Encrypted Authentication</span>
+                                <span>Xem lịch sử đơn hàng trong tài khoản</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Right Side: Auth Forms - Grid columns: 7 */}
                     <div className="p-10 sm:p-12 md:col-span-7 flex flex-col justify-center bg-white relative">
-                        
+
                         {/* Title and description placed dynamically inside the form container */}
                         <div className="mb-6">
                             <h3 className="text-2xl font-black text-slate-900 tracking-tight">
                                 {activeTab === "signin" ? "Welcome back" : "Create your account"}
                             </h3>
                             <p className="text-xs text-slate-400 mt-1.5 leading-relaxed font-medium">
-                                {activeTab === "signin" 
-                                    ? "Sign in to LuxeStore to continue shopping." 
-                                    : "Join LuxeStore — free forever, cancel anytime."}
+                                {activeTab === "signin"
+                                    ? "Sign in to TrueLook to continue shopping."
+                                    : "Join TrueLook — free forever, cancel anytime."}
                             </p>
                         </div>
 
@@ -327,7 +223,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                                 )}
                                 <span className="relative z-10">Sign in</span>
                             </button>
-                            
+
                             <button
                                 type="button"
                                 onClick={() => handleTabChange("signup")}
@@ -360,7 +256,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                                 </svg>
                                 <span>Google</span>
                             </button>
-                            
+
                             <button
                                 type="button"
                                 onClick={() => handleSocialClick("Apple")}
@@ -513,15 +409,15 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                                     <span>{activeTab === "signin" ? "Sign in" : "Sign up"}</span>
                                 )}
                             </Button>
-                            
+
                             {/* Toggle link moved here at the bottom of the card */}
                             <div className="text-center text-sm text-slate-500 mt-6 pt-2 border-t border-slate-100">
                                 {activeTab === "signin" ? (
                                     <span className="text-slate-500 font-medium">
                                         Don&apos;t have an account?{" "}
-                                        <button 
-                                            type="button" 
-                                            onClick={() => handleTabChange("signup")} 
+                                        <button
+                                            type="button"
+                                            onClick={() => handleTabChange("signup")}
                                             className="text-indigo-600 font-bold hover:underline cursor-pointer bg-transparent border-none p-0 inline"
                                         >
                                             Sign up
@@ -530,9 +426,9 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                                 ) : (
                                     <span className="text-slate-500 font-medium">
                                         Already have an account?{" "}
-                                        <button 
-                                            type="button" 
-                                            onClick={() => handleTabChange("signin")} 
+                                        <button
+                                            type="button"
+                                            onClick={() => handleTabChange("signin")}
                                             className="text-indigo-600 font-bold hover:underline cursor-pointer bg-transparent border-none p-0 inline"
                                         >
                                             Sign in

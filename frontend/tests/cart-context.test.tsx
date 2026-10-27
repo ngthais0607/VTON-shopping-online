@@ -13,7 +13,25 @@ const mockProduct: Product = {
   sold_quantity: 0,
   is_active: true,
   currency: "USD",
-  description: "Luxury watch"
+  description: "Luxury watch",
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+  category: null,
+  images: [],
+  variants: [
+    {
+      id: 1001,
+      product_id: 101,
+      sku: "WATCH-DEF",
+      size: "ONE_SIZE",
+      color_name: "Default",
+      price: 299,
+      stock_quantity: 20,
+      reserved_quantity: 0,
+      sold_quantity: 0,
+      is_active: true,
+    } as any,
+  ],
 };
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -53,12 +71,12 @@ describe("CartContext", () => {
     });
 
     act(() => {
-      result.current.updateQuantity(mockProduct.id, 5);
+      result.current.updateQuantity(1001, 5);
     });
     expect(result.current.totalCount).toBe(5);
 
     act(() => {
-      result.current.updateQuantity(mockProduct.id, 0);
+      result.current.updateQuantity(1001, 0);
     });
     expect(result.current.cartItems.length).toBe(0);
   });
@@ -75,5 +93,24 @@ describe("CartContext", () => {
       result.current.clearCart();
     });
     expect(result.current.cartItems.length).toBe(0);
+  });
+  it('ignores malformed persisted objects without crashing', () => {
+    localStorage.setItem('fastapi_store_cart', JSON.stringify({items:'invalid'}));
+    expect(()=>renderHook(()=>useCart(),{wrapper})).not.toThrow();
+  });
+  it('rejects fractional persisted quantities and inactive products', () => {
+    localStorage.setItem('fastapi_store_cart', JSON.stringify([{product:mockProduct,quantity:1.5}]));
+    const {result}=renderHook(()=>useCart(),{wrapper});
+    expect(result.current.cartItems).toEqual([]);
+    act(()=>result.current.addToCart({...mockProduct,is_active:false},1));
+    expect(result.current.cartItems).toEqual([]);
+  });
+  it('bounds updates to available stock and ignores fractional additions',()=>{
+    const {result}=renderHook(()=>useCart(),{wrapper});
+    act(()=>result.current.addToCart(mockProduct,1.5));
+    expect(result.current.cartItems).toEqual([]);
+    act(()=>result.current.addToCart(mockProduct,1));
+    act(()=>result.current.updateQuantity(1001,99));
+    expect(result.current.totalCount).toBe(20);
   });
 });

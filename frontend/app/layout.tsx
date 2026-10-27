@@ -1,19 +1,15 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Sidebar } from '@/components/sidebar'
 import './globals.css'
 import { LayoutClientWrapper } from '@/components/layout-client-wrapper'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
   title: {
-    default: 'LuxeStore | Premium E-Commerce',
-    template: '%s | LuxeStore'
+    default: 'TrueLook | Premium E-Commerce',
+    template: '%s | TrueLook'
   },
-  description: 'LuxeStore - Trải nghiệm mua sắm trực tuyến cao cấp',
+  description: 'TrueLook - Trải nghiệm mua sắm trực tuyến cao cấp',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -45,7 +41,7 @@ export default function RootLayout({
         <LayoutClientWrapper>
           {children}
         </LayoutClientWrapper>
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+        {process.env.NODE_ENV === 'production' && process.env.VERCEL === '1' && <Analytics />}
       </body>
     </html>
   );

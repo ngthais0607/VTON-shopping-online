@@ -24,48 +24,20 @@ import {
 
 import { apiGet } from '@/lib/api';
 import { DashboardSkeleton } from './components/dashboard-skeleton';
-import { Product, Order } from '@/lib/types';
+import { DashboardMetrics, LowStockProductSummary, RecentOrderSummary } from '@/lib/types';
+import useSWR from 'swr';
 import { RevenueChart } from './components/revenue-chart';
 import { OrderStatusChart } from './components/order-status-chart';
-
-type DashboardMetrics = {
-  total_products: number;
-  active_products: number;
-  low_stock: number;
-  pending_orders: number;
-  revenue: number;
-};
+import { getAvailableStock } from '@/lib/inventory';
+import { formatCurrency } from '@/lib/utils';
 
 export default function Dashboard() {
-  const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics | null>(null);
-  const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
-  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [metrics, lowStock, recent] = await Promise.all([
-        apiGet<DashboardMetrics>('/dashboard/metrics'),
-        apiGet<Product[]>('/dashboard/low-stock-products'),
-        apiGet<Order[]>('/dashboard/recent-orders'),
-      ]);
-      setDashboardMetrics(metrics);
-      setLowStockProducts(lowStock);
-      setRecentOrders(recent);
-    } catch (err) {
-      console.error("Failed to load dashboard data", err);
-      setError("Failed to load dashboard metrics. Please check your connection and try again.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const {data, error, isLoading: loading, mutate: loadData} = useSWR('/dashboard-summary', async () => Promise.all([
+    apiGet<DashboardMetrics>('/dashboard/metrics'),
+    apiGet<LowStockProductSummary[]>('/dashboard/low-stock-products'),
+    apiGet<RecentOrderSummary[]>('/dashboard/recent-orders'),
+  ]), {shouldRetryOnError:false});
+  const [dashboardMetrics, lowStockProducts, recentOrders] = data ?? [null, [], []];
 
   if (error && !dashboardMetrics) {
     return (
@@ -75,7 +47,7 @@ export default function Dashboard() {
           subtitle="Welcome back! Here&apos;s your ecommerce overview."
         />
         <main className="flex-1 p-8 flex flex-col items-center justify-center space-y-4">
-          <div className="text-red-500 font-semibold text-lg">{error}</div>
+          <div role="alert" className="text-red-500 font-semibold text-lg">{error.message}</div>
           <button
             onClick={() => loadData()}
             className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 active:scale-95 transition-all shadow-md"
@@ -105,41 +77,33 @@ export default function Dashboard() {
             title="Total Products"
             value={dashboardMetrics.total_products}
             icon={BarChart3}
-            change={{ value: 12, isPositive: true }}
           />
           <MetricCard
             title="Active Products"
             value={dashboardMetrics.active_products}
             icon={CheckCircle2}
-            change={{ value: 8, isPositive: true }}
           />
           <MetricCard
             title="Low Stock"
             value={dashboardMetrics.low_stock}
             icon={AlertCircle}
-            change={{ value: 15, isPositive: false }}
           />
           <MetricCard
             title="Pending Orders"
             value={dashboardMetrics.pending_orders}
             icon={ShoppingCart}
-            change={{ value: 5, isPositive: false }}
           />
           <MetricCard
             title="Revenue"
-            value={`$${dashboardMetrics.revenue.toLocaleString('en-US', {
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0,
-            })}`}
+            value={formatCurrency(dashboardMetrics.revenue)}
             icon={TrendingUp}
-            change={{ value: 24, isPositive: true }}
           />
         </div>
 
         {/* Analytics Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <RevenueChart />
-          <OrderStatusChart />
+          <RevenueChart data={[]} />
+          <OrderStatusChart data={Object.entries(recentOrders.reduce<Record<string,number>>((counts, order) => {counts[order.status]=(counts[order.status] ?? 0)+1; return counts;},{})).map(([status,count])=>({status,count}))} />
         </div>
 
         {/* Recent Orders */}
@@ -173,7 +137,7 @@ export default function Dashboard() {
                       {product.category?.name || 'N/A'}
                     </TableCell>
                     <TableCell className="text-slate-900 font-medium">
-                      {product.stock_quantity - product.reserved_quantity}
+                      {product.available_stock}
                     </TableCell>
                     <TableCell className="text-slate-600">
                       {product.reserved_quantity}

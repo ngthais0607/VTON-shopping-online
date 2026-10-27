@@ -7,11 +7,22 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Header } from "../../components/Header";
 import { Footer } from "../../components/Footer";
+import useSWR from 'swr';
+import { apiGet } from '@/lib/api';
+import { Order } from '@/lib/types';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const orderIdsStr = searchParams.get("order_ids") || "";
-  const orderIds = orderIdsStr ? orderIdsStr.split(",") : [];
+  const codesStr = searchParams.get("codes") || "";
+  const publicCodes = codesStr ? codesStr.split(",").filter(Boolean) : [];
+  const orderIds = orderIdsStr ? Array.from(new Set(orderIdsStr.split(",").filter(id => /^[1-9]\d*$/.test(id)))) : [];
+  const {data: orders, error, isLoading, mutate} = useSWR<Order[]>(orderIds.length ? ['checkout-orders', orderIds.join(',')] : null,
+    () => Promise.all(orderIds.map(id => apiGet<Order>(`/orders/${id}`))), {shouldRetryOnError:false});
+  const totals = orders?.reduce<Record<string, number>>((result, order) => {
+    result[order.currency] = (result[order.currency] ?? 0) + order.total_amount;
+    return result;
+  }, {});
 
   return (
     <div className="max-w-lg mx-auto bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl text-center space-y-6">
@@ -22,22 +33,36 @@ function OrderSuccessContent() {
       <div className="space-y-2">
         <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Order Placed Successfully!</h1>
         <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-          Thank you for shopping with LuxeStore. Your order has been confirmed and is being processed.
+          Thank you for shopping with TrueLook. Your order was created. View each order for its current payment status.
         </p>
       </div>
 
-      {orderIds.length > 0 && (
+      {publicCodes.length > 0 ? (
+        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 text-xs text-slate-600 space-y-1">
+          <span className="font-semibold text-slate-500">Order Tracking:</span>
+          <div className="flex flex-wrap gap-1.5 justify-center pt-1 font-mono font-bold text-slate-900">
+            {publicCodes.map((code) => (
+              <Link href={`/store/orders/${code}`} key={code} className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
+                #{code}
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : orderIds.length > 0 ? (
         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 text-xs text-slate-600 space-y-1">
           <span className="font-semibold text-slate-500">Order Reference IDs:</span>
           <div className="flex flex-wrap gap-1.5 justify-center pt-1 font-mono font-bold text-slate-900">
             {orderIds.map((id) => (
-              <span key={id} className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
+              <Link href={`/store/orders/${id}`} key={id} className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
                 #{id}
-              </span>
+              </Link>
             ))}
           </div>
         </div>
-      )}
+      ) : null}
+      {isLoading && <p>Loading committed order total...</p>}
+      {error && <p role="alert">Unable to load order total. <button onClick={()=>mutate()}>Retry</button></p>}
+      {totals && <div><span>Committed order total</span>{Object.entries(totals).map(([currency,total]) => <p key={currency}>{total.toFixed(2)} {currency}</p>)}</div>}
 
       <div className="grid grid-cols-2 gap-3 text-left text-xs">
         <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex items-center gap-2.5">
@@ -52,7 +77,7 @@ function OrderSuccessContent() {
           <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           <div>
             <span className="font-bold text-slate-900 block">Status</span>
-            <span className="text-[11px] text-emerald-700 font-semibold">Confirmed</span>
+            <span className="text-[11px] text-emerald-700 font-semibold">View order details</span>
           </div>
         </div>
       </div>

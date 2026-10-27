@@ -1,9 +1,12 @@
 "use client";
+import { displayDate, formatCurrency } from '@/lib/utils';
+
 
 import { useState, useEffect } from "react";
-import { apiDelete, apiPost, apiPut, apiUpload } from "@/lib/api";
+import { apiDelete, apiGet, apiPost, apiPatch, apiUpload } from "@/lib/api";
 import { useProducts } from "@/hooks/use-products";
-import { useCategories } from "@/hooks/use-categories";
+import { useCategoryOptions } from "@/hooks/use-categories";
+import { getAvailableStock } from "@/lib/inventory";
 import { Header } from "@/components/header";
 import { Card } from "@/components/ui/card";
 import {
@@ -59,19 +62,24 @@ import {
   Product,
   Category,
   ProductFormData,
-  Order,
-  OrderCreate,
+  ProductVariant,
 } from "@/lib/types";
 import { format } from "date-fns";
 import Image from "next/image";
-import { ImageUploader } from "@/components/image-uploader";
+import { AdminProductImages } from "@/components/admin/product-images";
+import { VariantMatrixGenerator, BulkVariantPayload } from "@/components/admin/variant-matrix-generator";
+import { VariantStockDialog } from "@/components/admin/variant-stock-dialog";
 
 export default function ProductsPage() {
-  const { categories } = useCategories();
+  const { categories, error: categoriesError, isLoading: categoriesLoading, mutate: retryCategories } = useCategoryOptions();
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const [matrixDialogOpen, setMatrixDialogOpen] = useState(false);
+  const [matrixProduct, setMatrixProduct] = useState<Product | null>(null);
+  const [stockDialogVariant, setStockDialogVariant] = useState<ProductVariant | null>(null);
 
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [searchTerm, setSearchTerm] = useState("");
@@ -98,6 +106,7 @@ export default function ProductsPage() {
     products,
     total: totalProducts,
     isLoading: loading,
+    error: productsError,
     mutate: mutateProducts,
   } = useProducts({
     page: currentPage,
@@ -112,19 +121,31 @@ export default function ProductsPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [loadingProduct, setLoadingProduct] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [formData, setFormData] = useState<ProductFormData>({
     name: "",
     price: 0,
-    currency: "USD",
+    currency: "VND",
     category_id: null,
     stock_quantity: 0,
     reserved_quantity: 0,
     sold_quantity: 0,
     description: "",
-    is_active: true,
+    is_active: false,
+    brand: "",
+    gender: "unisex",
+    material: "",
+    fit: "",
+    care_instructions: "",
   });
+
+  const hasActiveVariants = (p: Product | null | undefined) =>
+    p?.variants ? p.variants.some((v) => v.is_active) : null;
 
   // Filters and sorting are now handled backend-side.
   // We keep filteredProducts as a direct passthrough of products to preserve visual mapping.
@@ -140,33 +161,34 @@ export default function ProductsPage() {
     setFormData({
       name: "",
       price: 0,
-      currency: "USD",
+      currency: "VND",
       category_id: null,
       stock_quantity: 0,
       reserved_quantity: 0,
       sold_quantity: 0,
       description: "",
-      is_active: true,
+      is_active: false,
+      brand: "",
+      gender: "unisex",
+      material: "",
+      fit: "",
+      care_instructions: "",
     });
     setSelectedImage(null);
   };
-  const handleCreateOrder = async (product: Product) => {
-    await apiPost<Order, OrderCreate>("/orders/", {
-      product_id: product.id,
-      quantity: 1,
-    });
-    await mutateProducts();
-  };
   const handleCreateProduct = async () => {
-    const createdProduct = await apiPost<Product, ProductFormData>(
-      "/products/",
-      formData,
+    const { stock_quantity, reserved_quantity, sold_quantity, ...createPayload } = formData;
+    const createdProduct = await apiPost<Product, typeof createPayload>(
+      "/products",
+      createPayload,
     );
     if (!createdProduct.id) return;
+    setEditingProduct(createdProduct);
     if (selectedImage) {
       const imageFormData = new FormData();
       imageFormData.append("file", selectedImage);
-      await apiUpload<{ file_name: string }>(
+      imageFormData.append("is_primary", "true");
+      await apiUpload<{ id: string; url: string }>(
         `/products/${createdProduct.id}/upload-image`,
         imageFormData,
       );
@@ -175,9 +197,18 @@ export default function ProductsPage() {
     await mutateProducts();
     resetFormData();
     setCreateDialogOpen(false);
+    setEditingProduct(null);
   };
 
-  const openEditProduct = (product: Product) => {
+  const openEditProduct = async (product: Product) => {
+    setSaveError(null);
+    if (product.slug) {
+      setLoadingProduct(true);
+      try { product = await apiGet<Product>(`/products/by-slug/${product.slug}`); }
+      catch (error) { setSaveError(error instanceof Error ? error.message : 'Unable to load product'); return; }
+      finally { setLoadingProduct(false); }
+    }
+    setSelectedImage(null);
     setEditingProduct(product);
     setFormData({
       name: product.name,
@@ -189,19 +220,33 @@ export default function ProductsPage() {
       sold_quantity: product.sold_quantity,
       description: product.description || "",
       is_active: product.is_active,
+      brand: product.brand || "",
+      gender: product.gender || "unisex",
+      material: product.material || "",
+      fit: product.fit || "",
+      care_instructions: product.care_instructions || "",
     });
     setCreateDialogOpen(true);
   };
+  const openProductDetails = async (product: Product) => {
+    setLoadingProduct(true);
+    setSaveError(null);
+    try { setSelectedProduct(product.slug ? await apiGet<Product>(`/products/by-slug/${product.slug}`) : product); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'Unable to load product'); }
+    finally { setLoadingProduct(false); }
+  };
   const handleUpdateProduct = async () => {
     if (!editingProduct) return;
-    await apiPut<Product, ProductFormData>(
+    const { stock_quantity, reserved_quantity, sold_quantity, ...patchPayload } = formData;
+    await apiPatch<Product, typeof patchPayload>(
       `/products/${editingProduct.id}`,
-      formData,
+      patchPayload,
     );
     if (selectedImage) {
       const imageFormData = new FormData();
       imageFormData.append("file", selectedImage);
-      await apiUpload<{ file_name: string }>(
+      imageFormData.append("is_primary", "true");
+      await apiUpload<{ id: string; url: string }>(
         `/products/${editingProduct.id}/upload-image`,
         imageFormData,
       );
@@ -213,16 +258,32 @@ export default function ProductsPage() {
   };
 
   const handleDeleteProduct = async (product: Product) => {
-    await apiDelete<{ message: string }>(`/products/${product.id}`);
-    await mutateProducts();
-    setDeleteProduct(null);
+    setSaveError(null);
+    try {
+      await apiDelete<void>(`/products/${product.id}`);
+      await mutateProducts();
+      setDeleteProduct(null);
+    } catch (error) { setSaveError(error instanceof Error ? error.message : 'Delete failed'); }
   };
+
+  const runSave = async (action: () => Promise<void>) => {
+    if (saving || imageBusy) return;
+    setSaving(true); setSaveError(null);
+    try { await action(); } catch (error) { setSaveError(error instanceof Error ? error.message : 'Save failed'); }
+    finally { setSaving(false); }
+  };
+  useEffect(() => { if (!loading && !productsError && currentPage > 1 && products.length === 0) setCurrentPage(Math.max(1, Math.ceil(totalProducts / pageSize))); }, [loading, productsError, currentPage, products.length, totalProducts, pageSize]);
 
   return (
     <div className="flex flex-col min-h-screen">
       <Header title="Products" subtitle="Manage your product catalog" />
 
       <main className="flex-1 p-8">
+        {loadingProduct && <p role="status" className="text-sm text-slate-500">Loading product details...</p>}
+        {productsError && <p role="alert"><span>{productsError.message}</span> <button onClick={()=>mutateProducts()}>Retry products</button></p>}
+        {categoriesError && <p role="alert"><span>{categoriesError.message}</span> <button onClick={()=>retryCategories()}>Retry categories</button></p>}
+        {categoriesLoading && <p>Loading categories...</p>}
+        {saveError && !createDialogOpen && <p role="alert">{saveError}</p>}
         {/* Filters and Controls */}
         <div className="space-y-4 mb-6">
           <div className="flex items-center justify-between">
@@ -248,6 +309,7 @@ export default function ProductsPage() {
             <Dialog
               open={createDialogOpen}
               onOpenChange={(open) => {
+                if (saving || imageBusy) return;
                 setCreateDialogOpen(open);
                 if (!open) {
                   setEditingProduct(null);
@@ -317,9 +379,7 @@ export default function ProductsPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="USD">USD</SelectItem>
-                          <SelectItem value="EUR">EUR</SelectItem>
-                          <SelectItem value="GBP">GBP</SelectItem>
+                          <SelectItem value="VND">VND</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -329,7 +389,7 @@ export default function ProductsPage() {
                       Category
                     </label>
                     <Select
-                      value={formData.category_id?.toString() || undefined}
+                      value={formData.category_id?.toString() || ""}
                       onValueChange={(value) =>
                         updateFormData(
                           "category_id",
@@ -349,54 +409,47 @@ export default function ProductsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="grid gap-2">
-                      <label htmlFor="stock" className="text-sm font-medium">
-                        Stock Quantity
-                      </label>
-                      <Input
-                        id="stock"
-                        type="number"
-                        value={formData.stock_quantity}
-                        onChange={(e) =>
-                          updateFormData(
-                            "stock_quantity",
-                            Number(e.target.value),
-                          )
-                        }
-                      />
+                  {editingProduct ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                      <div className="font-medium text-slate-700 mb-1">
+                        Thông tin tồn kho (Chỉ đọc)
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-slate-600">
+                        <div>Tổng kho: <span className="font-semibold text-slate-900">{editingProduct.stock_quantity}</span></div>
+                        <div>Đang giữ: <span className="font-semibold text-slate-900">{editingProduct.reserved_quantity}</span></div>
+                        <div>Đã bán: <span className="font-semibold text-slate-900">{editingProduct.sold_quantity}</span></div>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">
+                        * Tồn kho được quản lý theo từng biến thể (Variant). Hãy dùng nút &quot;Quản lý biến thể&quot; để điều chỉnh kho có kiểm toán.
+                      </p>
                     </div>
-                    <div className="grid gap-2">
-                      <label htmlFor="reserved" className="text-sm font-medium">
-                        Reserved
-                      </label>
-                      <Input
-                        id="reserved"
-                        type="number"
-                        value={formData.reserved_quantity}
-                        onChange={(e) =>
-                          updateFormData(
-                            "reserved_quantity",
-                            Number(e.target.value),
-                          )
-                        }
-                      />
+                  ) : (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-xs text-blue-700">
+                      💡 Tồn kho sẽ được tạo và cập nhật khi bạn thêm các biến thể (size/màu) cho sản phẩm này.
                     </div>
-                    <div className="grid gap-2">
-                      <label htmlFor="sold" className="text-sm font-medium">
-                        Sold
-                      </label>
-                      <Input
-                        id="sold"
-                        type="number"
-                        value={formData.sold_quantity}
-                        onChange={(e) =>
-                          updateFormData(
-                            "sold_quantity",
-                            Number(e.target.value),
-                          )
-                        }
-                      />
+                  )}
+                  <div className="grid gap-2">
+                    <label htmlFor="is_active" className="text-sm font-medium">
+                      Trạng thái kích hoạt (Active Status)
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <Select
+                        value={formData.is_active ? "active" : "inactive"}
+                        onValueChange={(val) => updateFormData("is_active", val === "active")}
+                      >
+                        <SelectTrigger id="is_active" className="w-[180px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Active (Kích hoạt)</SelectItem>
+                          <SelectItem value="inactive">Inactive (Bản nháp)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {(!editingProduct || hasActiveVariants(editingProduct) === false) && (
+                        <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded">
+                          Thêm biến thể rồi kích hoạt
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="grid gap-2">
@@ -417,11 +470,85 @@ export default function ProductsPage() {
                       }
                     />
                   </div>
-                  <ImageUploader
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <label htmlFor="brand" className="text-sm font-medium">
+                        Brand (Thương hiệu)
+                      </label>
+                      <Input
+                        id="brand"
+                        placeholder="VD: TrueLook"
+                        value={formData.brand || ""}
+                        onChange={(e) => updateFormData("brand", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label htmlFor="gender" className="text-sm font-medium">
+                        Gender (Đối tượng)
+                      </label>
+                      <Select
+                        value={formData.gender || "unisex"}
+                        onValueChange={(value) => updateFormData("gender", value)}
+                      >
+                        <SelectTrigger id="gender">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="male">Nam (Male)</SelectItem>
+                          <SelectItem value="female">Nữ (Female)</SelectItem>
+                          <SelectItem value="unisex">Unisex</SelectItem>
+                          <SelectItem value="kids">Trẻ em (Kids)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <label htmlFor="material" className="text-sm font-medium">
+                        Material (Chất liệu)
+                      </label>
+                      <Input
+                        id="material"
+                        placeholder="VD: 100% Cotton Compact"
+                        value={formData.material || ""}
+                        onChange={(e) => updateFormData("material", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label htmlFor="fit" className="text-sm font-medium">
+                        Fit (Kiểu dáng)
+                      </label>
+                      <Input
+                        id="fit"
+                        placeholder="VD: Regular Fit, Oversized"
+                        value={formData.fit || ""}
+                        onChange={(e) => updateFormData("fit", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <label htmlFor="care_instructions" className="text-sm font-medium">
+                      Care Instructions (Hướng dẫn giặt ủi)
+                    </label>
+                    <Input
+                      id="care_instructions"
+                      placeholder="VD: Giặt máy nước lạnh, không sấy khô"
+                      value={formData.care_instructions || ""}
+                      onChange={(e) => updateFormData("care_instructions", e.target.value)}
+                    />
+                  </div>
+                  {saveError && <p role="alert">{saveError}</p>}
+                  <AdminProductImages
+                    onFileSelected={setSelectedImage}
+                    onBusyChange={setImageBusy}
                     productId={editingProduct?.id}
-                    currentImageUrl={editingProduct?.images && editingProduct.images.length > 0 ? editingProduct.images[0].url : undefined}
+                    images={editingProduct?.images}
+                    onImagesChange={(images) => {
+                      setEditingProduct(current => current ? { ...current, images } : current);
+                      void mutateProducts();
+                    }}
                     onUploadSuccess={(url) => {
-                      if (url) {
+                      if (url && !url.startsWith("blob:")) {
                         mutateProducts();
                       }
                     }}
@@ -431,15 +558,16 @@ export default function ProductsPage() {
                 <div className="flex gap-2 justify-end">
                   <Button
                     variant="outline"
-                    onClick={() => setCreateDialogOpen(false)}
+                    disabled={saving || imageBusy}
+                    onClick={() => { setCreateDialogOpen(false); setSelectedImage(null); }}
                   >
                     Cancel
                   </Button>
                   <Button
                     onClick={
-                      editingProduct ? handleUpdateProduct : handleCreateProduct
+                      editingProduct ? () => runSave(handleUpdateProduct) : () => runSave(handleCreateProduct)
                     }
-                    disabled={!formData.name || formData.price <= 0}
+                    disabled={saving || imageBusy || !formData.name || formData.price <= 0}
                   >
                     {editingProduct ? "Update Product" : "Create Product"}
                   </Button>
@@ -548,7 +676,7 @@ export default function ProductsPage() {
                         {product.category?.name || "N/A"}
                       </TableCell>
                       <TableCell className="text-slate-900 font-medium">
-                        ${product.price.toFixed(2)} {product.currency}
+                        {formatCurrency(product.price, product.currency)}
                       </TableCell>
                       <TableCell className="text-slate-600">
                         {product.stock_quantity}
@@ -560,19 +688,29 @@ export default function ProductsPage() {
                         {product.sold_quantity}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={product.is_active ? "default" : "secondary"}
-                          className={
-                            product.is_active
-                              ? "bg-green-100 text-green-800"
-                              : "bg-slate-100 text-slate-800"
-                          }
-                        >
-                          {product.is_active ? "Active" : "Inactive"}
-                        </Badge>
+                        <div className="flex flex-col gap-1 items-start">
+                          <Badge
+                            variant={product.is_active ? "default" : "secondary"}
+                            className={
+                              product.is_active
+                                ? "bg-green-100 text-green-800"
+                                : "bg-slate-100 text-slate-800"
+                            }
+                          >
+                            {product.is_active ? "Active" : "Inactive"}
+                          </Badge>
+                          {hasActiveVariants(product) === false && (
+                            <Badge
+                              variant="outline"
+                              className="text-[11px] bg-amber-50 text-amber-700 border-amber-200"
+                            >
+                              Chưa hiển thị trên cửa hàng vì chưa có biến thể
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-slate-600 text-sm">
-                        {format(new Date(product.created_at), "MMM dd, yyyy")}
+                        {displayDate(product.created_at, "MMM dd, yyyy")}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -583,7 +721,7 @@ export default function ProductsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => setSelectedProduct(product)}
+                              onClick={() => openProductDetails(product)}
                             >
                               View Details
                             </DropdownMenuItem>
@@ -593,14 +731,17 @@ export default function ProductsPage() {
                               Edit Product
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleCreateOrder(product)}
-                            >
-                              Create Order
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
                               onClick={() => openEditProduct(product)}
                             >
                               Upload Image
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setMatrixProduct(product);
+                                setMatrixDialogOpen(true);
+                              }}
+                            >
+                              Tạo biến thể (Matrix)
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-red-600"
@@ -667,7 +808,7 @@ export default function ProductsPage() {
                 <div className="relative aspect-square overflow-hidden bg-slate-100">
                   {product.images.length > 0 ? (
                     <Image
-                      src={product.images[product.images.length - 1].url}
+                      src={product.images[0].url}
                       alt={product.name}
                       fill
                       className="object-cover"
@@ -677,15 +818,25 @@ export default function ProductsPage() {
                       <ImageIcon className="w-8 h-8 text-slate-400" />
                     </div>
                   )}
-                  <Badge
-                    className={`absolute top-3 right-3 ${
-                      product.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-slate-100 text-slate-800"
-                    }`}
-                  >
-                    {product.is_active ? "Active" : "Inactive"}
-                  </Badge>
+                  <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                    <Badge
+                      className={
+                        product.is_active
+                          ? "bg-green-100 text-green-800"
+                          : "bg-slate-100 text-slate-800"
+                      }
+                    >
+                      {product.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                    {hasActiveVariants(product) === false && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shadow-sm"
+                      >
+                        Chưa hiển thị trên cửa hàng vì chưa có biến thể
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="p-4">
                   <h3 className="font-semibold text-slate-900 line-clamp-2">
@@ -695,7 +846,7 @@ export default function ProductsPage() {
                     {product.category?.name}
                   </p>
                   <p className="text-lg font-bold text-slate-900 mt-2">
-                    ${product.price.toFixed(2)}
+                    {formatCurrency(product.price, product.currency)}
                   </p>
                   <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
                     <div className="text-center">
@@ -722,7 +873,7 @@ export default function ProductsPage() {
                       size="sm"
                       variant="outline"
                       className="flex-1 text-xs"
-                      onClick={() => setSelectedProduct(product)}
+                      onClick={() => openProductDetails(product)}
                     >
                       View
                     </Button>
@@ -739,14 +890,17 @@ export default function ProductsPage() {
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => handleCreateOrder(product)}
-                        >
-                          Create Order
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
                           onClick={() => openEditProduct(product)}
                         >
                           Upload Image
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setMatrixProduct(product);
+                            setMatrixDialogOpen(true);
+                          }}
+                        >
+                          Tạo biến thể (Matrix)
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-red-600"
@@ -805,7 +959,7 @@ export default function ProductsPage() {
           </>
         )}
 
-        {!loading && filteredProducts.length === 0 && (
+        {!loading && !productsError && filteredProducts.length === 0 && (
           <Card className="p-12 text-center">
             <ImageIcon className="w-12 h-12 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-900">
@@ -837,9 +991,7 @@ export default function ProductsPage() {
                   <div className="relative aspect-square rounded-lg overflow-hidden bg-slate-100">
                     <Image
                       src={
-                        selectedProduct.images[
-                          selectedProduct.images.length - 1
-                        ].url
+                        selectedProduct.images[0].url
                       }
                       alt={selectedProduct.name}
                       fill
@@ -856,8 +1008,7 @@ export default function ProductsPage() {
                 <div>
                   <p className="text-sm text-slate-600">Price</p>
                   <p className="text-2xl font-bold text-slate-900">
-                    ${selectedProduct.price.toFixed(2)}{" "}
-                    {selectedProduct.currency}
+                    {formatCurrency(selectedProduct.price, selectedProduct.currency)}
                   </p>
                 </div>
                 <div>
@@ -868,15 +1019,25 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-600">Status</p>
-                  <Badge
-                    className={`${
-                      selectedProduct.is_active
-                        ? "bg-green-100 text-green-800"
-                        : "bg-slate-100 text-slate-800"
-                    }`}
-                  >
-                    {selectedProduct.is_active ? "Active" : "Inactive"}
-                  </Badge>
+                  <div className="flex flex-col gap-1 items-start">
+                    <Badge
+                      className={`${
+                        selectedProduct.is_active
+                          ? "bg-green-100 text-green-800"
+                          : "bg-slate-100 text-slate-800"
+                      }`}
+                    >
+                      {selectedProduct.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                    {hasActiveVariants(selectedProduct) === false && (
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] bg-amber-50 text-amber-700 border-amber-200"
+                      >
+                        Chưa hiển thị trên cửa hàng vì chưa có biến thể
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="pt-4 border-t space-y-3">
                   <div className="grid grid-cols-2 gap-4">
@@ -895,8 +1056,7 @@ export default function ProductsPage() {
                     <div>
                       <p className="text-sm text-slate-600">Available</p>
                       <p className="text-lg font-semibold text-slate-900">
-                        {selectedProduct.stock_quantity -
-                          selectedProduct.reserved_quantity}
+                        {getAvailableStock(selectedProduct)}
                       </p>
                     </div>
                     <div>
@@ -910,11 +1070,11 @@ export default function ProductsPage() {
                 <div className="pt-4 border-t text-sm text-slate-600">
                   <p>
                     Created:{" "}
-                    {format(new Date(selectedProduct.created_at), "PPP")}
+                    {displayDate(selectedProduct.created_at, "PPP")}
                   </p>
                   <p>
                     Updated:{" "}
-                    {format(new Date(selectedProduct.updated_at), "PPP")}
+                    {displayDate(selectedProduct.updated_at, "PPP")}
                   </p>
                 </div>
               </div>
@@ -925,6 +1085,56 @@ export default function ProductsPage() {
                 <p className="text-slate-900 mt-2">
                   {selectedProduct.description}
                 </p>
+              </div>
+            )}
+
+            {/* Fashion Variants List */}
+            {selectedProduct.variants && selectedProduct.variants.length > 0 && (
+              <div className="py-4 border-t space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Danh sách biến thể ({selectedProduct.variants.length})
+                  </h4>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setMatrixProduct(selectedProduct);
+                      setMatrixDialogOpen(true);
+                    }}
+                    className="text-xs"
+                  >
+                    Tạo thêm biến thể
+                  </Button>
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                  {selectedProduct.variants.map((v) => (
+                    <div
+                      key={v.id}
+                      className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200/80 bg-slate-50 text-xs"
+                    >
+                      <div>
+                        <span className="font-mono font-bold text-slate-800">{v.sku}</span>
+                        <span className="text-slate-500 ml-2">
+                          Size {v.size} · {v.color_name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-slate-700">
+                          Kho: {v.stock_quantity} (Khả dụng: {v.available_stock})
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-[11px] h-7 px-2"
+                          onClick={() => setStockDialogVariant(v)}
+                        >
+                          Sửa tồn kho
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </DialogContent>
@@ -955,6 +1165,47 @@ export default function ProductsPage() {
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      {/* Variant Matrix Generator Modal */}
+      {matrixProduct && (
+        <Dialog open={matrixDialogOpen} onOpenChange={setMatrixDialogOpen}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-0 bg-transparent shadow-none">
+            <DialogTitle className="sr-only">Clothing size and color variants</DialogTitle>
+            <DialogDescription className="sr-only">Generate size and color combinations for this product.</DialogDescription>
+            <VariantMatrixGenerator
+              productId={matrixProduct.id}
+              productSlug={matrixProduct.slug || "product"}
+              defaultPrice={matrixProduct.price}
+              onGenerate={async (payload) => {
+                try {
+                  await apiPost(`/products/${matrixProduct.id}/variants/bulk`, payload);
+                  await mutateProducts();
+                  setMatrixDialogOpen(false);
+                } catch (err: any) {
+                  alert(err.message || "Failed to generate variants");
+                }
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Variant Stock Adjustment Dialog */}
+      <VariantStockDialog
+        variant={stockDialogVariant}
+        isOpen={!!stockDialogVariant}
+        onClose={() => setStockDialogVariant(null)}
+        onSubmit={async (data) => {
+          if (!stockDialogVariant) return;
+          try {
+            await apiPost(`/variants/${stockDialogVariant.id}/adjust-stock`, data);
+            await mutateProducts();
+            setStockDialogVariant(null);
+          } catch (err: any) {
+            alert(err.message || "Failed to adjust variant stock");
+          }
+        }}
+      />
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
 import { useCart } from "../context/CartContext";
 import { motion, AnimatePresence } from "motion/react";
 import Link from "next/link";
+import { useSession } from '@/hooks/use-session';
 import { User } from "@/lib/types";
 
 interface HeaderProps {
@@ -25,7 +26,9 @@ interface HeaderProps {
   onLogout?: () => void;
 }
 
-export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
+export function Header({ onShopNow }: HeaderProps) {
+  const {user: currentUser, logout} = useSession();
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -49,10 +52,10 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogoutClick = (e: React.MouseEvent) => {
+  const handleLogoutClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     setUserDropdownOpen(false);
-    if (onLogout) onLogout();
+    try { await logout(); } catch (error) { setLogoutError(error instanceof Error ? error.message : 'Server logout failed; local session cleared.'); }
   };
 
   const handleShopNowClick = () => {
@@ -71,6 +74,7 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
           : "bg-gradient-to-b from-white/90 via-sky-50/30 to-transparent backdrop-blur-xs"
       }`}
     >
+      {logoutError && <p role="alert">{logoutError}</p>}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
         {/* Logo */}
         <Link href="/store" className="flex items-center gap-3 group">
@@ -82,7 +86,7 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
               className="text-slate-900 tracking-tight flex items-center gap-1"
               style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "1.25rem" }}
             >
-              Luxe<span className="bg-gradient-to-r from-sky-600 via-cyan-600 to-blue-700 bg-clip-text text-transparent">Store</span>
+              True<span className="bg-gradient-to-r from-sky-600 via-cyan-600 to-blue-700 bg-clip-text text-transparent">Look</span>
               <Sparkles className="w-3.5 h-3.5 text-sky-500 animate-pulse inline" />
             </span>
             <span className="text-[10px] uppercase font-bold tracking-widest text-sky-700/70 -mt-1">Ocean Retail</span>
@@ -97,26 +101,6 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
           >
             Products
           </button>
-          <a
-            href="#features"
-            onClick={(e) => {
-              e.preventDefault();
-              document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
-            }}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/80 transition-all rounded-full"
-          >
-            Features
-          </a>
-          <a
-            href="#customer-love"
-            onClick={(e) => {
-              e.preventDefault();
-              document.getElementById("customer-love")?.scrollIntoView({ behavior: "smooth" });
-            }}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/80 transition-all rounded-full"
-          >
-            Reviews
-          </a>
           <Link
             href="/store/about"
             className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/80 transition-all rounded-full"
@@ -211,7 +195,7 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
                       )}
                     </div>
 
-                    {onLogout && (
+                    {currentUser && (
                       <div className="pt-1">
                         <button
                           onClick={handleLogoutClick}
@@ -276,28 +260,6 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
               >
                 Products
               </button>
-              <a
-                href="#features"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setMobileOpen(false);
-                  document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="block px-3 py-2.5 text-sm font-medium text-slate-600 rounded-xl hover:bg-sky-50"
-              >
-                Features
-              </a>
-              <a
-                href="#customer-love"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setMobileOpen(false);
-                  document.getElementById("customer-love")?.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="block px-3 py-2.5 text-sm font-medium text-slate-600 rounded-xl hover:bg-sky-50"
-              >
-                Reviews
-              </a>
               <Link
                 href="/store/about"
                 onClick={() => setMobileOpen(false)}
@@ -341,7 +303,7 @@ export function Header({ currentUser, onShopNow, onLogout }: HeaderProps) {
                       Admin Dashboard
                     </Link>
                   )}
-                  {onLogout && (
+                  {currentUser && (
                     <button
                       onClick={(e) => {
                         setMobileOpen(false);

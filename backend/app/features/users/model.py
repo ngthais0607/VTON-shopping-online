@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Integer, String
+
 from app.core.database import Base
+
 
 class User(Base):
     __tablename__ = "users"
@@ -12,12 +15,15 @@ class User(Base):
     email = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
     role = Column(String(50), nullable=False, default="customer")
+    refresh_version = Column(BigInteger, nullable=False, default=0, server_default="0")
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), index=True
+    )
     updated_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc)
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     is_deleted = Column(Boolean, default=False, index=True)

@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { UploadCloud, X, Image as ImageIcon, Loader2, CheckCircle2 } from "lucide-react";
+import { ProductImage } from "@/lib/types";
 import { apiUpload } from "@/lib/api";
 import Image from "next/image";
 
@@ -9,14 +10,21 @@ interface ImageUploaderProps {
   productId?: number;
   currentImageUrl?: string;
   onUploadSuccess: (url: string) => void;
+  onImageUploaded?: (image: ProductImage) => void;
+  onFileSelected?: (file: File | null) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: ImageUploaderProps) {
+export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onImageUploaded, onFileSelected, onBusyChange }: ImageUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const localPreview = useRef<string | null>(null);
+  const busyRef = useRef(false);
+  useEffect(() => () => { if (localPreview.current) URL.revokeObjectURL(localPreview.current); }, []);
+  useEffect(() => { setPreviewUrl(currentImageUrl || null); }, [currentImageUrl, productId]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -29,38 +37,51 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
   };
 
   const processFile = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
+    if (busyRef.current) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
       setError("Please select a valid image file (PNG, JPG, WEBP)");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Product image must not exceed 5MB");
       return;
     }
 
     setError(null);
     setUploading(true);
+    busyRef.current = true;
+    onBusyChange?.(true);
+    onFileSelected?.(file);
 
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("is_primary", "true");
 
-      // If productId exists, call API endpoint; else fallback to object URL preview
-      let uploadedUrl = URL.createObjectURL(file);
-
+      let uploadedUrl: string;
+      let uploadedImage: ProductImage | undefined;
       if (productId) {
-        const response = await apiUpload<{ image?: { image_url: string } }>(
-          `/products/${productId}/upload-image`,
-          formData
-        );
-        if (response?.image?.image_url) {
-          uploadedUrl = response.image.image_url;
-        }
+        const response = await apiUpload<ProductImage>(`/products/${productId}/upload-image`, formData);
+        uploadedUrl = response.url;
+        uploadedImage = response;
+        onFileSelected?.(null);
+      } else {
+        if (localPreview.current) URL.revokeObjectURL(localPreview.current);
+        uploadedUrl = URL.createObjectURL(file);
+        localPreview.current = uploadedUrl;
       }
 
       setPreviewUrl(uploadedUrl);
+      if (uploadedImage) onImageUploaded?.(uploadedImage);
       onUploadSuccess(uploadedUrl);
     } catch (err: any) {
       console.error("Upload failed", err);
       setError(err.message || "Failed to upload image to MinIO");
     } finally {
       setUploading(false);
+      busyRef.current = false;
+      onBusyChange?.(false);
+      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
@@ -82,14 +103,26 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
   };
 
   const handleRemove = () => {
+    if (localPreview.current) { URL.revokeObjectURL(localPreview.current); localPreview.current = null; }
     setPreviewUrl(null);
+    onFileSelected?.(null);
     onUploadSuccess("");
     if (inputRef.current) inputRef.current.value = "";
   };
 
   return (
     <div className="space-y-2">
-      <label className="text-xs font-semibold text-slate-700 block">Product Image (MinIO Storage)</label>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            disabled={uploading}
+            className="hidden"
+            onChange={handleChange}
+          />
+
+
+      <label className="text-xs font-semibold text-slate-700 block">Product Image</label>
 
       {previewUrl ? (
         <div className="relative rounded-2xl border border-slate-200 overflow-hidden group bg-slate-50 aspect-video flex items-center justify-center">
@@ -97,11 +130,13 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
             src={previewUrl}
             alt="Product Preview"
             fill
+            sizes="(max-width: 640px) 90vw, 560px"
             className="object-contain"
           />
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-xs">
             <button
               type="button"
+              disabled={uploading}
               onClick={() => inputRef.current?.click()}
               className="px-3 py-1.5 bg-white text-slate-800 text-xs font-semibold rounded-lg shadow-sm hover:bg-slate-100 transition-colors"
             >
@@ -110,6 +145,8 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
             <button
               type="button"
               onClick={handleRemove}
+              aria-label="Remove selected image"
+              disabled={!!productId || uploading}
               className="p-1.5 bg-rose-500 text-white rounded-lg shadow-sm hover:bg-rose-600 transition-colors"
             >
               <X className="w-4 h-4" />
@@ -129,18 +166,10 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
               : "border-slate-300 hover:border-indigo-400 bg-slate-50/50"
           }`}
         >
-          <input
-            ref={inputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleChange}
-          />
-
           {uploading ? (
             <div className="flex flex-col items-center space-y-2 text-indigo-600 py-4">
               <Loader2 className="w-8 h-8 animate-spin" />
-              <span className="text-xs font-semibold">Uploading to MinIO...</span>
+              <span className="text-xs font-semibold">Uploading image...</span>
             </div>
           ) : (
             <>
@@ -151,14 +180,15 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess }: I
                 <p className="text-xs font-bold text-slate-800">
                   Click to upload or drag & drop
                 </p>
-                <p className="text-[11px] text-slate-400">PNG, JPG, WEBP up to 10MB</p>
+                <p className="text-[11px] text-slate-400">PNG, JPG, WEBP up to 5MB</p>
               </div>
             </>
           )}
         </div>
       )}
 
-      {error && <p className="text-xs text-rose-500 font-medium">{error}</p>}
+      {error && <p role="alert" className="text-xs text-rose-500 font-medium">{error}</p>}
+      {uploading && previewUrl && <p role="status" className="text-xs text-indigo-600">Uploading image...</p>}
     </div>
   );
 }

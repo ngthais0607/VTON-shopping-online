@@ -1,34 +1,56 @@
-import os
-import urllib.parse
-from dotenv import load_dotenv
+"""VietQR payment instructions assembled from application settings."""
 
-load_dotenv()
+from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
+from urllib.parse import quote, urlencode
 
-VIETQR_BANK_ID = os.getenv("VIETQR_BANK_ID", "MB")
-VIETQR_BANK_NAME = os.getenv("VIETQR_BANK_NAME", "MB Bank (Ngan hang Quan doi)")
-VIETQR_ACCOUNT_NO = os.getenv("VIETQR_ACCOUNT_NO", "0382912048")
-VIETQR_ACCOUNT_NAME = os.getenv("VIETQR_ACCOUNT_NAME", "LUXESTORE")
+from app.core.config import Settings, get_settings
 
-def get_vietqr_bank_config():
-    return {
-        "bank_id": VIETQR_BANK_ID,
-        "bank_name": VIETQR_BANK_NAME,
-        "account_no": VIETQR_ACCOUNT_NO,
-        "account_name": VIETQR_ACCOUNT_NAME,
-    }
 
-def generate_vietqr_url(
-    bank_id: str = VIETQR_BANK_ID,
-    account_no: str = VIETQR_ACCOUNT_NO,
-    account_name: str = VIETQR_ACCOUNT_NAME,
-    amount: float = 0,
-    memo: str = ""
-) -> str:
-    """
-    Generate a dynamic VietQR image URL matching standard format.
-    Format: https://img.vietqr.io/image/<BANK_ID>-<ACCOUNT_NO>-compact2.png?amount=<AMOUNT>&addInfo=<MEMO>&accountName=<NAME>
-    """
-    encoded_memo = urllib.parse.quote(memo)
-    encoded_name = urllib.parse.quote(account_name)
-    int_amount = int(round(amount))
-    return f"https://img.vietqr.io/image/{bank_id}-{account_no}-compact2.png?amount={int_amount}&addInfo={encoded_memo}&accountName={encoded_name}"
+@dataclass(frozen=True)
+class VietQRInstructions:
+    qr_url: str
+    bank_id: str
+    bank_name: str
+    account_no: str
+    account_name: str
+    memo: str
+    amount: int
+
+
+def to_vnd_amount(value: Decimal | float | int | str) -> int:
+    return int(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def build_vietqr_instructions(
+    amount: Decimal | float | int | str,
+    memo: str,
+    settings: Settings | None = None,
+) -> VietQRInstructions:
+    config = settings or get_settings()
+    if not getattr(config, "vietqr_bank_id", None) or not getattr(
+        config, "vietqr_account_no", None
+    ):
+        raise ValueError("VietQR bank_id and account_no must be configured")
+    rounded_amount = to_vnd_amount(amount)
+    image = (
+        "https://img.vietqr.io/image/"
+        f"{quote(config.vietqr_bank_id, safe='')}-"
+        f"{quote(config.vietqr_account_no, safe='')}-compact2.png"
+    )
+    query = urlencode(
+        {
+            "amount": rounded_amount,
+            "addInfo": memo,
+            "accountName": config.vietqr_account_name,
+        }
+    )
+    return VietQRInstructions(
+        qr_url=f"{image}?{query}",
+        bank_id=config.vietqr_bank_id,
+        bank_name=config.vietqr_bank_name,
+        account_no=config.vietqr_account_no,
+        account_name=config.vietqr_account_name,
+        memo=memo,
+        amount=rounded_amount,
+    )

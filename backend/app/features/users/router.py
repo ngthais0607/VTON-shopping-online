@@ -1,374 +1,209 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Response
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
-from app.core.database import get_db, save_to_db
 from datetime import datetime, timezone
-from app.features.users import schema
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    verify_refresh_token,
-    get_current_user,
-    get_current_admin,
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Query,
+    Request,
+    Response,
+    status,
 )
-from app.features.users.model import User
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.errors import AuthenticationError
 from app.core.rate_limiter import limiter
-from app.core.queue import enqueue_task
-
-
-router = APIRouter(
-    prefix="/users",
-    tags=["Users"]
+from app.core.schemas import Page
+from app.core.security import get_current_admin, get_current_user
+from app.features.users import service
+from app.features.users.login_limits import login_identifier_key, prepare_login_command
+from app.features.users.model import User
+from app.features.users.schemas import (
+    LoginCommand,
+    PasswordChange,
+    RefreshTokenRequest,
+    TokenResponse,
+    UserCreate,
+    UserPatch,
+    UserResponse,
 )
+from app.integrations.queue import TaskQueue, get_task_queue
 
-
-def user_to_json(user: User):
-    return {
-        "id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "created_at": user.created_at,
-        "updated_at": user.updated_at,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "role": user.role
-    }
+router = APIRouter(prefix="/api/v1/users", tags=["Users"])
 
 
 @router.post(
     "/register",
+    response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Register user"
+    summary="Register user",
 )
 @limiter.limit("5/minute")
-async def register_user(
+def register_user(
     request: Request,
-    user: schema.UserCreate,
-    db: Session = Depends(get_db)
+    command: UserCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    queue: TaskQueue = Depends(get_task_queue),
 ):
-    existed_user = db.query(User).filter(
-        (User.email == user.email) |
-        (User.username == user.username)
-    ).first()
-
-    if existed_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Username or email already exists"
-        )
-
-    new_user = User(
-        username=user.username,
-        email=user.email,
-        first_name = user.first_name,
-        last_name = user.last_name,
-        password_hash=schema.hash_password(user.password),
-        role="admin" if db.query(User).count() == 0 else "customer"
-    )
-
-    saved_user = save_to_db(db, new_user)
-    await enqueue_task("send_welcome_email_task", saved_user.id)
-    return user_to_json(saved_user)
+    return service.register_user(db, command, queue, background_tasks=background_tasks)
 
 
-
-
-@router.post(
-    "/login",
-    summary="Login user"
-)
-@limiter.limit("5/minute")
+@router.post("/login", response_model=TokenResponse, summary="Login user")
+@limiter.limit("60/minute")
+@limiter.limit("5/minute", key_func=login_identifier_key)
 def login_user(
     request: Request,
     response: Response,
-    user: schema.UserLogin,
-    db: Session = Depends(get_db)
+    command: LoginCommand = Depends(prepare_login_command),
+    db: Session = Depends(get_db),
 ):
-    db_user = db.query(User).filter(
-        or_(User.email == user.email, User.username == user.email),
-        User.is_deleted == False
-    ).first()
-
-    if not db_user or not schema.verify_password(
-        user.password,
-        db_user.password_hash
-    ):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password"
-        )
-
-    access_token = create_access_token(data={"sub": db_user.email})
-    refresh_token = create_refresh_token(data={"sub": db_user.email})
-
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        samesite="lax",
-        max_age=7 * 24 * 3600
+    tokens = service.login_user(db, command)
+    _set_refresh_cookie(
+        request, response, tokens.refresh_token, tokens.refresh_expires_at
     )
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer"
-    }
+    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
 
 
-@router.post(
-    "/refresh",
-    summary="Refresh access token"
-)
-def refresh_token(
+@router.post("/refresh", response_model=TokenResponse, summary="Refresh session")
+@limiter.limit("30/minute")
+def refresh_user_session(
     request: Request,
     response: Response,
-    body: schema.RefreshTokenRequest | None = None,
-    db: Session = Depends(get_db)
+    body: RefreshTokenRequest | None = None,
+    db: Session = Depends(get_db),
 ):
-    token = body.refresh_token if (body and body.refresh_token) else request.cookies.get("refresh_token")
-
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token missing"
-        )
-
-    email = verify_refresh_token(token)
-    db_user = db.query(User).filter(User.email == email, User.is_deleted == False).first()
-    if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
-        )
-
-    new_access_token = create_access_token(data={"sub": db_user.email})
-    new_refresh_token = create_refresh_token(data={"sub": db_user.email})
-
-    response.set_cookie(
-        key="refresh_token",
-        value=new_refresh_token,
-        httponly=True,
-        samesite="lax",
-        max_age=7 * 24 * 3600
+    refresh_token = (
+        body.refresh_token
+        if body is not None and body.refresh_token
+        else request.cookies.get("refresh_token")
     )
-
-    return {
-        "access_token": new_access_token,
-        "refresh_token": new_refresh_token,
-        "token_type": "bearer"
-    }
+    if not refresh_token:
+        raise AuthenticationError(
+            "Could not validate credentials",
+            code="invalid_token",
+        )
+    tokens = service.refresh_user_session(db, refresh_token)
+    _set_refresh_cookie(
+        request, response, tokens.refresh_token, tokens.refresh_expires_at
+    )
+    return TokenResponse(access_token=tokens.access_token, token_type=tokens.token_type)
 
 
 @router.post(
     "/logout",
-    summary="Logout user"
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Logout user",
 )
-def logout_user(response: Response):
-    response.delete_cookie(key="refresh_token")
-    return {
-        "message": "Logout successfully"
-    }
-
-@router.get(
-    "/",
-    summary="Get users"
-)
-def get_users(
-    search : str | None = None, 
-    limit : int = Query(default=20 , ge=1, le=100),
-    offset : int = Query(default=0 , ge=0),
-    db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin)
-):
-
-    query = db.query(User).filter(
-        User.is_deleted == False
+def logout_user(
+    request: Request, response: Response, db: Session = Depends(get_db)
+) -> None:
+    service.logout_user_session(db, request.cookies.get("refresh_token"))
+    settings = request.app.state.settings
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",
+        secure=settings.refresh_cookie_secure,
+        httponly=True,
+        samesite=getattr(settings, "refresh_cookie_samesite", "lax"),
     )
-    if search:
-        query = query.filter(
-            or_(
-                User.username.ilike(f"%{search}%"),
-                User.email.ilike(f"%{search}%"),
-                User.first_name.ilike(f"%{search}%"),
-                User.last_name.ilike(f"%{search}%")
-            )
-        )
 
-    users = query.offset(offset).limit(limit).all()
-    return [user_to_json(user) for user in users]
 
-@router.get(
-    "/me",
-    summary="Get current user"
-)
-def read_current_user(
+@router.get("/me", response_model=UserResponse, summary="Get current user")
+def read_current_user(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.patch("/me", response_model=UserResponse, summary="Update current user")
+def update_profile(
+    command: UserPatch,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    return user_to_json(current_user)
+    return service.update_profile(db, current_user, command)
 
-@router.put(
-    "/me",
-    summary="Update current user profile"
-)
-def update_current_user(
-    updated_user : schema.UserUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    existed_user = db.query(User).filter(
-        (User.id != current_user.id) &
-        ((User.email == updated_user.email) | (User.username == updated_user.username))
-    ).first()
-    
-    if existed_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Email or username already exists"
-        )
-    
-    current_user.username = updated_user.username
-    current_user.email = updated_user.email
-    current_user.first_name = updated_user.first_name
-    current_user.last_name = updated_user.last_name
-    
-    saved_user = save_to_db(db, current_user)
-    return user_to_json(saved_user)
 
-@router.put(
+@router.patch(
     "/me/password",
-    summary="Update current user password"
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Change current user password",
 )
-def update_password(
-    password_data: schema.UserPasswordUpdate,
+def change_password(
+    command: PasswordChange,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+) -> None:
+    service.change_password(db, current_user, command)
+
+
+@router.get("", response_model=Page[UserResponse], summary="List users")
+def list_users(
+    search: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(get_current_admin),
 ):
+    return service.list_users(db, search, limit, offset)
 
-    if not schema.verify_password(password_data.current_password, current_user.password_hash):
-        raise HTTPException(
-            status_code=400,
-            detail="Incorrect password"
-        )
-        
-    current_user.password_hash = schema.hash_password(password_data.new_password)
-    saved_user = save_to_db(db, current_user)
-    return {
-        "message": "Password updated successfully"
-    }
 
-@router.get(
-    "/{user_id}",
-    summary="Get user by id"
+@router.post(
+    "",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create user",
 )
+def create_user(
+    command: UserCreate,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(get_current_admin),
+):
+    return service.create_user(db, command)
+
+
+@router.get("/{user_id}", response_model=UserResponse, summary="Get user")
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin)
+    _current_admin: User = Depends(get_current_admin),
 ):
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.is_deleted == False
-    ).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-
-    return user_to_json(user)
-
-@router.post(
-    "/",
-    status_code=status.HTTP_201_CREATED,
-    summary="Create user"
-   
-)
-def create_user(
-    user: schema.UserCreate,
-    db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin)
-):
-    existed_user = db.query(User).filter(
-        (User.email == user.email) |
-        (User.username == user.username)
-    ).first()
-
-    if existed_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Username or email already exists"
-        )
-
-    new_user = User(
-        username=user.username,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        password_hash=schema.hash_password(user.password),
-        role="admin" if db.query(User).count() == 0 else "customer"
-    )
-
-    saved_user = save_to_db(db, new_user)
-    return user_to_json(saved_user)
+    return service.get_user(db, user_id)
 
 
-@router.put(
-    "/{user_id}",
-    summary="Update user"
-)
+@router.patch("/{user_id}", response_model=UserResponse, summary="Update user")
 def update_user(
     user_id: int,
-    updated_user: schema.UserUpdate,
+    command: UserPatch,
     db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin)
+    _current_admin: User = Depends(get_current_admin),
 ):
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.is_deleted == False
-    ).first()
-
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-
-    user.username = updated_user.username
-    user.email = updated_user.email
-    user.first_name = updated_user.first_name
-    user.last_name = updated_user.last_name
-
-    saved_user = save_to_db(db, user)
-    return user_to_json(saved_user)
+    return service.update_user(db, user_id, command)
 
 
 @router.delete(
     "/{user_id}",
-    summary="Delete user"
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete user",
 )
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_admin: User = Depends(get_current_admin)
-):
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.is_deleted == False
-    ).first()
+    current_admin: User = Depends(get_current_admin),
+) -> None:
+    service.delete_user(db, user_id, actor=current_admin)
 
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
 
-    user.is_deleted = True
-    user.deleted_at = datetime.now(timezone.utc)
-    db.commit()
-
-    return {
-        "message": "User deleted successfully"
-    }
+def _set_refresh_cookie(
+    request: Request, response: Response, refresh_token: str, expires_at: datetime
+) -> None:
+    settings = request.app.state.settings
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        samesite=getattr(settings, "refresh_cookie_samesite", "lax"),
+        secure=settings.refresh_cookie_secure,
+        max_age=max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds())),
+        path="/",
+    )

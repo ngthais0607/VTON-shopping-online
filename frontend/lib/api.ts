@@ -1,104 +1,121 @@
-import axios from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
+import { clearAccessToken, getAccessToken, getSessionGeneration, renewAccessToken, setSessionNotice } from './session';
+import { setAccessToken } from './session';
+import { withSessionLock } from './session-lock';
+import { normalizeStorageUrls } from './storage-image';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+export function normalizeApiBase(base: string): string {
+    const clean = base.replace(/\/+$/, '');
+    return clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
+}
+const API_BASE_URL = normalizeApiBase(process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000');
+
+export class ApiError extends Error {
+    constructor(message: string, public status?: number, public code?: string, public details?: unknown) {
+        super(message);
+        this.name = 'ApiError';
+    }
+}
+
+function toApiError(error: unknown): ApiError {
+    if (error instanceof ApiError) return error;
+    if (!axios.isAxiosError(error)) return new ApiError(error instanceof Error ? error.message : 'Request failed');
+    const data = error.response?.data;
+    const detail = data?.detail;
+    const message = data?.message || (typeof detail === 'string' ? detail : Array.isArray(detail)
+        ? detail.map((issue: { loc?: (string | number)[]; msg?: string }) => `${issue.loc?.slice(1).join('.') || 'Input'}: ${issue.msg || 'Invalid value'}`).join('; ')
+        : error.response ? `API Error: ${error.response.status}` : 'Unable to reach the server. Please try again.');
+    return new ApiError(message, error.response?.status, data?.code, data?.details ?? detail);
+}
 
 const apiClient = axios.create({
     baseURL: API_BASE_URL,
     withCredentials: true,
 });
 
-apiClient.interceptors.request.use((config) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (token) {
-        config.headers['Authorization'] = `Bearer ${token}`;
-    }
+interface SessionRequest extends InternalAxiosRequestConfig { _retry?: boolean; _generation?: number }
+let refreshWork: {generation: number; promise: Promise<string>} | null = null;
+const isAuthRequest = (url = '') => /\/users\/(login|register|refresh|logout)$/.test(url);
+apiClient.interceptors.request.use((config: SessionRequest) => {
+    const token = getAccessToken();
+    config._generation ??= getSessionGeneration();
+    if (token && !isAuthRequest(config.url)) config.headers.set('Authorization', `Bearer ${token}`);
+    else config.headers.delete('Authorization');
     return config;
 });
+export async function refreshSession(): Promise<string> {
+    const version = getSessionGeneration();
+    if (!refreshWork || refreshWork.generation !== version) {
+        const work = { generation: version, promise: Promise.resolve('') };
+        const tokenBeforeLock = getAccessToken();
+        work.promise = withSessionLock(async () => {
+            if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+            const peerToken = getAccessToken();
+            if (peerToken && peerToken !== tokenBeforeLock) return peerToken;
+            const response = await axios.post(`${API_BASE_URL}/users/refresh`, {}, { withCredentials: true });
+            if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+            const token = response.data?.access_token;
+            if (typeof token !== 'string' || !token) throw new ApiError('Invalid session response', 401);
+            renewAccessToken(token);
+            return token;
+        }).finally(() => { if (refreshWork === work) refreshWork = null; });
+        refreshWork = work;
+    }
+    return refreshWork.promise;
+}
 
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: (value?: unknown) => void; reject: (reason?: unknown) => void }> = [];
-
-const processQueue = (error: Error | null, token: string | null = null) => {
-    failedQueue.forEach((prom) => {
-        if (error) {
-            prom.reject(error);
-        } else {
-            prom.resolve(token);
-        }
-    });
-    failedQueue = [];
-};
+export async function silentRefresh(): Promise<string | null> {
+    try {
+        return await refreshSession();
+    } catch {
+        return null;
+    }
+}
 
 apiClient.interceptors.response.use(
-    (response) => response.data,
-    async (error) => {
-        const originalRequest = error.config;
-
-        if (
-            error.response?.status === 401 &&
-            originalRequest &&
-            !originalRequest._retry &&
-            !originalRequest.url?.includes('/users/login') &&
-            !originalRequest.url?.includes('/users/refresh')
-        ) {
-            if (isRefreshing) {
-                return new Promise((resolve, reject) => {
-                    failedQueue.push({ resolve, reject });
-                })
-                    .then((token) => {
-                        originalRequest.headers['Authorization'] = `Bearer ${token}`;
-                        return apiClient(originalRequest);
-                    })
-                    .catch((err) => Promise.reject(err));
-            }
-
-            originalRequest._retry = true;
-            isRefreshing = true;
-
-            try {
-                const refreshRes = await axios.post(
-                    `${API_BASE_URL}/users/refresh`,
-                    {},
-                    { withCredentials: true }
-                );
-                const newAccessToken = refreshRes.data.access_token;
-                if (typeof window !== 'undefined') {
-                    localStorage.setItem('token', newAccessToken);
-                }
-                apiClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
-                originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
-                processQueue(null, newAccessToken);
-                return apiClient(originalRequest);
-            } catch (refreshErr) {
-                processQueue(refreshErr as Error, null);
-                if (typeof window !== 'undefined') {
-                    localStorage.removeItem('token');
-                    const path = window.location.pathname;
-                    const isPublic = path === "/" || path === "/login" || path === "/register" || path.startsWith("/store");
-                    if (!isPublic) {
-                        window.location.href = '/login';
-                    }
-                }
-                return Promise.reject(refreshErr);
-            } finally {
-                isRefreshing = false;
-            }
+    response => {
+        const config = response.config as SessionRequest;
+        if (!isAuthRequest(config.url) && config._generation !== getSessionGeneration()) throw new ApiError('Session changed. Please try again.', 401);
+        return normalizeStorageUrls(response.data);
+    },
+    async error => {
+        const request = error.config as SessionRequest | undefined;
+        if (error.response?.status !== 401 || !request || isAuthRequest(request.url)) throw toApiError(error);
+        if (request._generation !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+        if (request._retry || !getAccessToken()) { clearAccessToken(); throw toApiError(error); }
+        request._retry = true;
+        const version = getSessionGeneration();
+        try {
+            const token = await refreshSession();
+            if (version !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+            request.headers.set('Authorization', `Bearer ${token}`);
+            return await apiClient(request);
+        } catch (failure) {
+            if (version === getSessionGeneration() && toApiError(failure).status === 401) clearAccessToken();
+            throw toApiError(failure);
         }
-
-        if (error.response?.status === 401 && typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-            const path = window.location.pathname;
-            const isPublic = path === "/" || path === "/login" || path === "/register" || path.startsWith("/store");
-            if (!isPublic) {
-                window.location.href = '/login';
-            }
-        }
-
-        const message = error.response?.data?.detail || error.response?.data?.message ||
-            `API Error: ${error.response?.status || 'Unknown'}`;
-        return Promise.reject(new Error(message));
     }
 );
+export async function logoutSession(): Promise<void> {
+    clearAccessToken();
+    delete apiClient.defaults.headers.common.Authorization;
+    try { await withSessionLock(async () => { await apiPost<void>('/users/logout', {}); }); }
+    catch (error) {
+        setSessionNotice(`Local session cleared. ${toApiError(error).message}. Server logout could not be verified; retry when the server is available.`);
+        throw error;
+    }
+}
+
+export async function loginSession(identifier: string, password: string): Promise<void> {
+    const generation = getSessionGeneration();
+    await withSessionLock(async () => {
+        if (generation !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+        const response = await apiPost<{access_token: string}>('/users/login', {identifier, password});
+        if (generation !== getSessionGeneration()) throw new ApiError('Session changed. Please log in again.', 401);
+        if (!response.access_token) throw new ApiError('Invalid session response', 401);
+        setAccessToken(response.access_token);
+    });
+}
 
 export async function apiGet<T>(path: string): Promise<T> {
     return apiClient.get<T, T>(path);
@@ -118,6 +135,10 @@ export async function apiPost<T, B = unknown>(path: string, body: B): Promise<T>
 
 export async function apiPut<T, B = unknown>(path: string, body: B): Promise<T> {
     return apiClient.put<T, T, B>(path, body);
+}
+
+export async function apiPatch<T, B = unknown>(path: string, body: B): Promise<T> {
+    return apiClient.patch<T, T, B>(path, body);
 }
 
 export async function apiUpload<T>(

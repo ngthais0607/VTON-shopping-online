@@ -1,17 +1,21 @@
 "use client";
+import useSWR from 'swr';
+import { swrFetcher } from '@/lib/swr-config';
+import { Order, Page } from '@/lib/types';
+import { PageParams, pageOffset } from '@/lib/pagination';
 
-import useSWR from "swr";
-import { swrFetcher } from "@/lib/swr-config";
-import { Order } from "@/lib/types";
+export function useOrders(params: PageParams = {}) {
+  const page = params.page ?? 1, limit = params.pageSize ?? 10;
+  const query = new URLSearchParams({limit: String(limit), offset: String(pageOffset(page, limit))});
+  if (params.search) query.set('search', params.search);
+  const {data, error, isLoading, mutate} = useSWR<Page<Order>>(`/orders?${query}`, swrFetcher);
+  return {orders: data?.items ?? [], total: data?.total ?? 0, page, limit, isLoading, isError: !!error, error, mutate};
+}
 
-export function useOrders() {
-  const { data, error, isLoading, mutate } = useSWR<Order[]>("/orders/", swrFetcher);
-
-  return {
-    orders: data ?? [],
-    isLoading,
-    isError: !!error,
-    error,
-    mutate,
-  };
+export function useUserOrders(userId: number | null | undefined, params: PageParams = {}) {
+  const page = params.page ?? 1, limit = params.pageSize ?? 10;
+  const query = new URLSearchParams({limit: String(limit), offset: String(pageOffset(page, limit))});
+  const key = userId ? `/orders/user/${userId}?${query}` : null;
+  const {data, error, isLoading, mutate} = useSWR<Page<Order>>(key, swrFetcher);
+  return {orders: data?.items ?? [], total: data?.total ?? 0, page, limit, isLoading, isError: !!error, error, mutate};
 }

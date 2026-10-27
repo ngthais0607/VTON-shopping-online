@@ -1,33 +1,22 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Product } from "@/lib/types";
+import React, { useCallback, useEffect, useState } from "react";
+import { Product, ReviewSummary } from "@/lib/types";
 import { useCart } from "../context/CartContext";
 import { X, Star, ShoppingCart, Plus, Minus, Check, ShieldCheck, Truck, MessageSquare, ThumbsUp, CheckCircle2, Send, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { apiGet, apiPost } from "@/lib/api";
+import { getAvailableStock } from "@/lib/inventory";
+import { useVariantSelection } from "@/hooks/use-variant-selection";
+import Link from "next/link";
+import { formatCurrency } from "@/lib/utils";
+import { getProductImageUrl } from "@/lib/placeholder-images";
 
 interface QuickViewModalProps {
   product: Product;
   onClose: () => void;
-}
-
-interface Review {
-  id: number;
-  user_name: string;
-  rating: number;
-  title?: string;
-  comment?: string;
-  is_verified_purchase: boolean;
-  created_at?: string;
-}
-
-interface ProductReviewsData {
-  average_rating: number;
-  total_reviews: number;
-  reviews: Review[];
 }
 
 export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
@@ -37,8 +26,8 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'reviews'>('details');
 
   // Reviews state
-  const [reviewsData, setReviewsData] = useState<ProductReviewsData>({
-    average_rating: 5.0,
+  const [reviewsData, setReviewsData] = useState<ReviewSummary>({
+    average_rating: null,
     total_reviews: 0,
     reviews: []
   });
@@ -51,27 +40,44 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewMsg, setReviewMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const availableStock = product.stock_quantity - product.reserved_quantity;
-  const imageUrl = product.images && product.images.length > 0 ? product.images[0].url : undefined;
+  const availableStock = getAvailableStock(product);
+  const {
+    selectedColor,
+    selectedSize,
+    selectedVariant,
+    availableColors,
+    availableSizes,
+    isOutOfStock,
+    price,
+    setColor,
+    setSize,
+  } = useVariantSelection({
+    variants: product.variants ?? [],
+    defaultPrice: product.price,
+  });
 
-  useEffect(() => {
-    fetchReviews();
-  }, [product.id]);
+  const effectiveStock = selectedVariant ? getAvailableStock(selectedVariant) : availableStock;
+  const imageUrl = getProductImageUrl(product);
 
-  const fetchReviews = async () => {
+  const fetchReviews = useCallback(async () => {
     setLoadingReviews(true);
     try {
-      const data = await apiGet<ProductReviewsData>(`/products/${product.id}/reviews`);
+      const data = await apiGet<ReviewSummary>(`/products/${product.id}/reviews`);
       setReviewsData(data);
     } catch (err) {
-      console.error('Failed to load product reviews', err);
+      setReviewMsg({type:'error',text:err instanceof Error ? err.message : 'Unable to load reviews'});
     } finally {
       setLoadingReviews(false);
     }
-  };
+  }, [product.id]);
+
+  useEffect(() => {
+    void fetchReviews();
+  }, [fetchReviews]);
 
   const handleAddToCart = () => {
-    addToCart(product, quantity);
+    if (isOutOfStock) return;
+    addToCart(product, quantity, selectedVariant?.id);
     setAdded(true);
     setTimeout(() => {
       setAdded(false);
@@ -177,7 +183,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                 <div className="flex flex-col justify-between space-y-4">
                   <div>
                     <h3 className="text-xl font-extrabold text-slate-900 leading-snug">{product.name}</h3>
-                    <p className="text-2xl font-bold text-sky-600 mt-2">${product.price.toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-sky-600 mt-2">{formatCurrency(product.price, product.currency)}</p>
                     
                     <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
                       <div className="flex text-amber-400">
@@ -185,36 +191,91 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                           <Star
                             key={i}
                             className={`w-3.5 h-3.5 ${
-                              i < Math.round(reviewsData.average_rating)
+                              i < Math.round(reviewsData.average_rating ?? 0)
                                 ? "fill-amber-400 text-amber-400"
                                 : "text-slate-200"
                             }`}
                           />
                         ))}
                       </div>
-                      <span>{reviewsData.average_rating} ({reviewsData.total_reviews} reviews)</span>
+                      <span>{reviewsData.average_rating ?? 'No ratings'} ({reviewsData.total_reviews} reviews)</span>
                     </div>
 
                     <p className="text-xs text-slate-600 mt-4 leading-relaxed">
                       {product.description || "High quality product crafted with precision and style. Perfect for everyday use."}
                     </p>
 
+                    {/* Color and Size Selectors */}
+                    {availableColors.length > 0 && (
+                      <div className="mt-3">
+                        <span className="text-xs font-bold text-slate-700 block mb-1.5">
+                          Màu sắc: <span className="font-semibold text-slate-500">{selectedColor}</span>
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {availableColors.map((c) => (
+                            <button
+                              key={c.name}
+                              type="button"
+                              onClick={() => setColor(c.name)}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                                selectedColor === c.name
+                                  ? "border-sky-500 bg-sky-50 text-sky-800"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                              }`}
+                            >
+                              <span
+                                className="w-2.5 h-2.5 rounded-full border border-black/10 shrink-0"
+                                style={{ backgroundColor: c.hex || "#94a3b8" }}
+                              />
+                              <span>{c.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {availableSizes.length > 0 && (
+                      <div className="mt-3">
+                        <span className="text-xs font-bold text-slate-700 block mb-1.5">
+                          Kích cỡ: <span className="font-semibold text-slate-500">{selectedSize}</span>
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {availableSizes.map((s) => (
+                            <button
+                              key={s.size}
+                              type="button"
+                              onClick={() => setSize(s.size)}
+                              className={`min-w-8 h-8 px-2 rounded-lg text-xs font-bold border transition-all ${
+                                !s.inStock
+                                  ? "border-slate-200 bg-slate-100 text-slate-300 opacity-60 line-through"
+                                  : selectedSize === s.size
+                                  ? "border-sky-500 bg-sky-500 text-white shadow-xs"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                              }`}
+                            >
+                              {s.size}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Stock Badge */}
                     <div className="mt-4 flex items-center gap-2">
                       <span
                         className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                          availableStock <= 0
+                          effectiveStock <= 0
                             ? "bg-rose-50 text-rose-600 border border-rose-100"
-                            : availableStock < 10
+                            : effectiveStock < 10
                             ? "bg-amber-50 text-amber-600 border border-amber-100"
                             : "bg-emerald-50 text-emerald-600 border border-emerald-100"
                         }`}
                       >
-                        {availableStock <= 0
+                        {effectiveStock <= 0
                           ? "Out of Stock"
-                          : availableStock < 10
-                          ? `Only ${availableStock} left in stock`
-                          : `In Stock (${availableStock} available)`}
+                          : effectiveStock < 10
+                          ? `Only ${effectiveStock} left in stock`
+                          : `In Stock (${effectiveStock} available)`}
                       </span>
                     </div>
                   </div>
@@ -254,7 +315,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                     </div>
 
                     <Button
-                      disabled={availableStock <= 0 || added}
+                      disabled={effectiveStock <= 0 || added || isOutOfStock}
                       onClick={handleAddToCart}
                       className="w-full h-11 bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white font-bold rounded-xl shadow-md shadow-sky-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
                     >
@@ -266,10 +327,19 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                       ) : (
                         <>
                           <ShoppingCart className="w-4 h-4" />
-                          <span>Add to Cart · ${(product.price * quantity).toLocaleString()}</span>
+                          <span>Add to Cart · ${(price * quantity).toLocaleString()}</span>
                         </>
                       )}
                     </Button>
+
+                    <div className="text-center pt-1">
+                      <Link
+                        href={`/store/products/${product.slug || product.id}`}
+                        className="text-xs font-semibold text-sky-600 hover:text-sky-700 hover:underline transition-colors"
+                      >
+                        Xem chi tiết & bảng thông số đầy đủ →
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -280,7 +350,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                 <div className="p-4 rounded-2xl bg-sky-50/70 border border-sky-100 flex items-center justify-between">
                   <div>
                     <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-extrabold text-slate-900">{reviewsData.average_rating}</span>
+                      <span className="text-3xl font-extrabold text-slate-900">{reviewsData.average_rating ?? 'No ratings'}</span>
                       <span className="text-sm font-semibold text-slate-500">out of 5.0</span>
                     </div>
                     <div className="flex text-amber-400 mt-1">
@@ -288,7 +358,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                         <Star
                           key={i}
                           className={`w-4 h-4 ${
-                            i < Math.round(reviewsData.average_rating)
+                            i < Math.round(reviewsData.average_rating ?? 0)
                               ? "fill-amber-400 text-amber-400"
                               : "text-slate-200"
                           }`}
@@ -380,12 +450,12 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
                   <h4 className="text-sm font-bold text-slate-800">Customer Feedback</h4>
                   {loadingReviews ? (
                     <div className="py-6 text-center text-xs text-slate-400">Loading reviews...</div>
-                  ) : reviewsData.reviews.length === 0 ? (
+                  ) : (reviewsData.items ?? reviewsData.reviews ?? []).length === 0 ? (
                     <div className="py-6 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                       No reviews yet. Be the first to review this product!
                     </div>
                   ) : (
-                    reviewsData.reviews.map((rev) => (
+                    (reviewsData.items ?? reviewsData.reviews ?? []).map((rev) => (
                       <div key={rev.id} className="p-4 rounded-xl border border-slate-100 bg-white shadow-2xs space-y-1.5">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">

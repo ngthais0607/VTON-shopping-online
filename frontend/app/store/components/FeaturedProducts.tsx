@@ -1,20 +1,25 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ShoppingCart, Star, Zap, Heart, Check, X, Plus, Minus, Package } from "lucide-react";
+import { ShoppingCart, Star, Zap, Heart, Package } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import Image from "next/image";
 import { Product as DBProduct, User } from "@/lib/types";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 import { QuickViewModal } from "./QuickViewModal";
+import { getAvailableStock } from "@/lib/inventory";
+import { FashionFilters } from "@/components/store/fashion-filters";
+import { formatCurrency } from "@/lib/utils";
+import { getProductImageUrl } from "@/lib/placeholder-images";
 
 interface ProductUI {
+  source: DBProduct;
   id: number;
   name: string;
   category: string;
   price: number;
   originalPrice?: number;
-  rating: number;
+  rating: number | null;
   reviews: number;
   stock: number;
   badge?: string;
@@ -37,183 +42,7 @@ function SkeletonCard() {
   );
 }
 
-// FeaturedProductsProps interface is defined below
-
-interface PurchaseModalProps {
-  product: ProductUI;
-  currentUser: User | null;
-  onClose: () => void;
-  onOrderSuccess: () => void;
-}
-
-function PurchaseModal({ product, currentUser, onClose, onOrderSuccess }: PurchaseModalProps) {
-  const [qty, setQty] = useState(1);
-  const [success, setSuccess] = useState(false);
-  const [ordering, setOrdering] = useState(false);
-  const router = useRouter();
-
-  async function handlePurchase() {
-    if (!currentUser) {
-      router.push("/login");
-      return;
-    }
-    setOrdering(true);
-    try {
-      await apiPost("/orders/", {
-        product_id: product.id,
-        quantity: qty,
-        user_id: currentUser?.id || null
-      });
-      setSuccess(true);
-      onOrderSuccess();
-    } catch (err: any) {
-      alert(err.message || "Failed to place order.");
-    } finally {
-      setOrdering(false);
-    }
-  }
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-    >
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        className="relative z-10 bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
-      >
-        <AnimatePresence mode="wait">
-          {success ? (
-            <motion.div
-              key="success"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="p-10 text-center"
-            >
-              <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-                <Check className="w-8 h-8 text-emerald-600" />
-              </div>
-              <h3 className="text-foreground mb-2" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.25rem" }}>
-                Order Placed!
-              </h3>
-              <p className="text-muted-foreground text-sm mb-6">
-                {qty}x {product.name} has been added to your order. You can view it in the Admin Dashboard.
-              </p>
-              <button
-                onClick={onClose}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-600 text-white text-sm font-medium hover:from-sky-600 hover:to-cyan-700 shadow-md shadow-sky-500/20 transition-all cursor-pointer"
-              >
-                Continue Shopping
-              </button>
-            </motion.div>
-          ) : (
-            <motion.div key="form">
-              {/* Header */}
-              <div className="relative">
-                <div className="h-52 bg-slate-100 overflow-hidden relative">
-                  <Image src={product.img} alt={product.name} fill className="object-cover" />
-                </div>
-                <button
-                  onClick={onClose}
-                  className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/80 backdrop-blur flex items-center justify-center hover:bg-white transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4 text-foreground" />
-                </button>
-                {product.badge && (
-                  <span className={`absolute top-3 left-3 text-xs px-2.5 py-1 rounded-full font-medium ${product.badgeColor}`}>
-                    {product.badge}
-                  </span>
-                )}
-              </div>
-
-              <div className="p-6 space-y-5">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">{product.category}</p>
-                  <h3 className="text-foreground mb-1.5" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.2rem" }}>
-                    {product.name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{product.description}</p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className={`w-3.5 h-3.5 ${i < Math.floor(product.rating) ? "text-amber-400 fill-amber-400" : "text-slate-300"}`} />
-                    ))}
-                  </div>
-                  <span className="text-xs text-muted-foreground">{product.rating} ({product.reviews.toLocaleString()} reviews)</span>
-                  <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${product.stock < 10 ? "bg-rose-50 text-rose-600 font-bold" : "bg-emerald-50 text-emerald-600 font-bold"}`}>
-                    {product.stock <= 0 ? "Out of stock" : product.stock < 10 ? `Only ${product.stock} left` : `${product.stock} in stock`}
-                  </span>
-                </div>
-
-                {/* Quantity */}
-                <div className="flex items-center justify-between py-3 border-y border-sky-100">
-                  <span className="text-sm text-slate-800 font-medium">Quantity</span>
-                  <div className="flex items-center gap-3">
-                    <button
-                      disabled={qty <= 1}
-                      onClick={() => setQty(Math.max(1, qty - 1))}
-                      className="w-8 h-8 rounded-lg bg-sky-50 hover:bg-sky-100 disabled:opacity-40 flex items-center justify-center transition-colors cursor-pointer text-sky-800"
-                    >
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="w-6 text-center text-sm font-semibold text-slate-900">{qty}</span>
-                    <button
-                      disabled={qty >= product.stock}
-                      onClick={() => setQty(Math.min(product.stock, qty + 1))}
-                      className="w-8 h-8 rounded-lg bg-sky-50 hover:bg-sky-100 disabled:opacity-40 flex items-center justify-center transition-colors cursor-pointer text-sky-800"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Summary */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Subtotal ({qty} item{qty > 1 ? "s" : ""})</span>
-                    <span className="text-slate-900 font-medium">${(product.price * qty).toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Shipping</span>
-                    <span className="text-emerald-600 font-medium">Free</span>
-                  </div>
-                  <div className="flex justify-between pt-2 border-t border-sky-100">
-                    <span className="text-slate-900 font-semibold">Total</span>
-                    <div className="text-right">
-                      <span className="text-sky-600 font-bold text-lg">${(product.price * qty).toLocaleString()}</span>
-                      {product.originalPrice && (
-                        <span className="block text-xs text-slate-400 line-through">
-                          ${(product.originalPrice * qty).toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  disabled={ordering || product.stock <= 0}
-                  onClick={handlePurchase}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white text-sm font-medium flex items-center justify-center gap-2 shadow-md shadow-sky-500/25 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none active:scale-[0.98] transition-all cursor-pointer"
-                >
-                  <ShoppingCart className="w-4 h-4" />
-                  {ordering ? "Processing..." : `Purchase · $${(product.price * qty).toLocaleString()}`}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-    </motion.div>
-  );
-}
+import Link from "next/link";
 import { Eye } from "lucide-react";
 
 interface ProductCardProps {
@@ -225,6 +54,19 @@ interface ProductCardProps {
 
 function ProductCard({ product, onBuy, onQuickView, index }: ProductCardProps) {
   const [liked, setLiked] = useState(false);
+  const pdpUrl = `/store/products/${product.source.slug || product.id}`;
+
+  const colors = Array.from(
+    new Map(
+      (product.source.variants || [])
+        .filter((v) => v.color_name)
+        .map((v) => [v.color_name, { name: v.color_name, hex: v.color_hex }]),
+    ).values(),
+  );
+
+  const priceMin = product.source.price_min;
+  const priceMax = product.source.price_max;
+  const isRange = priceMin && priceMax && priceMin < priceMax;
 
   return (
     <motion.div
@@ -235,12 +77,14 @@ function ProductCard({ product, onBuy, onQuickView, index }: ProductCardProps) {
       className="group bg-white rounded-2xl border border-border overflow-hidden hover:shadow-[0_8px_40px_rgba(0,0,0,0.1)] hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
     >
       <div className="relative aspect-square bg-slate-50 overflow-hidden">
-        <Image
-          src={product.img}
-          alt={product.name}
-          fill
-          className="object-cover group-hover:scale-105 transition-transform duration-500"
-        />
+        <Link href={pdpUrl} className="block w-full h-full">
+          <Image
+            src={product.img}
+            alt={product.name}
+            fill
+            className="object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        </Link>
         {product.badge && (
           <span className={`absolute top-3 left-3 text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-xl shadow-sm ${product.badgeColor}`}>
             {product.badge}
@@ -266,24 +110,53 @@ function ProductCard({ product, onBuy, onQuickView, index }: ProductCardProps) {
       <div className="p-4 flex-1 flex flex-col justify-between">
         <div>
           <p className="text-[10px] uppercase font-bold text-sky-600 tracking-wider mb-1">{product.category}</p>
-          <h3 className="text-foreground text-sm font-semibold mb-2 leading-snug line-clamp-1">{product.name}</h3>
+          <Link href={pdpUrl} className="block hover:text-sky-600 transition-colors">
+            <h3 className="text-foreground text-sm font-semibold mb-1.5 leading-snug line-clamp-1">{product.name}</h3>
+          </Link>
+
+          {colors.length > 0 && (
+            <div className="flex items-center gap-1.5 mb-2">
+              {colors.slice(0, 4).map((c) => (
+                <span
+                  key={c.name}
+                  title={c.name}
+                  className="w-2.5 h-2.5 rounded-full border border-black/10 shadow-2xs"
+                  style={{ backgroundColor: c.hex || "#94a3b8" }}
+                />
+              ))}
+              {colors.length > 4 && (
+                <span className="text-[10px] text-slate-400 font-bold">+{colors.length - 4}</span>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5 mb-3">
             <div className="flex items-center gap-0.5">
               {[...Array(5)].map((_, i) => (
-                <Star key={i} className={`w-3 h-3 ${i < Math.floor(product.rating) ? "text-amber-400 fill-amber-400" : "text-slate-200"}`} />
+                <Star
+                  key={i}
+                  className={`w-3 h-3 ${
+                    product.rating && i < Math.floor(product.rating)
+                      ? "text-amber-400 fill-amber-400"
+                      : "text-slate-200"
+                  }`}
+                />
               ))}
             </div>
-            <span className="text-xs text-muted-foreground">({product.reviews.toLocaleString()})</span>
+            <span className="text-xs text-muted-foreground">
+              {product.rating !== null ? `${product.rating} (${product.reviews.toLocaleString()})` : "(Chưa có đánh giá)"}
+            </span>
           </div>
         </div>
 
         <div>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <span className="text-slate-900 font-bold text-base">${product.price}</span>
+              <span className="text-slate-900 font-bold text-base">
+                {isRange ? `Từ ${formatCurrency(priceMin, product.source.currency)}` : formatCurrency(product.price, product.source.currency)}
+              </span>
               {product.originalPrice && (
-                <span className="text-xs text-slate-400 line-through ml-1.5">${product.originalPrice}</span>
+                <span className="text-xs text-slate-400 line-through ml-1.5">{formatCurrency(product.originalPrice, product.source.currency)}</span>
               )}
             </div>
             <span className={`text-xs font-semibold ${product.stock <= 0 ? "text-rose-500" : product.stock < 10 ? "text-amber-600" : "text-emerald-600"}`}>
@@ -332,8 +205,6 @@ interface FeaturedProductsProps {
 export function FeaturedProducts({
   products,
   loading,
-  currentUser,
-  onOrderSuccess,
   currentPage,
   pageSize,
   totalProducts,
@@ -352,7 +223,6 @@ export function FeaturedProducts({
   setSortBy,
   categories,
 }: FeaturedProductsProps) {
-  const [selectedProduct, setSelectedProduct] = useState<ProductUI | null>(null);
   const [quickViewProduct, setQuickViewProduct] = useState<DBProduct | null>(null);
   const [searchInput, setSearchInput] = useState(searchQuery);
   const [showFilters, setShowFilters] = useState(false);
@@ -361,11 +231,7 @@ export function FeaturedProducts({
   const categoryNames = ["All", ...categories.map(c => c.name)];
 
   const handleBuyClick = (p: ProductUI) => {
-    if (!currentUser) {
-      router.push("/login");
-      return;
-    }
-    setSelectedProduct(p);
+    router.push(`/store/products/${p.source.slug || p.id}`);
   };
 
   const handleQuickViewClick = (p: ProductUI) => {
@@ -377,39 +243,21 @@ export function FeaturedProducts({
 
   // Map backend products directly to visual structure
   const uiProducts: ProductUI[] = products.map((p) => {
-    const rating = (p.id % 5) * 0.1 + 4.5;
-    const reviews = p.id * 17 + 23;
-    const stock = p.stock_quantity - p.reserved_quantity - p.sold_quantity;
+    const rating = p.rating_avg ?? null;
+    const reviews = p.review_count ?? 0;
+    const stock = getAvailableStock(p);
     
-    let badge = undefined;
-    let badgeColor = undefined;
-    if (p.id % 4 === 0) {
-      badge = "New Arrival";
-      badgeColor = "bg-emerald-100 text-emerald-700";
-    } else if (p.id % 3 === 0) {
-      badge = "Sale";
-      badgeColor = "bg-rose-100 text-rose-700";
-    } else if (p.id % 5 === 0) {
-      badge = "Best Seller";
-      badgeColor = "bg-amber-100 text-amber-700";
-    }
-    
-    let img = "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&h=600&fit=crop&q=80";
-    if (p.images && p.images.length > 0) {
-      img = p.images[0].url;
-    }
+    const img = getProductImageUrl(p);
     
     return {
+      source: p,
       id: p.id,
       name: p.name,
       category: p.category?.name || "General",
       price: p.price,
-      originalPrice: p.id % 3 === 0 ? Math.round(p.price * 1.25) : undefined,
       rating,
       reviews,
       stock,
-      badge,
-      badgeColor,
       img,
       description: p.description || "Premium quality item for everyday use."
     };
@@ -490,9 +338,11 @@ export function FeaturedProducts({
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                className="w-full max-w-2xl bg-white border border-sky-200 rounded-2xl p-5 shadow-sm space-y-4 overflow-hidden"
+                className="w-full max-w-2xl space-y-4 overflow-hidden"
               >
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <FashionFilters />
+                <div className="bg-white border border-sky-200 rounded-2xl p-5 shadow-sm space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* Min Price */}
                   <div>
                     <label className="text-xs font-bold text-slate-700 mb-1 block">Min Price ($)</label>
@@ -573,7 +423,8 @@ export function FeaturedProducts({
                     Reset Filters
                   </button>
                 </div>
-              </motion.div>
+              </div>
+            </motion.div>
             )}
           </AnimatePresence>
 
@@ -644,14 +495,6 @@ export function FeaturedProducts({
       </div>
 
       <AnimatePresence>
-        {selectedProduct && (
-          <PurchaseModal
-            product={selectedProduct}
-            currentUser={currentUser}
-            onClose={() => setSelectedProduct(null)}
-            onOrderSuccess={onOrderSuccess}
-          />
-        )}
         {quickViewProduct && (
           <QuickViewModal
             product={quickViewProduct}

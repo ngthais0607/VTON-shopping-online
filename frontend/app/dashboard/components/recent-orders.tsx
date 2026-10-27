@@ -1,3 +1,4 @@
+import { displayDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import {
@@ -8,20 +9,22 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Order } from '@/lib/types';
+import { RecentOrderSummary } from '@/lib/types';
 import { format } from 'date-fns';
 
 interface RecentOrdersProps {
-  orders: Order[];
+  orders: RecentOrderSummary[];
 }
 
 export function RecentOrders({ orders }: RecentOrdersProps) {
-  const getStatusColor = (status: Order['status']) => {
+  const getStatusColor = (status: RecentOrderSummary['status']) => {
     switch (status) {
       case 'paid':
         return 'bg-green-100 text-green-800';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800';
+      case 'confirmed':
+        return 'bg-blue-100 text-blue-800';
       case 'expired':
         return 'bg-gray-100 text-gray-800';
       case 'cancelled':
@@ -31,9 +34,9 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
     }
   };
 
-  const getPaymentStatusColor = (status: Order['payment_status']) => {
+  const getPaymentStatusColor = (status: RecentOrderSummary['payment_status']) => {
     switch (status) {
-      case 'completed':
+      case 'paid':
         return 'bg-green-50 text-green-700 border-green-200';
       case 'pending':
         return 'bg-yellow-50 text-yellow-700 border-yellow-200';
@@ -89,7 +92,7 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
                   </div>
                 </TableCell>
                 <TableCell className="text-right text-slate-600 text-sm">
-                  {format(new Date(order.created_at), 'MMM dd')}
+                  {displayDate(order.created_at, 'MMM dd')}
                 </TableCell>
               </TableRow>
             ))}

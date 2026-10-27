@@ -2,14 +2,7 @@
 
 import useSWR from "swr";
 import { swrFetcher } from "@/lib/swr-config";
-import { Product } from "@/lib/types";
-
-type PaginatedProducts = {
-  items: Product[];
-  total: number;
-  page: number;
-  limit: number;
-};
+import { Product, Page } from "@/lib/types";
 
 export interface UseProductsParams {
   page?: number;
@@ -21,6 +14,10 @@ export interface UseProductsParams {
   is_active?: boolean | null;
   stock_status?: string | null;
   sort_by?: string | null;
+  gender?: string | null;
+  brand?: string | null;
+  size?: string | null;
+  color?: string | null;
 }
 
 export function useProducts(params?: UseProductsParams) {
@@ -46,18 +43,30 @@ export function useProducts(params?: UseProductsParams) {
     query.append("stock_status", params.stock_status);
   }
   if (params?.sort_by && params.sort_by !== "latest") {
-    query.append("sort_by", params.sort_by);
+    query.append("sort", params.sort_by);
+  }
+  if (params?.gender && params.gender !== "all") {
+    query.append("gender", params.gender);
+  }
+  if (params?.brand && params.brand !== "all") {
+    query.append("brand", params.brand);
+  }
+  if (params?.size && params.size !== "all") {
+    query.append("size", params.size);
+  }
+  if (params?.color && params.color !== "all") {
+    query.append("color", params.color);
   }
 
   const queryString = query.toString();
-  const url = queryString ? `/products/?${queryString}` : "/products/";
+  const url = queryString ? `/products?${queryString}` : "/products";
 
-  const { data, error, isLoading, mutate } = useSWR<PaginatedProducts>(url, swrFetcher);
+  const { data, error, isLoading, mutate } = useSWR<Page<Product>>(url, swrFetcher);
 
   return {
     products: data?.items ?? [],
     total: data?.total ?? 0,
-    page: data?.page ?? 1,
+    page: params?.page ?? 1,
     limit: data?.limit ?? 10,
     isLoading,
     isError: !!error,

@@ -1,10 +1,13 @@
 // Path: frontend/app/orders/page.tsx
 "use client";
+import { displayDate, formatCurrency } from '@/lib/utils';
 
-import { useState } from "react";
+
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { MoreVertical, Eye, Edit2 } from "lucide-react";
 
+import { PaginationControls } from '@/components/pagination-controls';
 import { useOrders } from "@/hooks/use-orders";
 import { Order } from "@/lib/types";
 import { Header } from "@/components/header";
@@ -43,6 +46,11 @@ function getStatusColor(status: string) {
       return "bg-emerald-50 text-emerald-700 border-emerald-200";
     case "pending":
       return "bg-amber-50 text-amber-700 border-amber-200";
+    case "confirmed":
+    case "shipped":
+      return "bg-blue-50 text-blue-700 border-blue-200";
+    case "delivered":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
     case "cancelled":
       return "bg-rose-50 text-rose-700 border-rose-200";
     case "expired":
@@ -61,6 +69,7 @@ function getPaymentStatusColor(status: string) {
       return "bg-amber-100 text-amber-800 border-amber-300";
     case "failed":
     case "expired":
+    case "cancelled":
       return "bg-rose-100 text-rose-800 border-rose-300";
     default:
       return "bg-slate-100 text-slate-800 border-slate-300";
@@ -68,7 +77,9 @@ function getPaymentStatusColor(status: string) {
 }
 
 export default function OrdersPage() {
-  const { orders, isLoading: loading, mutate } = useOrders();
+  const [page, setPage] = useState(1);
+  const { orders, total, error, isLoading: loading, mutate } = useOrders({page});
+  useEffect(() => { if (!loading && !error && page > 1 && orders.length === 0) setPage(page - 1); }, [loading, error, page, orders.length]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -81,10 +92,12 @@ export default function OrdersPage() {
 
       <main className="flex-1 p-8">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold text-slate-800">All Orders ({orders.length})</h2>
+          <h2 className="text-lg font-bold text-slate-800">All Orders ({total})</h2>
           <ExportCSVButton orders={orders} />
         </div>
 
+        {error && <p role="alert">{error.message}<button onClick={()=>mutate()}>Retry</button></p>}
+        <PaginationControls page={page} pageSize={10} total={total} onPageChange={setPage} disabled={loading}/>
         {loading ? (
           <Card className="p-8 text-center text-slate-600">
             <span className="flex items-center justify-center gap-2">
@@ -116,13 +129,13 @@ export default function OrdersPage() {
                         #{order.id}
                       </TableCell>
                       <TableCell className="text-slate-600">
-                        {order.product_name}
+                        {order.product_name || (order.items && order.items.length > 0 ? (order.items.length === 1 ? order.items[0].product_name : `${order.items[0].product_name} (+${order.items.length - 1})`) : "N/A")}
                       </TableCell>
                       <TableCell className="text-slate-600">
-                        {order.quantity}
+                        {order.quantity ?? (order.items ? order.items.reduce((acc, it) => acc + it.quantity, 0) : 1)}
                       </TableCell>
                       <TableCell className="font-semibold text-slate-900">
-                        ${orderTotal.toFixed(2)}
+                        {formatCurrency(orderTotal, order.currency)}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -142,7 +155,7 @@ export default function OrdersPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right text-slate-600 text-sm">
-                        {order.created_at ? format(new Date(order.created_at), "MMM dd, yyyy") : "N/A"}
+                        {order.created_at ? displayDate(order.created_at, "MMM dd, yyyy") : "N/A"}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -186,7 +199,7 @@ export default function OrdersPage() {
           <DialogHeader>
             <DialogTitle>Order #{selectedOrder?.id} Details</DialogTitle>
             <DialogDescription>
-              Created on {selectedOrder?.created_at ? format(new Date(selectedOrder.created_at), "PPP p") : "N/A"}
+              Created on {selectedOrder?.created_at ? displayDate(selectedOrder.created_at, "PPP p") : "N/A"}
             </DialogDescription>
           </DialogHeader>
           {selectedOrder && (
@@ -196,21 +209,44 @@ export default function OrdersPage() {
                   <span className="text-slate-500">Customer ID:</span>
                   <span className="font-medium text-slate-900">#{selectedOrder.user_id}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Product Name:</span>
-                  <span className="font-medium text-slate-900">{selectedOrder.product_name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Unit Price:</span>
-                  <span className="font-medium text-slate-900">${selectedOrder.unit_price.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Quantity:</span>
-                  <span className="font-medium text-slate-900">{selectedOrder.quantity}</span>
-                </div>
+                {selectedOrder.items && selectedOrder.items.length > 0 ? (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Items ({selectedOrder.items.length})</span>
+                    {selectedOrder.items.map((it, idx) => (
+                      <div key={idx} className="flex justify-between items-start text-xs py-1.5 border-b last:border-b-0">
+                        <div>
+                          <span className="text-slate-800 font-medium">{it.product_name}</span>
+                          {(it.size || it.color_name) && (
+                            <span className="text-slate-500 block text-[11px]">
+                              {[it.size && `Size: ${it.size}`, it.color_name && `Màu: ${it.color_name}`].filter(Boolean).join(" · ")}
+                            </span>
+                          )}
+                          {it.sku && <span className="text-slate-400 font-mono block text-[10px]">SKU: {it.sku}</span>}
+                          <span className="text-slate-500 block text-[11px]">Qty: {it.quantity}</span>
+                        </div>
+                        <span className="font-medium text-slate-900">{formatCurrency(it.subtotal ?? (it.unit_price * it.quantity), selectedOrder.currency)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Product Name:</span>
+                      <span className="font-medium text-slate-900">{selectedOrder.product_name || "N/A"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Unit Price:</span>
+                      <span className="font-medium text-slate-900">{formatCurrency(selectedOrder.unit_price ?? 0, selectedOrder.currency)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Quantity:</span>
+                      <span className="font-medium text-slate-900">{selectedOrder.quantity ?? 1}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between border-t pt-2 mt-2">
                   <span className="font-semibold text-slate-700">Total Amount:</span>
-                  <span className="font-bold text-slate-900">${(selectedOrder.total ?? selectedOrder.total_amount ?? 0).toFixed(2)}</span>
+                  <span className="font-bold text-slate-900">{formatCurrency(selectedOrder.total ?? selectedOrder.total_amount ?? 0, selectedOrder.currency)}</span>
                 </div>
               </div>
 
@@ -237,13 +273,13 @@ export default function OrdersPage() {
                 {selectedOrder.expires_at && selectedOrder.status === "pending" && (
                   <div className="flex justify-between text-amber-600">
                     <span>Expires At:</span>
-                    <span className="font-medium">{format(new Date(selectedOrder.expires_at), "yyyy-MM-dd HH:mm")}</span>
+                    <span className="font-medium">{displayDate(selectedOrder.expires_at, "yyyy-MM-dd HH:mm")}</span>
                   </div>
                 )}
                 {selectedOrder.paid_at && (
                   <div className="flex justify-between">
                     <span>Paid At:</span>
-                    <span className="font-medium text-green-600">{format(new Date(selectedOrder.paid_at), "yyyy-MM-dd HH:mm")}</span>
+                    <span className="font-medium text-green-600">{displayDate(selectedOrder.paid_at, "yyyy-MM-dd HH:mm")}</span>
                   </div>
                 )}
               </div>

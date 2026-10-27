@@ -6,9 +6,11 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { apiGet, apiPut } from '@/lib/api';
+import { logoutSession } from '@/lib/api';
+import { registerSchema } from '@/lib/validations/auth';
+import { apiGet, apiPatch } from '@/lib/api';
 import { User } from '@/lib/types';
-import { UserCheck, KeyRound, Store, Bell, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UserCheck, KeyRound, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -25,10 +27,6 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // States cho Form Cấu hình Store (lưu LocalStorage)
-  const [storeName, setStoreName] = useState('My eCommerce Store');
-  const [currency, setCurrency] = useState('USD');
-
   // Load thông tin User đăng nhập
   useEffect(() => {
     async function loadSettings() {
@@ -40,13 +38,6 @@ export default function SettingsPage() {
         setEmail(user.email || '');
         setUsername(user.username || '');
 
-        // Load store settings từ localStorage nếu có
-        const savedStore = localStorage.getItem('store_settings');
-        if (savedStore) {
-          const parsed = JSON.parse(savedStore);
-          setStoreName(parsed.storeName || 'My eCommerce Store');
-          setCurrency(parsed.currency || 'USD');
-        }
       } catch (err) {
         console.error('Failed to load user settings', err);
       } finally {
@@ -66,7 +57,7 @@ export default function SettingsPage() {
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiPut('/users/me', {
+      await apiPatch('/users/me', {
         first_name: firstName,
         last_name: lastName,
         email,
@@ -88,11 +79,13 @@ export default function SettingsPage() {
       return;
     }
     try {
-      await apiPut('/users/me/password', {
+      const checked = registerSchema.shape.password.safeParse(newPassword);
+      if (!checked.success) throw new Error(checked.error.issues[0]?.message);
+      await apiPatch('/users/me/password', {
         current_password: currentPassword,
         new_password: newPassword,
       });
-      triggerNotification('success', 'Password updated successfully!');
+      try { await logoutSession(); } finally { window.location.href = '/login'; }
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -101,18 +94,11 @@ export default function SettingsPage() {
     }
   };
 
-  // 3. Submit lưu cấu hình Store vào LocalStorage
-  const handleSaveStoreSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    localStorage.setItem('store_settings', JSON.stringify({ storeName, currency }));
-    triggerNotification('success', 'Store configurations saved successfully!');
-  };
-
   return (
     <div className="flex flex-col min-h-screen bg-slate-50/50">
       <Header
         title="Settings"
-        subtitle="Manage your personal admin account, security credentials, and store configurations"
+        subtitle="Manage your profile and password"
       />
 
       <main className="flex-1 p-8 max-w-4xl mx-auto w-full space-y-6">
@@ -148,12 +134,6 @@ export default function SettingsPage() {
               </TabsTrigger>
               <TabsTrigger value="security" className="rounded-lg py-2 px-4 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm">
                 <KeyRound className="w-4 h-4 mr-2" /> Security
-              </TabsTrigger>
-              <TabsTrigger value="store" className="rounded-lg py-2 px-4 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm">
-                <Store className="w-4 h-4 mr-2" /> Store Settings
-              </TabsTrigger>
-              <TabsTrigger value="notifications" className="rounded-lg py-2 px-4 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm">
-                <Bell className="w-4 h-4 mr-2" /> Notifications
               </TabsTrigger>
             </TabsList>
 
@@ -248,7 +228,7 @@ export default function SettingsPage() {
                         type="password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Minimum 6 characters"
+                        placeholder="Minimum 8 characters"
                         required
                         className="bg-white rounded-xl py-2.5"
                       />
@@ -275,66 +255,6 @@ export default function SettingsPage() {
               </form>
             </TabsContent>
 
-            {/* 3. Store Tab */}
-            <TabsContent value="store">
-              <form onSubmit={handleSaveStoreSettings}>
-                <Card className="p-6 border border-slate-100 bg-white shadow-sm rounded-2xl space-y-6">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-950">Store Preferences</h3>
-                    <p className="text-slate-400 text-xs mt-1">Configure global variables for the client storefront interface</p>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Store Branding Name</label>
-                      <Input
-                        value={storeName}
-                        onChange={(e) => setStoreName(e.target.value)}
-                        placeholder="e.g. Acme Corporation"
-                        required
-                        className="bg-white rounded-xl py-2.5"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Default Currency</label>
-                      <Input
-                        value={currency}
-                        onChange={(e) => setCurrency(e.target.value)}
-                        placeholder="e.g. USD, VND, EUR"
-                        required
-                        className="bg-white rounded-xl py-2.5"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100">
-                    <Button type="submit" className="rounded-xl px-6 py-2.5 bg-slate-950 text-white hover:bg-slate-900 transition-colors">
-                      Save Store Configurations
-                    </Button>
-                  </div>
-                </Card>
-              </form>
-            </TabsContent>
-
-            {/* 4. Notifications Tab */}
-            <TabsContent value="notifications">
-              <Card className="p-6 border border-slate-100 bg-white shadow-sm rounded-2xl space-y-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-950">Notification Preferences</h3>
-                  <p className="text-slate-400 text-xs mt-1">Configure email alerts on order completions and stock alerts</p>
-                </div>
-
-                <div className="py-6 border-y border-slate-100 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">Email Notifications</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Receive alerts when client places pending orders</p>
-                  </div>
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-50 text-slate-600 border">
-                    Disabled
-                  </span>
-                </div>
-              </Card>
-            </TabsContent>
           </Tabs>
         )}
       </main>

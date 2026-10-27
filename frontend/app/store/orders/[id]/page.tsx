@@ -3,8 +3,8 @@
 import { useEffect, useState, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { apiGet } from "@/lib/api";
-import { User } from "@/lib/types";
+import { apiGet, ApiError } from "@/lib/api";
+import { TrackingResponse } from "@/lib/types";
 import { Header } from "../../components/Header";
 import { Footer } from "../../components/Footer";
 import { 
@@ -23,83 +23,40 @@ import {
   ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-
-interface TimelineStep {
-  step: number;
-  title: string;
-  description: string;
-  completed: boolean;
-  timestamp?: string | null;
-}
-
-interface VietQRData {
-  qr_url: string;
-  bank_id: string;
-  bank_name: string;
-  account_no: string;
-  account_name: string;
-  memo: string;
-  amount: number;
-}
-
-interface OrderTrackData {
-  id: number;
-  user_id: number | null;
-  product_id: number;
-  product_name: string;
-  unit_price: number;
-  quantity: number;
-  total_amount: number;
-  currency: string;
-  status: string;
-  payment_status: string;
-  expires_at: string | null;
-  paid_at: string | null;
-  created_at: string;
-  vietqr: VietQRData;
-  timeline: TimelineStep[];
-}
+import { useSession } from "@/hooks/use-session";
+import { formatCurrency } from "@/lib/utils";
 
 export default function OrderTrackingPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const orderId = resolvedParams.id;
   const router = useRouter();
 
-  const [order, setOrder] = useState<OrderTrackData | null>(null);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [order, setOrder] = useState<TrackingResponse | null>(null);
+  const { user: currentUser } = useSession();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [copiedMemo, setCopiedMemo] = useState(false);
   const [copiedAccount, setCopiedAccount] = useState(false);
 
   const fetchTrackingData = useCallback(async () => {
+    setError(null);
     try {
-      const data = await apiGet<OrderTrackData>(`/orders/track/${orderId}`);
+      const data = await apiGet<TrackingResponse>(`/orders/track/${orderId}`);
       setOrder(data);
     } catch (err) {
-      console.error("Failed to load tracking data", err);
+      if (err instanceof ApiError && err.status === 403) {setOrder(null);setError('You cannot access this order.');}
+      else if (err instanceof ApiError && err.status === 404) {setOrder(null);setError('Order not found.');}
+      else setError(err instanceof Error ? err.message : 'Unable to load order.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, [orderId]);
 
-  const loadUserData = useCallback(async () => {
-    try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      if (token) {
-        const user = await apiGet<User>("/users/me").catch(() => null);
-        setCurrentUser(user);
-      }
-    } catch (e) {
-      console.error("Error loading user", e);
-    }
-  }, []);
-
   useEffect(() => {
-    loadUserData();
     fetchTrackingData();
-  }, [loadUserData, fetchTrackingData]);
+  }, [fetchTrackingData]);
 
   // Auto-polling for pending orders every 5 seconds
   useEffect(() => {
@@ -137,6 +94,30 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           color: "bg-sky-100 text-sky-800 border-sky-200 animate-pulse",
           icon: <Clock className="w-4 h-4 text-sky-600 animate-spin" style={{ animationDuration: "4s" }} />
         };
+      case "confirmed":
+        return {
+          label: "COD Confirmed",
+          color: "bg-blue-100 text-blue-800 border-blue-200",
+          icon: <CheckCircle2 className="w-4 h-4 text-blue-600" />
+        };
+      case "shipped":
+        return {
+          label: "Shipped",
+          color: "bg-blue-100 text-blue-800 border-blue-200",
+          icon: <Package className="w-4 h-4 text-blue-600" />
+        };
+      case "delivered":
+        return {
+          label: "Delivered",
+          color: "bg-emerald-100 text-emerald-800 border-emerald-200",
+          icon: <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+        };
+      case "cancelled":
+        return {
+          label: "Order Cancelled",
+          color: "bg-rose-100 text-rose-800 border-rose-200",
+          icon: <AlertCircle className="w-4 h-4 text-rose-600" />
+        };
       case "expired":
         return {
           label: "Order Expired",
@@ -146,8 +127,8 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
       default:
         return {
           label: status,
-          color: "bg-rose-100 text-rose-800 border-rose-200",
-          icon: <AlertCircle className="w-4 h-4 text-rose-600" />
+          color: "bg-slate-100 text-slate-800 border-slate-200",
+          icon: <AlertCircle className="w-4 h-4 text-slate-600" />
         };
     }
   };
@@ -166,6 +147,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
           Back to My Orders
         </button>
 
+        {error && <p role="alert">{error}<button onClick={()=>fetchTrackingData()}>Retry</button></p>}
         {loading ? (
           <div className="bg-white border border-sky-100 rounded-3xl p-16 text-center shadow-xs">
             <div className="w-10 h-10 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin mx-auto mb-4" />
@@ -194,9 +176,9 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                     <Sparkles className="w-3.5 h-3.5" />
                     Live Order Tracker
                   </div>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Order #{order.id}</h1>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Order #{order.public_code || order.id}</h1>
                   <p className="text-sky-100 text-xs sm:text-sm mt-1">
-                    Placed on {new Date(order.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                    Placed on {order.created_at ? new Date(order.created_at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "N/A"}
                   </p>
                 </div>
 
@@ -222,12 +204,12 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
 
-            {/* Auto-reconciling Banner for Pending Orders */}
+            {/* Payment verification banner for pending orders */}
             {order.status === "pending" && (
               <div className="bg-sky-50/80 border border-sky-200 rounded-2xl p-4 flex items-center justify-between gap-4 text-xs font-semibold text-sky-900 backdrop-blur-md">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-ping" />
-                  <span>Real-time payment reconciliation active. Checking status every 5s...</span>
+                  <span>Awaiting administrator payment verification. Refreshing every 5s...</span>
                 </div>
                 <span className="text-sky-700 font-bold hidden sm:inline">Keep window open</span>
               </div>
@@ -274,11 +256,11 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
               >
                 <div className="text-center md:text-left space-y-4">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-100 text-sky-800 text-xs font-bold uppercase tracking-wider">
-                    <QrCode className="w-3.5 h-3.5 text-sky-600" /> Automated VietQR
+                    <QrCode className="w-3.5 h-3.5 text-sky-600" /> VietQR Transfer
                   </span>
                   <h3 className="text-xl font-extrabold text-slate-900">Scan QR Code to Pay</h3>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    Open your banking app (MB, Vietcombank, Techcombank, etc.) and scan the QR code. Your order will reconcile automatically in seconds.
+                    Open your banking app (MB, Vietcombank, Techcombank, etc.) and scan the QR code. An administrator verifies the transfer before updating your order.
                   </p>
 
                   <div className="space-y-3 pt-2">
@@ -292,7 +274,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-slate-900 font-mono">{order.vietqr.account_no}</span>
                         <button
-                          onClick={() => handleCopy(order.vietqr.account_no, "account")}
+                          onClick={() => handleCopy(order.vietqr!.account_no, "account")}
                           className="p-1 text-slate-400 hover:text-sky-600 transition-colors"
                           title="Copy Account Number"
                         >
@@ -306,7 +288,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-sky-700 font-mono">{order.vietqr.memo}</span>
                         <button
-                          onClick={() => handleCopy(order.vietqr.memo, "memo")}
+                          onClick={() => handleCopy(order.vietqr!.memo, "memo")}
                           className="p-1 text-sky-600 hover:text-sky-800 transition-colors"
                           title="Copy Transfer Memo"
                         >
@@ -327,7 +309,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                     />
                   </div>
                   <p className="text-[11px] text-slate-500 font-medium mt-4 text-center">
-                    Amount: <strong className="text-sky-600 font-extrabold text-sm">${order.total_amount.toLocaleString()}</strong>
+                    Amount: <strong className="text-sky-600 font-extrabold text-sm">{formatCurrency(order.total_amount, order.currency)}</strong>
                   </p>
                 </div>
               </motion.div>
@@ -337,26 +319,50 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
             <div className="bg-white rounded-3xl p-8 border border-sky-100 shadow-sm space-y-6">
               <h3 className="text-base font-extrabold text-slate-900">Order Items & Summary</h3>
 
-              <div className="flex items-center justify-between py-4 border-y border-slate-100 text-sm">
-                <div>
-                  <h4 className="font-bold text-slate-900">{order.product_name}</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">Quantity: {order.quantity} x ${order.unit_price.toFixed(2)}</p>
+              {order.items && order.items.length > 0 ? (
+                <div className="divide-y divide-slate-100 border-y border-slate-100">
+                  {order.items.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between py-3 text-sm">
+                      <div>
+                        <h4 className="font-bold text-slate-900">{item.product_name}</h4>
+                        {(item.size || item.color_name) && (
+                          <p className="text-xs text-slate-600 font-medium mt-0.5">
+                            {[item.size && `Size ${item.size}`, item.color_name && `Màu ${item.color_name}`].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
+                        {item.sku && <p className="text-[11px] text-slate-400 font-mono mt-0.5">SKU: {item.sku}</p>}
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Quantity: {item.quantity}{item.unit_price != null ? ` x ${formatCurrency(item.unit_price, order.currency)}` : ""}
+                        </p>
+                      </div>
+                      {item.subtotal != null && (
+                        <span className="font-extrabold text-slate-900">{formatCurrency(item.subtotal, order.currency)}</span>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <span className="font-extrabold text-slate-900">${(order.unit_price * order.quantity).toFixed(2)}</span>
-              </div>
+              ) : (
+                <div className="flex items-center justify-between py-4 border-y border-slate-100 text-sm">
+                  <div>
+                    <h4 className="font-bold text-slate-900">{order.product_name || "Order Items"}</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Quantity: {order.quantity ?? 1}</p>
+                  </div>
+                  <span className="font-extrabold text-slate-900">{formatCurrency(order.total_amount, order.currency)}</span>
+                </div>
+              )}
 
               <div className="space-y-2 text-xs text-slate-600">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold text-slate-900">${order.total_amount.toFixed(2)}</span>
+                  <span className="font-semibold text-slate-900">{formatCurrency(order.total_amount, order.currency)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Express Dispatch & Shipping</span>
-                  <span className="font-bold text-emerald-600">FREE</span>
+                  <span className="font-bold text-emerald-600">Miễn phí</span>
                 </div>
                 <div className="flex justify-between pt-3 border-t border-slate-100 text-sm font-extrabold text-slate-900">
-                  <span>Total Paid</span>
-                  <span className="text-sky-600 text-base">${order.total_amount.toFixed(2)}</span>
+                  <span>Order Total</span>
+                  <span className="text-sky-600 text-base">{formatCurrency(order.total_amount, order.currency)}</span>
                 </div>
               </div>
             </div>
