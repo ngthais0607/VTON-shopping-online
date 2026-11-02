@@ -1,6 +1,5 @@
-import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { describe,expect,it,vi } from "vitest";
 
 import ProductDetailPage from "@/app/store/products/[slug]/page";
 import type { Product } from "@/lib/types";
@@ -169,16 +168,16 @@ describe("ProductDetailPage", () => {
     render(<ProductDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Bảng size/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /size guide/i })).toBeInTheDocument();
     });
 
-    const sizeGuideBtn = screen.getByText(/Bảng size/i);
+    const sizeGuideBtn = screen.getByRole("button", { name: /size guide/i });
     fireEvent.click(sizeGuideBtn);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText(/Bảng thông số kích cỡ/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /size guide/i })).toBeInTheDocument();
 
-    const closeBtn = screen.getByLabelText("Đóng");
+    const closeBtn = screen.getByLabelText("Close");
     fireEvent.click(closeBtn);
 
     await waitFor(() => {
@@ -191,7 +190,7 @@ describe("ProductDetailPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/80%/)).toBeInTheDocument();
-      expect(screen.getByText(/Chuẩn size/i)).toBeInTheDocument();
+      expect(screen.getByText(/True to size/i)).toBeInTheDocument();
     });
   });
 });

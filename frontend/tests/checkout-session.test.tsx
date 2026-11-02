@@ -1,10 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
-import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act,render,screen,waitFor } from '@testing-library/react';
 import { SWRConfig } from 'swr';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach,beforeEach,expect,it,vi } from 'vitest';
 import CheckoutPage from '../app/store/checkout/page';
-import { setAccessToken, clearAccessToken } from '../lib/session';
+import { clearAccessToken,setAccessToken } from '../lib/session';
 const { get } = vi.hoisted(() => ({get:vi.fn()}));
 vi.mock('@/lib/api', () => ({apiGet:get, apiPost:vi.fn(), logoutSession:vi.fn()}));
 vi.mock('next/navigation', () => ({useRouter:() => ({push:vi.fn()})}));

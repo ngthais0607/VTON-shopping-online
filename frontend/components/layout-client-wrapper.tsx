@@ -38,6 +38,6 @@ function GuardedLayout({ children, sessionReady }: { children: React.ReactNode; 
     return <div role="alert" className="p-8">{error.message} <button onClick={() => window.location.reload()}>Retry</button></div>;
   }
   if (!isPublic && (!sessionReady || isLoading || !user || (adminPage && user.role !== 'admin'))) return <div className="p-8">Verifying access...</div>;
-  if (adminPage) return <div className="flex min-h-screen bg-slate-50"><Sidebar/><div className="flex-1 overflow-x-hidden">{children}</div></div>;
-  return <div className="w-full min-h-screen bg-slate-50">{children}</div>;
+  if (adminPage) return <div className="admin-workspace flex min-h-screen flex-col lg:flex-row"><Sidebar/><div className="min-w-0 flex-1">{children}</div></div>;
+  return <div className="w-full min-h-screen bg-background">{children}</div>;
 }

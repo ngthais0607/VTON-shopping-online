@@ -1,9 +1,7 @@
-import { expect, it } from 'vitest';
-import { loginSchema, registerSchema } from '../lib/validations/auth';
-import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { vi } from 'vitest';
+import { fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { expect,it,vi } from 'vitest';
 import { AuthContainer } from '../components/auth/auth-container';
+import { loginSchema,registerSchema } from '../lib/validations/auth';
 const {post,get,push} = vi.hoisted(()=>({post:vi.fn(),get:vi.fn(),push:vi.fn()}));
 vi.mock('@/lib/api',()=>({apiPost:post,apiGet:get,loginSession:(identifier:string,password:string)=>post('/users/login',{identifier,password})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push,refresh:()=>{}})}));

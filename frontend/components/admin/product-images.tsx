@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { Trash2 } from "lucide-react";
 import { apiDelete } from "@/lib/api";
-import type { ProductImage } from "@/lib/types";
+import { PRODUCT_IMAGE_KINDS, type ProductImage, type ProductImageKind } from "@/lib/types";
 import { ImageUploader } from "@/components/image-uploader";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
@@ -16,9 +16,21 @@ interface Props {
   onUploadSuccess: (url: string) => void;
   onFileSelected?: (file: File | null) => void;
   onBusyChange?: (busy: boolean) => void;
+  /** Colour names of the product's variants, offered when tagging an image. */
+  colors?: string[];
 }
 
-export function AdminProductImages({ productId, images = [], onImagesChange, onUploadSuccess, onFileSelected, onBusyChange }: Props) {
+const KIND_LABELS: Record<ProductImageKind, string> = {
+  model_photo: "Model photo",
+  flat_lay: "Flat lay (garment only)",
+  detail: "Detail",
+  size_chart: "Size chart",
+  catalog: "Catalog",
+};
+
+export function AdminProductImages({ productId, images = [], onImagesChange, onUploadSuccess, onFileSelected, onBusyChange, colors = [] }: Props) {
+  const [kind, setKind] = useState<ProductImageKind>("model_photo");
+  const [colorName, setColorName] = useState("");
   const [selected, setSelected] = useState<ProductImage | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -49,25 +61,60 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
 
   return (
     <section className="space-y-4" aria-label="Product images">
+      {productId && (
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-xs font-semibold text-foreground">
+            Image type
+            <select
+              value={kind}
+              disabled={uploading}
+              onChange={event => setKind(event.target.value as ProductImageKind)}
+              className="mt-1 block w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm font-normal"
+            >
+              {PRODUCT_IMAGE_KINDS.map(value => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-semibold text-foreground">
+            Colour
+            <select
+              value={colorName}
+              disabled={uploading}
+              onChange={event => setColorName(event.target.value)}
+              className="mt-1 block w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm font-normal"
+            >
+              <option value="">All colours</option>
+              {colors.map(color => <option key={color} value={color}>{color}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
       <ImageUploader
         productId={productId}
+        kind={kind}
+        colorName={colorName || null}
+        isPrimary={kind === "model_photo"}
         currentImageUrl={cover?.url}
         onFileSelected={onFileSelected}
         onBusyChange={busy => { setUploading(busy); onBusyChange?.(busy); }}
-        onImageUploaded={image => onImagesChange([image, ...images.filter(previous => previous.id !== image.id).map(previous => ({ ...previous, is_primary: false }))])}
+        onImageUploaded={image => {
+          const others = images.filter(previous => previous.id !== image.id);
+          onImagesChange(image.is_primary
+            ? [image, ...others.map(previous => ({ ...previous, is_primary: false }))]
+            : [...others, image]);
+        }}
         onUploadSuccess={onUploadSuccess}
       />
       {productId && images.length > 0 && (
         <div>
-          <p className="mb-2 text-xs text-slate-500">Changing the image saves a new cover immediately. Previous images stay in the gallery until you delete them.</p>
+          <p className="mb-2 text-xs text-muted-foreground">Uploading a model photo saves a new cover immediately. Other image types are added to the gallery. Previous images stay until you delete them.</p>
           <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {images.map((image, index) => (
-              <li key={image.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                <div className="relative aspect-square bg-slate-50">
+              <li key={image.id} className="overflow-hidden rounded-md border border-border bg-white">
+                <div className="relative aspect-square bg-background">
                   <Image src={image.url} alt={`Product image ${index + 1}`} fill sizes="160px" className="object-contain" />
                 </div>
                 <div className="flex items-center justify-between gap-2 p-2">
-                  <span className="text-xs text-slate-600">{image.id === cover?.id ? "Cover image" : `Image ${index + 1}`}</span>
+                  <span className="text-xs text-muted-foreground">{image.id === cover?.id ? "Cover image" : `Image ${index + 1}`}{image.kind && image.kind !== "model_photo" ? ` · ${KIND_LABELS[image.kind] ?? image.kind}` : ""}{image.color_name ? ` · ${image.color_name}` : ""}</span>
                   <Button type="button" variant="ghost" size="sm" aria-label={`Delete image ${index + 1}`} disabled={deleting || uploading} onClick={() => { setError(null); setSelected(image); }}>
                     <Trash2 className="h-4 w-4 text-rose-600" />
                   </Button>
@@ -78,7 +125,7 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
         </div>
       )}
       <AlertDialog open={!!selected} onOpenChange={open => { if (!open && !deleting) setSelected(null); }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="admin-dialog">
           <AlertDialogTitle>Delete product image?</AlertDialogTitle>
           <AlertDialogDescription>The selected image will be removed from this product and storage. Other images will be kept.</AlertDialogDescription>
           {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}

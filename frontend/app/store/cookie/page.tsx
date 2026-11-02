@@ -1,17 +1,12 @@
-import { Header } from "../components/Header";
-import { Footer } from "../components/Footer";
+import { ContentPage, ContentSection } from "../content-page";
 
-export const metadata = { title: "Cookies and browser storage | TrueLook" };
+export const metadata = { title: "Cookies & storage | TrueLook" };
 
 export default function Page() {
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <Header currentUser={null} />
-      <main className="flex-1 pt-28 pb-16 px-6 max-w-3xl mx-auto w-full">
-        <h1 className="text-3xl font-bold text-slate-900">Cookies and browser storage</h1>
-        <p className="mt-6 text-slate-600 leading-relaxed">Sign-in uses an HttpOnly refresh cookie; access tokens stay in memory. The cart and wishlist use local browser storage. Wishlist items do not sync between devices. Signing out revokes the current refresh session; issued access tokens expire normally.</p>
-      </main>
-      <Footer />
-    </div>
+    <ContentPage eyebrow="Cookies & storage" title="Keeping the essentials." description="How the app maintains your session and saves your choices in your browser.">
+      <ContentSection number="01" title="Sign-in sessions"><p>Sign-in uses an HttpOnly refresh cookie. The access token stays in app memory.</p><p>Signing out revokes the current refresh session; an issued access token expires at its scheduled expiry time.</p></ContentSection>
+      <ContentSection number="02" title="Bag & saved items"><p>Your bag and saved items use local browser storage. Saved items do not sync across accounts or devices.</p><p>Clearing site data in your browser may remove choices saved on that device.</p></ContentSection>
+    </ContentPage>
   );
 }

@@ -1,16 +1,15 @@
-import { displayDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+Table,
+TableBody,
+TableCell,
+TableHead,
+TableHeader,
+TableRow,
 } from '@/components/ui/table';
 import { RecentOrderSummary } from '@/lib/types';
-import { format } from 'date-fns';
+import { displayDate,formatCurrency } from '@/lib/utils';
 
 interface RecentOrdersProps {
   orders: RecentOrderSummary[];
@@ -30,7 +29,7 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
       case 'cancelled':
         return 'bg-red-100 text-red-800';
       default:
-        return 'bg-slate-100 text-slate-800';
+        return 'bg-secondary text-foreground';
     }
   };
 
@@ -43,36 +42,37 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
       case 'failed':
         return 'bg-red-50 text-red-700 border-red-200';
       default:
-        return 'bg-slate-50 text-slate-700 border-slate-200';
+        return 'bg-background text-foreground border-border';
     }
   };
 
   return (
     <Card>
       <div className="p-6 border-b border-border">
-        <h2 className="text-lg font-semibold text-slate-900">Recent Orders</h2>
+        <h2 className="text-lg font-semibold text-foreground">Recent Orders</h2>
       </div>
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="border-slate-200 bg-slate-50">
-              <TableHead className="text-slate-600">Product</TableHead>
-              <TableHead className="text-slate-600">Qty</TableHead>
-              <TableHead className="text-slate-600">Total</TableHead>
-              <TableHead className="text-slate-600">Status</TableHead>
-              <TableHead className="text-slate-600">Payment</TableHead>
-              <TableHead className="text-right text-slate-600">Date</TableHead>
+            <TableRow className="border-border bg-background">
+              <TableHead className="text-muted-foreground">Product</TableHead>
+              <TableHead className="text-muted-foreground">Qty</TableHead>
+              <TableHead className="text-muted-foreground">Total</TableHead>
+              <TableHead className="text-muted-foreground">Status</TableHead>
+              <TableHead className="text-muted-foreground">Payment</TableHead>
+              <TableHead className="text-right text-muted-foreground">Date</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
+            {orders.length === 0 && <TableRow><TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">No recent orders.</TableCell></TableRow>}
             {orders.map((order) => (
-              <TableRow key={order.id} className="border-slate-200">
-                <TableCell className="font-medium text-slate-900">
+              <TableRow key={order.id} className="border-border">
+                <TableCell className="font-medium text-foreground">
                   {order.product_name}
                 </TableCell>
-                <TableCell className="text-slate-600">{order.quantity}</TableCell>
-                <TableCell className="font-medium text-slate-900">
-                  ${order.total.toFixed(2)}
+                <TableCell className="text-muted-foreground">{order.quantity}</TableCell>
+                <TableCell className="font-medium text-foreground">
+                  {formatCurrency(order.total, order.currency)}
                 </TableCell>
                 <TableCell>
                   <Badge
@@ -91,7 +91,7 @@ export function RecentOrders({ orders }: RecentOrdersProps) {
                     {order.payment_status}
                   </div>
                 </TableCell>
-                <TableCell className="text-right text-slate-600 text-sm">
+                <TableCell className="text-right text-muted-foreground text-sm">
                   {displayDate(order.created_at, 'MMM dd')}
                 </TableCell>
               </TableRow>

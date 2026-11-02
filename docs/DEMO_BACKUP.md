@@ -1,31 +1,27 @@
-# Bản dự phòng demo
+# Backup and restore
 
-Sau khi seed và trước khi thao tác checkout, từ repo root:
+Run from the repository root against the canonical `truelook` Compose project described in [LOCAL_ENVIRONMENT.md](LOCAL_ENVIRONMENT.md). Back up before schema changes or mutating acceptance tests. Do not seed the main database to recreate an old demo.
 
-```powershell
-python .github/scripts/demo_backup.py backup demo-backups/seeded.sql
-```
+## SQL snapshot
 
-Dump dùng transaction snapshot, lưu UTF-8 nguyên byte và gồm schema, migration, tài khoản, variant, tồn kho và đơn mẫu. Thư mục `demo-backups/` được bỏ qua bởi Git. Không ghi đè file backup đã có; chọn tên mới cho lần tiếp theo.
-
-Kiểm tra restore vào database mới, không ghi đè database hiện tại:
+Choose a new filename for each snapshot:
 
 ```powershell
-python .github/scripts/demo_backup.py restore demo-backups/seeded.sql --database truelook_restore
+python .github/scripts/demo_backup.py backup demo-backups/truelook-before-change.sql
 ```
 
-Để chạy lại từ bản restore, cấp quyền cho user app trên database mới và cấu hình `DATABASE_URL` trong `.env` trỏ tới database đó trên host `mariadb:3306`, rồi `docker compose up -d`. Giữ database ban đầu để có thể quay lại. Tên DB khôi phục đã tồn tại sẽ bị từ chối.
+The script uses a transaction snapshot and writes the dump as raw UTF-8 bytes, including schema, migrations, accounts, variants, inventory and orders. It refuses to overwrite an existing file. A command failure can leave an incomplete file: only use a snapshot after the command exits successfully, then verify it with a restore into a new database.
 
-Ảnh nằm trong MinIO, không nằm trong SQL dump. Giữ volume MinIO của project demo; ảnh seed có thể được upload lại bằng `docker compose exec api python -m app.seed` (giữ nguyên các đơn và tài khoản). Ảnh admin tự upload cần được sao lưu riêng nếu sử dụng.
+```powershell
+python .github/scripts/demo_backup.py restore demo-backups/truelook-before-change.sql --database truelook_restore_check
+```
 
-Video dự phòng và kết quả kiểm chứng thực tế được ghi ở [DEMO_VERIFICATION.md](DEMO_VERIFICATION.md). Video tự động là bản chạy trình duyệt thực, không thay thế lượt nghiệm thu thủ công của người thuyết trình.
+Restore refuses an existing database name and leaves the source database intact. Validate the restored schema and expected row counts before relying on it. To use the restored database, grant the application user access and deliberately update `DATABASE_URL` in the root `.env` to the new database at `mariadb:3306`, then recreate the API and worker. Keep the original database available for recovery.
 
-Bản sạch đã chuẩn bị trên máy này: `demo-backups/clothing-seeded.sql` (12 sản phẩm quần áo, 3 đơn mẫu). DB nguồn `truelook_clothing_seed` và DB kiểm tra restore `truelook_clothing_restore_check` nằm trong project `truelook-demo`. Bản `seeded.sql` cũ là snapshot trước khi thu gọn danh mục; dùng bản clothing-seeded cho demo cuối.
+## Images and recovery data
 
-# Video đã kiểm chứng — 2026-10-24
+SQL dumps do not contain MinIO objects. Back up product images separately, especially admin uploads; preserve object keys and the configured bucket. There are no bundled seed images. Restore product photographs from your object-storage backup.
 
-Bản Docker cuối kiểm tra ngày **2026-10-25**: dùng `demo-backups/admin-catalog-2026-10-25.webm` và `demo-backups/shop-walkthrough-2026-10-25.webm`; cả hai kịch bản production đã pass. Giữ các bản ngày 24 làm lịch sử.
+The ignored `demo-backups/` directory can contain credentials, customer data, SQL snapshots, volume archives and historical demo videos. Preserve these files and keep them private when copying to another machine. Historical videos document past runs and do not replace current acceptance testing.
 
-- `demo-backups/admin-catalog-2026-10-24.webm`: CRUD danh mục/sản phẩm, size/màu, thay/xóa ảnh trên bản Docker 13000.
-- `demo-backups/shop-walkthrough-2026-10-24.webm`: khách mua COD, hủy đơn, chuyển sang admin/dashboard/Settings, quay từ lượt walkthrough hoàn tất.
-- Các video/ảnh và SQL trong `demo-backups/` được gitignore; giữ bản sao riêng khi chuyển máy.
+The main environment's promotion backups and detached recovery volumes are described in [LOCAL_ENVIRONMENT.md](LOCAL_ENVIRONMENT.md). Do not start retired Compose stacks or attach recovery volumes to the running database. `docker compose down --volumes` deletes the current project's data volumes.

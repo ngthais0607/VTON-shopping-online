@@ -64,6 +64,16 @@ describe("CartContext V2 (truelook_cart_v2)", () => {
     swrMockData = [mockVariantItem, mockVariantItem2];
   });
 
+  it.each(["VND", "USD"])("restores the product currency %s from variant lookup", (currency) => {
+    localStorage.setItem("truelook_cart_v2", JSON.stringify([{ variantId: 101, productId: 1, quantity: 2 }]));
+    swrMockData = [{ ...mockVariantItem, currency }];
+
+    const { result } = renderHook(() => useCart(), { wrapper });
+
+    expect(result.current.cartItems[0].product.currency).toBe(currency);
+    expect(result.current.totalAmount).toBe(500000);
+  });
+
   it("starts empty and ignores deprecated 'fastapi_store_cart' localStorage key", () => {
     localStorage.setItem(
       "fastapi_store_cart",

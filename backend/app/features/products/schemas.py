@@ -226,6 +226,7 @@ class VariantLookupPublicItem(BaseModel):
     color_name: str
     color_hex: str | None = None
     price: float
+    currency: str
     available_stock: int
     in_stock: bool = True
     is_active: bool

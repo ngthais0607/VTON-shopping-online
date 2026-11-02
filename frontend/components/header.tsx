@@ -1,116 +1,52 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Search, Bell, User, LogOut, Settings } from 'lucide-react';
+import { useState } from 'react';
+import { User, LogOut, ChevronDown, ArrowUpRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { Input } from '@/components/ui/input';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useSession } from '@/hooks/use-session';
-import { User as UserType } from '@/lib/types';
-import Link from 'next/link';
 
-interface HeaderProps {
-  title: string;
-  subtitle?: string;
-  children?: React.ReactNode;
-}
+interface HeaderProps { title: string; subtitle?: string; children?: React.ReactNode; }
 
 export function Header({ title, subtitle, children }: HeaderProps) {
   const router = useRouter();
-  const {user: currentUser, logout} = useSession();
+  const { user, logout } = useSession();
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const handleSignOut = async () => {
     try { await logout(); router.push('/login'); router.refresh(); }
     catch (error) { setLogoutError(error instanceof Error ? error.message : 'Server logout failed; local session cleared.'); }
   };
-
-  const getInitials = (firstName?: string | null, lastName?: string | null) => {
-    const first = firstName?.charAt(0) || '';
-    const last = lastName?.charAt(0) || '';
-    return (first + last).toUpperCase() || 'U';
-  };
-
-  return (
-    <header className="bg-white border-b border-slate-100 sticky top-0 z-40">
-      {logoutError && <p role="alert">{logoutError}</p>}
-      <div className="px-8 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            {title}
-          </h1>
-          {subtitle && (
-            <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
-          )}
-        </div>
-
-        <div className="flex items-center gap-4">
-          {children}
-          <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              type="search"
-              placeholder="Search..."
-              className="pl-10 h-10 bg-slate-50 border-slate-200 w-64 rounded-xl"
-            />
-          </div>
-
-          <Button variant="ghost" size="icon" className="text-slate-600 rounded-xl hover:bg-slate-50">
-            <Bell className="w-5 h-5" />
-          </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full ring-2 ring-slate-100 hover:scale-105 transition-all">
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-gradient-to-tr from-indigo-500 to-purple-600 text-white text-xs font-semibold">
-                    {currentUser
-                      ? getInitials(currentUser.first_name, currentUser.last_name)
-                      : 'AD'}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 p-1.5 border border-slate-100 rounded-2xl shadow-xl bg-white">
-              <div className="px-2 py-2">
-                <p className="font-semibold text-slate-900 text-sm">
-                  {currentUser
-                    ? `${currentUser.first_name || ''} ${currentUser.last_name || ''}`
-                    : 'Admin User'}
-                </p>
-                <p className="text-[11px] text-slate-400 font-medium truncate">
-                  {currentUser?.email || 'admin@example.com'}
-                </p>
-              </div>
-              <DropdownMenuSeparator className="bg-slate-100" />
-
-              <DropdownMenuItem asChild>
-                <Link href="/settings" className="flex items-center w-full px-2 py-2 text-sm text-slate-700 rounded-lg hover:bg-slate-50 cursor-pointer">
-                  <User className="mr-2 h-4 w-4 text-slate-400" />
-                  Profile & Settings
-                </Link>
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator className="bg-slate-100" />
-
-              <DropdownMenuItem
-                onClick={handleSignOut}
-                className="flex items-center w-full px-2 py-2 text-sm text-red-600 rounded-lg hover:bg-red-50 focus:bg-red-50 focus:text-red-700 cursor-pointer"
-              >
-                <LogOut className="mr-2 h-4 w-4 text-red-400" />
-                Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+  const initials = `${user?.first_name?.charAt(0) || ''}${user?.last_name?.charAt(0) || ''}`.toUpperCase() || 'AD';
+  return <header className="border-b border-border bg-white">
+    {logoutError && <p role="alert" className="border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{logoutError}</p>}
+    <div className="flex flex-wrap items-start justify-between gap-6 px-4 py-7 sm:px-6 lg:px-10 lg:py-9">
+      <div className="min-w-0">
+        <p className="mb-3 flex items-center gap-3 text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground"><span className="h-px w-7 bg-[#B89B6A]" />TrueLook / Administration</p>
+        <h1 className="font-display text-[38px] font-normal leading-none tracking-[-0.025em] text-foreground sm:text-5xl">{title}</h1>
+        {subtitle && <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">{subtitle}</p>}
       </div>
-    </header>
-  );
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        {children}
+        <Link href="/store" className="hidden min-h-10 items-center gap-2 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-secondary xl:inline-flex">View store<ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" /></Link>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" aria-label="Account menu" className="h-11 gap-2 rounded-md border border-border bg-card px-2.5">
+              <Avatar className="h-7 w-7"><AvatarFallback className="bg-secondary text-[10px] font-semibold text-primary">{initials}</AvatarFallback></Avatar>
+              <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-60 rounded border-border bg-card p-2 shadow-sm">
+            <div className="px-2 py-3"><p className="text-sm font-semibold text-foreground">{[user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || 'Administrator'}</p><p className="mt-1 truncate text-xs text-muted-foreground">{user?.email}</p></div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild><Link href="/settings" className="min-h-10 cursor-pointer"><User aria-hidden="true" className="mr-2 h-4 w-4" />Profile &amp; Settings</Link></DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleSignOut} className="min-h-10 cursor-pointer text-destructive"><LogOut aria-hidden="true" className="mr-2 h-4 w-4" />Sign out</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  </header>;
 }

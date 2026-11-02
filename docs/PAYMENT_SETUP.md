@@ -1,9 +1,9 @@
 # Payment configuration
 
-Agreed on 2026-10-23:
+Configure the canonical Compose environment in the ignored root `.env` (see [local environment](LOCAL_ENVIRONMENT.md)):
 
 - Receiving bank: VietinBank (`ICB`, BIN `970415`). The receiving account and
-  beneficiary name are stored in the ignored `backend/.env`, not in examples.
+  beneficiary name belong in local configuration, not committed examples. Native backend development uses `backend/.env`.
 - New products default to VND in the admin form.
 - VietQR orders expire after 30 minutes. Configure `ORDER_EXPIRE_MINUTES=30`
   for both the API and worker; Compose now passes this setting to both.

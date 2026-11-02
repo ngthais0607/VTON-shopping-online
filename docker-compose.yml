@@ -1,7 +1,7 @@
+name: truelook
+
 x-backend-env: &backend-env
   APP_ENV: ${APP_ENV:-development}
-  SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
-  SEED_CUSTOMER_PASSWORD: ${SEED_CUSTOMER_PASSWORD:-}
   DATABASE_URL: ${DATABASE_URL:-mysql+pymysql://${MARIADB_USER:-app}:${MARIADB_PASSWORD:?MARIADB_PASSWORD is required}@mariadb:3306/${MARIADB_DATABASE:-fastapi_founder}}
   REDIS_URL: ${REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0}
   SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
@@ -17,7 +17,7 @@ x-backend-env: &backend-env
   VIETQR_ACCOUNT_NAME: ${VIETQR_ACCOUNT_NAME:-TRUELOOK}
   VIETQR_WEBHOOK_SECRET: ${VIETQR_WEBHOOK_SECRET:-}
   ORDER_EXPIRE_MINUTES: ${ORDER_EXPIRE_MINUTES:-30}
-  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT:-3000},http://127.0.0.1:${FRONTEND_PORT:-3000}}
   REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-true}
   REFRESH_COOKIE_SAMESITE: ${REFRESH_COOKIE_SAMESITE:-lax}
   FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-}
@@ -56,7 +56,7 @@ services:
       REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
     ports:
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6381}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -78,7 +78,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      test: ["CMD-SHELL", "if command -v curl >/dev/null 2>&1; then curl -fsS http://localhost:9000/minio/health/ready; else mc ready local; fi"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -132,7 +132,7 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${API_PORT:-8000}}
         NEXT_PUBLIC_IMAGE_HOST: ${NEXT_PUBLIC_IMAGE_HOST:-http://localhost:9000}
         MINIO_INTERNAL_URL: http://minio:9000
         MINIO_BUCKET: ${MINIO_BUCKET:-product-images}
@@ -140,7 +140,7 @@ services:
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:${API_PORT:-8000}}
     depends_on:
       api:
         condition: service_healthy

@@ -49,13 +49,14 @@ test('tabs share refreshed cookies while devices and logout remain independent',
     const reload = b.reload();
     await started;
     const loggedOut = a.waitForResponse(response => response.url().endsWith('/users/logout'));
-    await a.getByRole('button', {name: new RegExp(username)}).click();
-    await a.getByRole('button', {name: 'Sign Out', exact: true}).click();
+    await a.getByLabel('Account menu').click();
+    await a.getByRole('button', {name: 'Sign out', exact: true}).click();
     releaseRefresh();
     await reload;
     expect((await loggedOut).status()).toBe(204);
     await b.unroute('**/users/me'); await b.unroute('**/users/refresh');
-    await expect(b.getByRole('button', {name: new RegExp(username)})).toHaveCount(0);
+    await expect(b.getByLabel('Account menu')).toHaveCount(0);
+    await expect(b.getByRole('link', {name: 'Sign in', exact: true})).toBeVisible();
     expect((await first.request.post(`${api}/users/refresh`, {data: {}})).status()).toBe(401);
     const refreshed = await other.request.post(`${api}/users/refresh`, {data: {}});
     expect(refreshed.status()).toBe(200);
@@ -98,7 +99,7 @@ test('Quick Buy selects a variant before adding it and self-hosted pages skip Ve
   await expect(page).toHaveURL(new RegExp(`/store/products/${product.slug}$`));
   await expect(page.getByRole('button', { name: /^Purchase ·/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Size M', exact: true }).click();
-  await page.getByRole('button', { name: 'Thêm vào giỏ hàng', exact: true }).click();
+  await page.getByRole('button', { name: 'Add to bag', exact: true }).click();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('truelook_cart_v2') || '[]'))).toEqual([
     { variantId: expect.any(Number), productId: product.id, quantity: 1 },
   ]);

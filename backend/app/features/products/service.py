@@ -77,6 +77,18 @@ def _get_scoped_existing_skus(
 
 
 def create_product(db: Session, command: ProductCreate) -> Product:
+    try:
+        product_id = _persist_product(db, command)
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError(
+            "Product slug or variant SKU conflict occurred", code="conflict"
+        ) from exc
+    invalidate_catalog_cache()
+    return _get_active_product(db, product_id, is_admin=True)
+
+
+def _persist_product(db: Session, command: ProductCreate) -> int:
     category = None
     if command.category_id is not None:
         category = category_service.get_category(db, command.category_id)
@@ -202,16 +214,8 @@ def create_product(db: Session, command: ProductCreate) -> Product:
         product.is_active = True
 
     product_id = product.id
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise ConflictError(
-            "Product slug or variant SKU conflict occurred",
-            code="conflict",
-        ) from exc
-    invalidate_catalog_cache()
-    return _get_active_product(db, product_id, is_admin=True)
+    db.commit()
+    return product_id
 
 
 def list_products(
@@ -254,30 +258,19 @@ def list_products(
                 )
             )
         )
+    matching_variant = ProductVariant.is_active.is_(True)
     if filters.size:
-        query = query.filter(
-            Product.variants.any(
-                (ProductVariant.size.in_(filters.size))
-                & (ProductVariant.is_active.is_(True))
-            )
-        )
+        matching_variant &= ProductVariant.size.in_(filters.size)
     if filters.color:
-        query = query.filter(
-            Product.variants.any(
-                or_(
-                    *(
-                        ProductVariant.color_name.ilike(
-                            literal_contains_pattern(c), escape="\\"
-                        )
-                        for c in filters.color
-                    )
+        matching_variant &= or_(
+            *(
+                ProductVariant.color_name.ilike(
+                    literal_contains_pattern(color), escape="\\"
                 )
-                & (ProductVariant.is_active.is_(True))
+                for color in filters.color
             )
         )
 
-    settings = get_settings()
-    low_stock_threshold = settings.low_stock_threshold
     variant_available = (
         ProductVariant.stock_quantity
         - ProductVariant.reserved_quantity
@@ -285,24 +278,23 @@ def list_products(
     )
     if filters.stock_status == StockStatus.IN_STOCK:
         query = query.filter(
-            Product.variants.any(
-                (ProductVariant.is_active.is_(True)) & (variant_available > 0)
-            )
+            Product.variants.any(matching_variant & (variant_available > 0))
         )
     elif filters.stock_status == StockStatus.LOW_STOCK:
         query = query.filter(
             Product.variants.any(
-                (ProductVariant.is_active.is_(True))
+                matching_variant
                 & (variant_available > 0)
-                & (variant_available < low_stock_threshold)
+                & (variant_available < get_settings().low_stock_threshold)
             )
         )
-    elif filters.stock_status == StockStatus.OUT_OF_STOCK:
-        query = query.filter(
-            ~Product.variants.any(
-                (ProductVariant.is_active.is_(True)) & (variant_available > 0)
+    else:
+        if filters.size or filters.color:
+            query = query.filter(Product.variants.any(matching_variant))
+        if filters.stock_status == StockStatus.OUT_OF_STOCK:
+            query = query.filter(
+                ~Product.variants.any(matching_variant & (variant_available > 0))
             )
-        )
 
     total = query.count()
     products = (
@@ -417,6 +409,7 @@ def lookup_variants(
         prod_name = product.name if product else "Unavailable"
         prod_slug = product.slug if product else ""
         prod_id = product.id if product else 0
+        currency = product.currency if product else "VND"
         avail_stock = v.available_stock if is_active else 0
         has_stock = (avail_stock > 0) if is_active else False
 
@@ -432,6 +425,7 @@ def lookup_variants(
                     color_name=v.color_name,
                     color_hex=v.color_hex,
                     price=effective_price,
+                    currency=currency,
                     stock_quantity=v.stock_quantity,
                     reserved_quantity=v.reserved_quantity,
                     sold_quantity=v.sold_quantity,
@@ -453,6 +447,7 @@ def lookup_variants(
                     color_name=v.color_name,
                     color_hex=v.color_hex,
                     price=effective_price,
+                    currency=currency,
                     available_stock=avail_stock,
                     in_stock=has_stock,
                     is_active=is_active,
@@ -681,7 +676,6 @@ def _active_products_query(db: Session, is_admin: bool = False) -> Query:
             joinedload(Product.category),
             selectinload(Product.images),
             selectinload(Product.variants),
-            selectinload(Product.reviews),
         )
         .filter(
             Product.is_deleted.is_(False),

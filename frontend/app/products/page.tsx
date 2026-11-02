@@ -1,74 +1,71 @@
 "use client";
-import { displayDate, formatCurrency } from '@/lib/utils';
+import { displayDate,formatCurrency } from '@/lib/utils';
 
 
-import { useState, useEffect } from "react";
-import { apiDelete, apiGet, apiPost, apiPatch, apiUpload } from "@/lib/api";
-import { useProducts } from "@/hooks/use-products";
-import { useCategoryOptions } from "@/hooks/use-categories";
-import { getAvailableStock } from "@/lib/inventory";
+import { AdminProductImages } from "@/components/admin/product-images";
+import { VariantMatrixGenerator } from "@/components/admin/variant-matrix-generator";
+import { VariantStockDialog } from "@/components/admin/variant-stock-dialog";
 import { Header } from "@/components/header";
-import { Card } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+AlertDialog,
+AlertDialogAction,
+AlertDialogCancel,
+AlertDialogContent,
+AlertDialogDescription,
+AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+Dialog,
+DialogContent,
+DialogDescription,
+DialogHeader,
+DialogTitle,
+DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+DropdownMenu,
+DropdownMenuContent,
+DropdownMenuItem,
+DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
-  MoreVertical,
-  Plus,
-  Search,
-  Grid3x3,
-  List,
-  Image as ImageIcon,
-} from "lucide-react";
+Select,
+SelectContent,
+SelectItem,
+SelectTrigger,
+SelectValue,
+} from "@/components/ui/select";
 import {
-  Product,
-  Category,
-  ProductFormData,
-  ProductVariant,
+Table,
+TableBody,
+TableCell,
+TableHead,
+TableHeader,
+TableRow,
+} from "@/components/ui/table";
+import { useCategoryOptions } from "@/hooks/use-categories";
+import { useProducts } from "@/hooks/use-products";
+import { apiDelete,apiGet,apiPatch,apiPost,apiUpload } from "@/lib/api";
+import { getAvailableStock } from "@/lib/inventory";
+import {
+Product,
+ProductFormData,
+ProductVariant
 } from "@/lib/types";
-import { format } from "date-fns";
+import {
+Grid3x3,
+Image as ImageIcon,
+List,
+MoreVertical,
+Plus,
+Search,
+} from "lucide-react";
 import Image from "next/image";
-import { AdminProductImages } from "@/components/admin/product-images";
-import { VariantMatrixGenerator, BulkVariantPayload } from "@/components/admin/variant-matrix-generator";
-import { VariantStockDialog } from "@/components/admin/variant-stock-dialog";
+import { useEffect,useState } from "react";
 
 export default function ProductsPage() {
   const { categories, error: categoriesError, isLoading: categoriesLoading, mutate: retryCategories } = useCategoryOptions();
@@ -278,18 +275,19 @@ export default function ProductsPage() {
     <div className="flex flex-col min-h-screen">
       <Header title="Products" subtitle="Manage your product catalog" />
 
-      <main className="flex-1 p-8">
-        {loadingProduct && <p role="status" className="text-sm text-slate-500">Loading product details...</p>}
+      <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        {loadingProduct && <p role="status" className="text-sm text-muted-foreground">Loading product details...</p>}
         {productsError && <p role="alert"><span>{productsError.message}</span> <button onClick={()=>mutateProducts()}>Retry products</button></p>}
         {categoriesError && <p role="alert"><span>{categoriesError.message}</span> <button onClick={()=>retryCategories()}>Retry categories</button></p>}
         {categoriesLoading && <p>Loading categories...</p>}
         {saveError && !createDialogOpen && <p role="alert">{saveError}</p>}
         {/* Filters and Controls */}
         <div className="space-y-4 mb-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Button
                 variant={viewMode === "table" ? "default" : "outline"}
+                aria-pressed={viewMode === "table"}
                 size="sm"
                 onClick={() => setViewMode("table")}
               >
@@ -298,6 +296,7 @@ export default function ProductsPage() {
               </Button>
               <Button
                 variant={viewMode === "grid" ? "default" : "outline"}
+                aria-pressed={viewMode === "grid"}
                 size="sm"
                 onClick={() => setViewMode("grid")}
               >
@@ -328,7 +327,7 @@ export default function ProductsPage() {
                   Create Product
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+              <DialogContent className="admin-dialog max-w-xl max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
                     {editingProduct ? "Edit Product" : "Create New Product"}
@@ -410,29 +409,29 @@ export default function ProductsPage() {
                     </Select>
                   </div>
                   {editingProduct ? (
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-                      <div className="font-medium text-slate-700 mb-1">
-                        Thông tin tồn kho (Chỉ đọc)
+                    <div className="rounded border border-border bg-background p-3 text-sm">
+                      <div className="font-medium text-foreground mb-1">
+                        Inventory information (Read only)
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-slate-600">
-                        <div>Tổng kho: <span className="font-semibold text-slate-900">{editingProduct.stock_quantity}</span></div>
-                        <div>Đang giữ: <span className="font-semibold text-slate-900">{editingProduct.reserved_quantity}</span></div>
-                        <div>Đã bán: <span className="font-semibold text-slate-900">{editingProduct.sold_quantity}</span></div>
+                      <div className="grid grid-cols-3 gap-2 text-muted-foreground">
+                        <div>Total stock: <span className="font-semibold text-foreground">{editingProduct.stock_quantity}</span></div>
+                        <div>Reserved: <span className="font-semibold text-foreground">{editingProduct.reserved_quantity}</span></div>
+                        <div>Sold: <span className="font-semibold text-foreground">{editingProduct.sold_quantity}</span></div>
                       </div>
-                      <p className="mt-2 text-xs text-slate-500">
-                        * Tồn kho được quản lý theo từng biến thể (Variant). Hãy dùng nút &quot;Quản lý biến thể&quot; để điều chỉnh kho có kiểm toán.
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        * Inventory is managed by variant. Use &quot;Manage Variants&quot; to make audited stock adjustments.
                       </p>
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-xs text-blue-700">
-                      💡 Tồn kho sẽ được tạo và cập nhật khi bạn thêm các biến thể (size/màu) cho sản phẩm này.
+                    <div className="rounded border border-blue-100 bg-blue-50/50 p-3 text-xs text-blue-700">
+                      💡 Inventory is created and updated when you add size and color variants to this product.
                     </div>
                   )}
                   <div className="grid gap-2">
                     <label htmlFor="is_active" className="text-sm font-medium">
-                      Trạng thái kích hoạt (Active Status)
+                      Active Status
                     </label>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <Select
                         value={formData.is_active ? "active" : "inactive"}
                         onValueChange={(val) => updateFormData("is_active", val === "active")}
@@ -441,13 +440,13 @@ export default function ProductsPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="active">Active (Kích hoạt)</SelectItem>
-                          <SelectItem value="inactive">Inactive (Bản nháp)</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive (Draft)</SelectItem>
                         </SelectContent>
                       </Select>
                       {(!editingProduct || hasActiveVariants(editingProduct) === false) && (
                         <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded">
-                          Thêm biến thể rồi kích hoạt
+                          Add variants, then activate
                         </span>
                       )}
                     </div>
@@ -473,7 +472,7 @@ export default function ProductsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
                       <label htmlFor="brand" className="text-sm font-medium">
-                        Brand (Thương hiệu)
+                        Brand
                       </label>
                       <Input
                         id="brand"
@@ -484,7 +483,7 @@ export default function ProductsPage() {
                     </div>
                     <div className="grid gap-2">
                       <label htmlFor="gender" className="text-sm font-medium">
-                        Gender (Đối tượng)
+                        Gender
                       </label>
                       <Select
                         value={formData.gender || "unisex"}
@@ -494,10 +493,10 @@ export default function ProductsPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="male">Nam (Male)</SelectItem>
-                          <SelectItem value="female">Nữ (Female)</SelectItem>
+                          <SelectItem value="male">Male</SelectItem>
+                          <SelectItem value="female">Female</SelectItem>
                           <SelectItem value="unisex">Unisex</SelectItem>
-                          <SelectItem value="kids">Trẻ em (Kids)</SelectItem>
+                          <SelectItem value="kids">Kids</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -505,7 +504,7 @@ export default function ProductsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
                       <label htmlFor="material" className="text-sm font-medium">
-                        Material (Chất liệu)
+                        Material
                       </label>
                       <Input
                         id="material"
@@ -516,7 +515,7 @@ export default function ProductsPage() {
                     </div>
                     <div className="grid gap-2">
                       <label htmlFor="fit" className="text-sm font-medium">
-                        Fit (Kiểu dáng)
+                        Fit
                       </label>
                       <Input
                         id="fit"
@@ -528,11 +527,11 @@ export default function ProductsPage() {
                   </div>
                   <div className="grid gap-2">
                     <label htmlFor="care_instructions" className="text-sm font-medium">
-                      Care Instructions (Hướng dẫn giặt ủi)
+                      Care Instructions
                     </label>
                     <Input
                       id="care_instructions"
-                      placeholder="VD: Giặt máy nước lạnh, không sấy khô"
+                      placeholder="e.g. Machine wash cold, do not tumble dry"
                       value={formData.care_instructions || ""}
                       onChange={(e) => updateFormData("care_instructions", e.target.value)}
                     />
@@ -543,6 +542,7 @@ export default function ProductsPage() {
                     onBusyChange={setImageBusy}
                     productId={editingProduct?.id}
                     images={editingProduct?.images}
+                    colors={Array.from(new Set((editingProduct?.variants ?? []).map((variant) => variant.color_name).filter(Boolean)))}
                     onImagesChange={(images) => {
                       setEditingProduct(current => current ? { ...current, images } : current);
                       void mutateProducts();
@@ -577,10 +577,11 @@ export default function ProductsPage() {
           </div>
 
           {/* Search and Filters */}
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="relative min-w-0 sm:col-span-2 xl:col-span-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
+                aria-label="Search products"
                 placeholder="Search products..."
                 value={searchVal}
                 onChange={(e) => setSearchVal(e.target.value)}
@@ -592,7 +593,7 @@ export default function ProductsPage() {
               value={selectedCategory}
               onValueChange={handleCategoryChange}
             >
-              <SelectTrigger className="w-full md:w-40">
+              <SelectTrigger aria-label="Filter by category" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -606,7 +607,7 @@ export default function ProductsPage() {
             </Select>
 
             <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setCurrentPage(1); }}>
-              <SelectTrigger className="w-full md:w-40">
+              <SelectTrigger aria-label="Filter by product status" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -617,7 +618,7 @@ export default function ProductsPage() {
             </Select>
 
             <Select value={stockFilter} onValueChange={(val) => { setStockFilter(val); setCurrentPage(1); }}>
-              <SelectTrigger className="w-full md:w-40">
+              <SelectTrigger aria-label="Filter by stock" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -629,7 +630,7 @@ export default function ProductsPage() {
             </Select>
 
             <Select value={sortBy} onValueChange={(val) => { setSortBy(val); setCurrentPage(1); }}>
-              <SelectTrigger className="w-full md:w-40">
+              <SelectTrigger aria-label="Sort products" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -646,7 +647,7 @@ export default function ProductsPage() {
 
         {/* Products Display */}
         {loading ? (
-          <Card className="p-8 text-center text-slate-600">
+          <Card className="p-8 text-center text-muted-foreground">
             Loading products...
           </Card>
         ) : viewMode === "table" ? (
@@ -654,37 +655,37 @@ export default function ProductsPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-slate-200 bg-slate-50">
-                    <TableHead className="text-slate-600">Product</TableHead>
-                    <TableHead className="text-slate-600">Category</TableHead>
-                    <TableHead className="text-slate-600">Price</TableHead>
-                    <TableHead className="text-slate-600">Stock</TableHead>
-                    <TableHead className="text-slate-600">Reserved</TableHead>
-                    <TableHead className="text-slate-600">Sold</TableHead>
-                    <TableHead className="text-slate-600">Status</TableHead>
-                    <TableHead className="text-slate-600">Created</TableHead>
+                  <TableRow className="border-border bg-background">
+                    <TableHead className="text-muted-foreground">Product</TableHead>
+                    <TableHead className="text-muted-foreground">Category</TableHead>
+                    <TableHead className="text-muted-foreground">Price</TableHead>
+                    <TableHead className="text-muted-foreground">Stock</TableHead>
+                    <TableHead className="text-muted-foreground">Reserved</TableHead>
+                    <TableHead className="text-muted-foreground">Sold</TableHead>
+                    <TableHead className="text-muted-foreground">Status</TableHead>
+                    <TableHead className="text-muted-foreground">Created</TableHead>
                     <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredProducts.map((product) => (
-                    <TableRow key={product.id} className="border-slate-200">
-                      <TableCell className="font-medium text-slate-900">
+                    <TableRow key={product.id} className="border-border">
+                      <TableCell className="font-medium text-foreground">
                         {product.name}
                       </TableCell>
-                      <TableCell className="text-slate-600">
+                      <TableCell className="text-muted-foreground">
                         {product.category?.name || "N/A"}
                       </TableCell>
-                      <TableCell className="text-slate-900 font-medium">
+                      <TableCell className="text-foreground font-medium">
                         {formatCurrency(product.price, product.currency)}
                       </TableCell>
-                      <TableCell className="text-slate-600">
+                      <TableCell className="text-muted-foreground">
                         {product.stock_quantity}
                       </TableCell>
-                      <TableCell className="text-slate-600">
+                      <TableCell className="text-muted-foreground">
                         {product.reserved_quantity}
                       </TableCell>
-                      <TableCell className="text-slate-600">
+                      <TableCell className="text-muted-foreground">
                         {product.sold_quantity}
                       </TableCell>
                       <TableCell>
@@ -694,7 +695,7 @@ export default function ProductsPage() {
                             className={
                               product.is_active
                                 ? "bg-green-100 text-green-800"
-                                : "bg-slate-100 text-slate-800"
+                                : "bg-secondary text-foreground"
                             }
                           >
                             {product.is_active ? "Active" : "Inactive"}
@@ -704,12 +705,12 @@ export default function ProductsPage() {
                               variant="outline"
                               className="text-[11px] bg-amber-50 text-amber-700 border-amber-200"
                             >
-                              Chưa hiển thị trên cửa hàng vì chưa có biến thể
+                              Hidden from the store until variants are added
                             </Badge>
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-slate-600 text-sm">
+                      <TableCell className="text-muted-foreground text-sm">
                         {displayDate(product.created_at, "MMM dd, yyyy")}
                       </TableCell>
                       <TableCell>
@@ -741,7 +742,7 @@ export default function ProductsPage() {
                                 setMatrixDialogOpen(true);
                               }}
                             >
-                              Tạo biến thể (Matrix)
+                              Create Variants (Matrix)
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-red-600"
@@ -758,8 +759,8 @@ export default function ProductsPage() {
               </Table>
             </div>
             {/* Pagination Controls */}
-            <div className="flex items-center justify-between p-4 border-t border-slate-200 bg-slate-50 rounded-b-lg">
-              <div className="text-sm text-slate-600">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-t border-border bg-background rounded-b-lg">
+              <div className="text-sm text-muted-foreground">
                 Showing <span className="font-semibold">{totalProducts === 0 ? 0 : Math.min(totalProducts, (currentPage - 1) * pageSize + 1)}</span> to{" "}
                 <span className="font-semibold">{Math.min(totalProducts, currentPage * pageSize)}</span> of{" "}
                 <span className="font-semibold">{totalProducts}</span> products
@@ -803,9 +804,9 @@ export default function ProductsPage() {
             {filteredProducts.map((product) => (
               <Card
                 key={product.id}
-                className="overflow-hidden hover:shadow-lg transition-shadow"
+                className="overflow-hidden hover:border-[#B89B6A]/50 transition-shadow"
               >
-                <div className="relative aspect-square overflow-hidden bg-slate-100">
+                <div className="relative aspect-square overflow-hidden bg-secondary">
                   {product.images.length > 0 ? (
                     <Image
                       src={product.images[0].url}
@@ -815,7 +816,7 @@ export default function ProductsPage() {
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full">
-                      <ImageIcon className="w-8 h-8 text-slate-400" />
+                      <ImageIcon className="w-8 h-8 text-muted-foreground" />
                     </div>
                   )}
                   <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
@@ -823,7 +824,7 @@ export default function ProductsPage() {
                       className={
                         product.is_active
                           ? "bg-green-100 text-green-800"
-                          : "bg-slate-100 text-slate-800"
+                          : "bg-secondary text-foreground"
                       }
                     >
                       {product.is_active ? "Active" : "Inactive"}
@@ -831,41 +832,41 @@ export default function ProductsPage() {
                     {hasActiveVariants(product) === false && (
                       <Badge
                         variant="outline"
-                        className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shadow-sm"
+                        className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shadow-none"
                       >
-                        Chưa hiển thị trên cửa hàng vì chưa có biến thể
+                        Hidden from the store until variants are added
                       </Badge>
                     )}
                   </div>
                 </div>
                 <div className="p-4">
-                  <h3 className="font-semibold text-slate-900 line-clamp-2">
+                  <h3 className="font-semibold text-foreground line-clamp-2">
                     {product.name}
                   </h3>
-                  <p className="text-sm text-slate-600 mt-1">
+                  <p className="text-sm text-muted-foreground mt-1">
                     {product.category?.name}
                   </p>
-                  <p className="text-lg font-bold text-slate-900 mt-2">
+                  <p className="text-lg font-bold text-foreground mt-2">
                     {formatCurrency(product.price, product.currency)}
                   </p>
                   <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
                     <div className="text-center">
-                      <p className="font-medium text-slate-900">
+                      <p className="font-medium text-foreground">
                         {product.stock_quantity}
                       </p>
-                      <p className="text-slate-500">Stock</p>
+                      <p className="text-muted-foreground">Stock</p>
                     </div>
                     <div className="text-center">
-                      <p className="font-medium text-slate-900">
+                      <p className="font-medium text-foreground">
                         {product.reserved_quantity}
                       </p>
-                      <p className="text-slate-500">Reserved</p>
+                      <p className="text-muted-foreground">Reserved</p>
                     </div>
                     <div className="text-center">
-                      <p className="font-medium text-slate-900">
+                      <p className="font-medium text-foreground">
                         {product.sold_quantity}
                       </p>
-                      <p className="text-slate-500">Sold</p>
+                      <p className="text-muted-foreground">Sold</p>
                     </div>
                   </div>
                   <div className="mt-4 flex gap-2">
@@ -900,7 +901,7 @@ export default function ProductsPage() {
                             setMatrixDialogOpen(true);
                           }}
                         >
-                          Tạo biến thể (Matrix)
+                          Create Variants (Matrix)
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-red-600"
@@ -917,8 +918,8 @@ export default function ProductsPage() {
           </div>
           {/* Pagination Controls for Grid View */}
           <Card className="mt-6">
-            <div className="flex items-center justify-between p-4">
-              <div className="text-sm text-slate-600">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="text-sm text-muted-foreground">
                 Showing <span className="font-semibold">{totalProducts === 0 ? 0 : Math.min(totalProducts, (currentPage - 1) * pageSize + 1)}</span> to{" "}
                 <span className="font-semibold">{Math.min(totalProducts, currentPage * pageSize)}</span> of{" "}
                 <span className="font-semibold">{totalProducts}</span> products
@@ -962,10 +963,10 @@ export default function ProductsPage() {
         {!loading && !productsError && filteredProducts.length === 0 && (
           <Card className="p-12 text-center">
             <ImageIcon className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-slate-900">
+            <h3 className="text-lg font-semibold text-foreground">
               No products found
             </h3>
-            <p className="text-slate-600 mt-1">
+            <p className="text-muted-foreground mt-1">
               Try adjusting your filters or search term
             </p>
           </Card>
@@ -978,7 +979,7 @@ export default function ProductsPage() {
           open={!!selectedProduct}
           onOpenChange={() => setSelectedProduct(null)}
         >
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="admin-dialog max-w-2xl max-h-[90dvh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{selectedProduct.name}</DialogTitle>
               <DialogDescription>
@@ -988,7 +989,7 @@ export default function ProductsPage() {
             <div className="grid md:grid-cols-2 gap-6 py-4">
               <div>
                 {selectedProduct.images.length > 0 ? (
-                  <div className="relative aspect-square rounded-lg overflow-hidden bg-slate-100">
+                  <div className="relative aspect-square rounded overflow-hidden bg-secondary">
                     <Image
                       src={
                         selectedProduct.images[0].url
@@ -999,32 +1000,32 @@ export default function ProductsPage() {
                     />
                   </div>
                 ) : (
-                  <div className="aspect-square rounded-lg bg-slate-100 flex items-center justify-center">
-                    <ImageIcon className="w-12 h-12 text-slate-400" />
+                  <div className="aspect-square rounded bg-secondary flex items-center justify-center">
+                    <ImageIcon className="w-12 h-12 text-muted-foreground" />
                   </div>
                 )}
               </div>
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm text-slate-600">Price</p>
-                  <p className="text-2xl font-bold text-slate-900">
+                  <p className="text-sm text-muted-foreground">Price</p>
+                  <p className="text-2xl font-bold text-foreground">
                     {formatCurrency(selectedProduct.price, selectedProduct.currency)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Category</p>
-                  <p className="font-medium text-slate-900">
+                  <p className="text-sm text-muted-foreground">Category</p>
+                  <p className="font-medium text-foreground">
                     {selectedProduct.category?.name || "N/A"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-slate-600">Status</p>
+                  <p className="text-sm text-muted-foreground">Status</p>
                   <div className="flex flex-col gap-1 items-start">
                     <Badge
                       className={`${
                         selectedProduct.is_active
                           ? "bg-green-100 text-green-800"
-                          : "bg-slate-100 text-slate-800"
+                          : "bg-secondary text-foreground"
                       }`}
                     >
                       {selectedProduct.is_active ? "Active" : "Inactive"}
@@ -1034,7 +1035,7 @@ export default function ProductsPage() {
                         variant="outline"
                         className="text-[11px] bg-amber-50 text-amber-700 border-amber-200"
                       >
-                        Chưa hiển thị trên cửa hàng vì chưa có biến thể
+                        Hidden from the store until variants are added
                       </Badge>
                     )}
                   </div>
@@ -1042,32 +1043,32 @@ export default function ProductsPage() {
                 <div className="pt-4 border-t space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-sm text-slate-600">Stock Quantity</p>
-                      <p className="text-lg font-semibold text-slate-900">
+                      <p className="text-sm text-muted-foreground">Stock Quantity</p>
+                      <p className="text-lg font-semibold text-foreground">
                         {selectedProduct.stock_quantity}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-600">Reserved</p>
-                      <p className="text-lg font-semibold text-slate-900">
+                      <p className="text-sm text-muted-foreground">Reserved</p>
+                      <p className="text-lg font-semibold text-foreground">
                         {selectedProduct.reserved_quantity}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-600">Available</p>
-                      <p className="text-lg font-semibold text-slate-900">
+                      <p className="text-sm text-muted-foreground">Available</p>
+                      <p className="text-lg font-semibold text-foreground">
                         {getAvailableStock(selectedProduct)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-slate-600">Sold</p>
-                      <p className="text-lg font-semibold text-slate-900">
+                      <p className="text-sm text-muted-foreground">Sold</p>
+                      <p className="text-lg font-semibold text-foreground">
                         {selectedProduct.sold_quantity}
                       </p>
                     </div>
                   </div>
                 </div>
-                <div className="pt-4 border-t text-sm text-slate-600">
+                <div className="pt-4 border-t text-sm text-muted-foreground">
                   <p>
                     Created:{" "}
                     {displayDate(selectedProduct.created_at, "PPP")}
@@ -1081,8 +1082,8 @@ export default function ProductsPage() {
             </div>
             {selectedProduct.description && (
               <div className="py-4 border-t">
-                <p className="text-sm text-slate-600">Description</p>
-                <p className="text-slate-900 mt-2">
+                <p className="text-sm text-muted-foreground">Description</p>
+                <p className="text-foreground mt-2">
                   {selectedProduct.description}
                 </p>
               </div>
@@ -1091,9 +1092,9 @@ export default function ProductsPage() {
             {/* Fashion Variants List */}
             {selectedProduct.variants && selectedProduct.variants.length > 0 && (
               <div className="py-4 border-t space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-slate-900">
-                    Danh sách biến thể ({selectedProduct.variants.length})
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h4 className="text-sm font-bold text-foreground">
+                    Variants ({selectedProduct.variants.length})
                   </h4>
                   <Button
                     size="sm"
@@ -1104,24 +1105,24 @@ export default function ProductsPage() {
                     }}
                     className="text-xs"
                   >
-                    Tạo thêm biến thể
+                    Add Variants
                   </Button>
                 </div>
                 <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
                   {selectedProduct.variants.map((v) => (
                     <div
                       key={v.id}
-                      className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200/80 bg-slate-50 text-xs"
+                      className="flex items-center justify-between p-2.5 rounded-md border border-border/80 bg-background text-xs"
                     >
                       <div>
-                        <span className="font-mono font-bold text-slate-800">{v.sku}</span>
-                        <span className="text-slate-500 ml-2">
+                        <span className="font-mono font-bold text-foreground">{v.sku}</span>
+                        <span className="text-muted-foreground ml-2">
                           Size {v.size} · {v.color_name}
                         </span>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-semibold text-slate-700">
-                          Kho: {v.stock_quantity} (Khả dụng: {v.available_stock})
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="font-semibold text-foreground">
+                          Stock: {v.stock_quantity} (Available: {v.available_stock})
                         </span>
                         <Button
                           size="sm"
@@ -1129,7 +1130,7 @@ export default function ProductsPage() {
                           className="text-[11px] h-7 px-2"
                           onClick={() => setStockDialogVariant(v)}
                         >
-                          Sửa tồn kho
+                          Adjust Stock
                         </Button>
                       </div>
                     </div>
@@ -1147,7 +1148,7 @@ export default function ProductsPage() {
           open={!!deleteProduct}
           onOpenChange={() => setDeleteProduct(null)}
         >
-          <AlertDialogContent>
+          <AlertDialogContent className="admin-dialog">
             <AlertDialogTitle>Delete Product</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete &quot;{deleteProduct.name}&quot;?
@@ -1169,12 +1170,10 @@ export default function ProductsPage() {
       {/* Variant Matrix Generator Modal */}
       {matrixProduct && (
         <Dialog open={matrixDialogOpen} onOpenChange={setMatrixDialogOpen}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-0 bg-transparent shadow-none">
+          <DialogContent className="admin-dialog max-w-3xl max-h-[90vh] overflow-y-auto p-0 border-0 bg-transparent shadow-none">
             <DialogTitle className="sr-only">Clothing size and color variants</DialogTitle>
             <DialogDescription className="sr-only">Generate size and color combinations for this product.</DialogDescription>
             <VariantMatrixGenerator
-              productId={matrixProduct.id}
-              productSlug={matrixProduct.slug || "product"}
               defaultPrice={matrixProduct.price}
               onGenerate={async (payload) => {
                 try {

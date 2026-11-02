@@ -1,8 +1,13 @@
-import { renderHook, act } from "@testing-library/react";
-import { describe, it, expect, beforeEach } from "vitest";
+import { renderHook, act, waitFor } from "@testing-library/react";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import React from "react";
+import { SWRConfig } from "swr";
 import { CartProvider, useCart } from "../app/store/context/CartContext";
 import { Product } from "@/lib/types";
+import { apiGet } from "@/lib/api";
+
+// These tests cover cached products while live lookup returns no metadata.
+vi.mock("@/lib/api", () => ({ apiGet: vi.fn().mockResolvedValue([]) }));
 
 const mockProduct: Product = {
   id: 101,
@@ -35,12 +40,15 @@ const mockProduct: Product = {
 };
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <CartProvider>{children}</CartProvider>
+  <SWRConfig value={{ provider: () => new Map(), shouldRetryOnError: false }}>
+    <CartProvider>{children}</CartProvider>
+  </SWRConfig>
 );
 
 describe("CartContext", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.mocked(apiGet).mockClear();
   });
 
   it("should start with an empty cart", () => {
@@ -50,10 +58,10 @@ describe("CartContext", () => {
     expect(result.current.totalCount).toBe(0);
   });
 
-  it("should add items to cart and calculate totals correctly", () => {
+  it("should add items to cart and calculate totals correctly", async () => {
     const { result } = renderHook(() => useCart(), { wrapper });
 
-    act(() => {
+    await act(async () => {
       result.current.addToCart(mockProduct, 2);
     });
 
@@ -61,12 +69,14 @@ describe("CartContext", () => {
     expect(result.current.cartItems[0].quantity).toBe(2);
     expect(result.current.totalAmount).toBe(598);
     expect(result.current.totalCount).toBe(2);
+    await waitFor(() => expect(apiGet).toHaveBeenCalledExactlyOnceWith('/products/variants/lookup?ids=1001'));
+    expect(result.current.totalAmount).toBe(598);
   });
 
-  it("should update quantity and remove item when quantity is 0", () => {
+  it("should update quantity and remove item when quantity is 0", async () => {
     const { result } = renderHook(() => useCart(), { wrapper });
 
-    act(() => {
+    await act(async () => {
       result.current.addToCart(mockProduct, 3);
     });
 
@@ -81,10 +91,10 @@ describe("CartContext", () => {
     expect(result.current.cartItems.length).toBe(0);
   });
 
-  it("should clear cart items on clearCart()", () => {
+  it("should clear cart items on clearCart()", async () => {
     const { result } = renderHook(() => useCart(), { wrapper });
 
-    act(() => {
+    await act(async () => {
       result.current.addToCart(mockProduct, 1);
     });
     expect(result.current.cartItems.length).toBe(1);
@@ -105,11 +115,11 @@ describe("CartContext", () => {
     act(()=>result.current.addToCart({...mockProduct,is_active:false},1));
     expect(result.current.cartItems).toEqual([]);
   });
-  it('bounds updates to available stock and ignores fractional additions',()=>{
+  it('bounds updates to available stock and ignores fractional additions',async()=>{
     const {result}=renderHook(()=>useCart(),{wrapper});
     act(()=>result.current.addToCart(mockProduct,1.5));
     expect(result.current.cartItems).toEqual([]);
-    act(()=>result.current.addToCart(mockProduct,1));
+    await act(async()=>{result.current.addToCart(mockProduct,1);});
     act(()=>result.current.updateQuantity(1001,99));
     expect(result.current.totalCount).toBe(20);
   });

@@ -13,7 +13,7 @@ The current release focuses on a working commerce foundation. **Virtual try-on i
 - [Prerequisites](#prerequisites)
 - [Getting Started & Installation](#getting-started--installation)
 - [Configuration](#configuration)
-- [Default Seed Accounts](#default-seed-accounts)
+- [First Admin Account](#first-admin-account)
 - [API Documentation](#api-documentation)
 - [Frontend & Session Behavior](#frontend--session-behavior)
 - [Testing](#testing)
@@ -89,9 +89,7 @@ backend/
     integrations/         MinIO, Redis queue, SMTP, VietQR
     jobs/                 email and order-expiration tasks
     templates/emails/     HTML notification templates
-    seed_assets/          bundled demo catalog illustrations
     main.py               app factory, middleware, routes, startup
-    seed.py               demo accounts, clothing catalog, and sample orders
     worker.py             ARQ tasks and cron configuration
   tests/                  unit/regression and MariaDB integration tests
 frontend/
@@ -104,7 +102,7 @@ frontend/
 .github/
   workflows/              CI checks
   scripts/                disposable Compose tests, demo checks, and backup tools
-docs/                     migration, payment, backup, and verification guidance
+docs/                     environment, migration, payment, backup, and design guides
 ```
 
 <a id="prerequisites"></a>
@@ -116,7 +114,7 @@ docs/                     migration, payment, backup, and verification guidance
 - Node.js 22 and pnpm 10.33.4 when running frontend development or browser tests outside Docker.
 - For native backend development: Python 3.13 on Windows or Python 3.12 on Linux to match the supplied lockfiles.
 
-Use an isolated demo database. Do not seed or run integration tests against production or shared data.
+Use an isolated local database. Do not run integration tests against production or shared data.
 
 <a id="getting-started--installation"></a>
 ## 🚀 Getting Started & Installation
@@ -130,7 +128,7 @@ From the repository root in PowerShell:
 Copy-Item .env.example .env
 # Review/edit .env before starting the stack.
 docker compose up --build -d --wait
-docker compose exec api python -m app.seed
+docker compose exec api python -m app.cli create-admin --email admin@your-domain.test --username shopadmin
 ```
 
 The root `.env.example` is the canonical Compose/backend example. Keep existing local configuration when updating the source. Replace example credentials before using the stack outside disposable local development.
@@ -145,7 +143,7 @@ The root `.env.example` is the canonical Compose/backend example. Keep existing 
 | MinIO console | http://localhost:9001 |
 | MinIO API | localhost:9000 |
 | MariaDB | localhost:3307 |
-| Redis | localhost:6379 |
+| Redis | localhost:6381 (container port 6379) |
 
 Compose runs migrations before starting the API and worker. Confirm the schema version:
 
@@ -155,7 +153,7 @@ docker compose exec api alembic current
 
 The current head is `f8a1b2c3d4e5`. See the [migration guide](docs/MIGRATION_NOTES.md) for revision history and destructive rollback limits.
 
-For multiple stacks, consistently use a separate project name, such as `docker compose -p truelook-demo ...`, and distinct host ports. The existing developer demo may use storefront/API ports 13000/18000 and MinIO ports 19000/19001; these are not the defaults above.
+The main local Compose project is `truelook`, using the default ports above. Start and manage it from this repository with `docker compose`. For an additional isolated stack, use a different project name (for example, `docker compose -p truelook-test ...`) and distinct host ports. Do not start the retired `fastapi-founder` or `truelook-demo` stacks on this machine.
 
 ### 2. Develop the frontend locally
 
@@ -220,7 +218,7 @@ Environment variables override `.env`. The frontend has its own `.env.local` for
 | `VIETQR_BANK_ID`, `VIETQR_BANK_NAME`, `VIETQR_ACCOUNT_NO`, `VIETQR_ACCOUNT_NAME` | QR receiving-bank configuration |
 | `VIETQR_WEBHOOK_SECRET` | Expected `X-Webhook-Secret`; an empty secret does not authorize callbacks |
 | `ORDER_EXPIRE_MINUTES` | Pending VietQR lifetime; default 30 minutes, shared by API and worker |
-| `APP_ENV`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD` | Environment and demo-account settings |
+| `APP_ENV` | Environment name |
 | `EMAILS_ENABLED`, `EMAILS_CONSOLE_LOG` | Email disabled, console-only, or SMTP mode |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAILS_FROM_EMAIL`, `EMAILS_FROM_NAME` | SMTP sender configuration |
 | `MARIADB_PORT`, `REDIS_PORT`, `MINIO_PORT`, `MINIO_CONSOLE_PORT`, `API_PORT`, `FRONTEND_PORT` | Host-port overrides |
@@ -231,25 +229,16 @@ Compose configures the frontend's internal MinIO rewrite through `MINIO_INTERNAL
 
 To send real email, set `EMAILS_ENABLED=true`, `EMAILS_CONSOLE_LOG=false`, and valid SMTP credentials. Console mode logs a rendered notification; it does not deliver it.
 
-<a id="default-seed-accounts"></a>
-## 👤 Default Seed Accounts
+<a id="first-admin-account"></a>
+## First Admin Account
 
-| Role | Email | Password with the example configuration |
-|---|---|---|
-| Admin | admin@example.com | `DemoAdmin!482` |
-| Customer | user@example.com | `DemoCustomer!482` |
-
-Seed creates 12 clothing products across tops, trousers, skirts/dresses, and outerwear, with size/color variants and three sample orders. It uploads bundled SVG illustrations to MinIO. These are demo images, not product photography or evidence of VTON quality; SVG is not accepted by the admin upload API.
-
-Passwords come from `SEED_ADMIN_PASSWORD` and `SEED_CUSTOMER_PASSWORD`. If omitted, seed generates and prints passwords when creating accounts. Existing account passwords are preserved. Seed is for development/demo environments, not production.
-
-To create a separate admin account interactively:
+The project ships **no seed data**: a new database starts with no users, categories, products or orders. Existing database contents are preserved. Create the first administrator with the CLI (it prompts for the password; public registration cannot assign an admin role):
 
 ```powershell
 docker compose exec api python -m app.cli create-admin --email admin@your-domain.test --username shopadmin
 ```
 
-The CLI prompts for a password; public registration cannot assign an admin role.
+Then sign in at `/login`, create categories, products, variants and images from the admin area, and register customer accounts through the storefront.
 
 <a id="api-documentation"></a>
 ## 📚 API Documentation
@@ -336,18 +325,6 @@ backend/.venv/Scripts/python.exe .github/scripts/compose_smoke.py
 
 This builds source in a separate Compose project, verifies the API/worker/Redis/MinIO and browser flows, then removes that project's containers and volumes.
 
-For the two opt-in walkthroughs against a seeded clothing demo, run from `frontend/`:
-
-```powershell
-$env:E2E_BASE_URL='http://localhost:13000'
-$env:E2E_API_URL='http://localhost:18000/api/v1'
-$env:RUN_ADMIN_CRUD_E2E='1'
-$env:RUN_DEMO_WALKTHROUGH='1'
-pnpm exec playwright test e2e/admin-catalog.spec.ts e2e/demo-walkthrough.spec.ts
-```
-
-Adjust the ports to your stack. These demo specs expect `/api/v1` in `E2E_API_URL`; the session/image smoke suite receives an API origin and adds the suffix itself. Admin CRUD cleans up its own test records; the walkthrough creates a COD order and cancels it. Use a disposable or backed-up demo.
-
 <a id="operations--backups"></a>
 ## 🛠 Operations & Backups
 
@@ -364,7 +341,7 @@ docker compose exec arq_worker arq --check app.worker.WorkerSettings
 - Health reports database/Redis status; `storage=configured` is not a live MinIO availability check. Verify the worker and storage separately.
 - `docker compose down` retains volumes. Adding `--volumes` deletes that project's database and image data.
 
-See [backup and restore](docs/DEMO_BACKUP.md). SQL dumps do not include MinIO objects: back up product images separately, especially admin uploads. [Demo verification](docs/DEMO_VERIFICATION.md) and the [stability review](docs/reviews/2026-10-26-stability-review.md) record the scope and limits of previous checks.
+See [backup and restore](docs/DEMO_BACKUP.md). SQL dumps do not include MinIO objects: back up product images separately, especially admin uploads. The [documentation index](docs/README.md) links the retained operational and design guides; [local environment](docs/LOCAL_ENVIRONMENT.md) records canonical ports and recovery volumes. Use the testing commands above to verify current source.
 
 <a id="current-limits--new-modules"></a>
 ## 🧩 Current Limits & New Modules

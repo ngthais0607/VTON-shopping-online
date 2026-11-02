@@ -1,0 +1,97 @@
+/* Administration uses the Champagne identity with denser operational typography. */
+.admin-workspace {
+  background: #faf8f5;
+  color: #1c1c1c;
+  --radius: 4px;
+}
+.admin-workspace main {
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+}
+.admin-workspace h2,
+.admin-workspace h3,
+.admin-workspace h4,
+.admin-dialog h2,
+.admin-dialog h3 {
+  font-family: var(--font-sans);
+  letter-spacing: -0.015em;
+  text-wrap: pretty;
+}
+.admin-workspace [data-slot='card'] {
+  border-radius: 4px;
+  box-shadow: none;
+  border-color: #e8e3db;
+}
+.admin-workspace [data-slot='table-container'] {
+  overscroll-behavior-x: contain;
+}
+.admin-workspace [data-slot='table-head'] {
+  height: 48px;
+  background: #faf8f5;
+  padding-inline: 20px;
+  color: #6b6761;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+.admin-workspace [data-slot='table-cell'] {
+  padding: 18px 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.admin-workspace [data-slot='table-row']:hover {
+  background-color: #faf8f5;
+}
+.admin-workspace [data-slot='input'],
+.admin-workspace [data-slot='select-trigger'],
+.admin-dialog [data-slot='input'],
+.admin-dialog [data-slot='select-trigger'] {
+  min-height: 44px;
+  border-radius: 4px;
+  background-color: white;
+  box-shadow: none;
+}
+.admin-workspace [data-slot='button'],
+.admin-dialog [data-slot='button'] {
+  border-radius: 4px;
+  box-shadow: none;
+  font-weight: 500;
+}
+.admin-dialog {
+  border: 1px solid #e8e3db;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 24px 80px #1c1c1c18;
+}
+.admin-dialog [data-slot='dialog-title'],
+.admin-dialog [data-slot='alert-dialog-title'] {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -.025em;
+}
+.admin-dialog input:focus-visible,
+.admin-dialog textarea:focus-visible,
+.admin-workspace input:focus-visible,
+.admin-workspace select:focus-visible {
+  outline: 2px solid #b89b6a;
+  outline-offset: 3px;
+}
+.admin-workspace nav[aria-label='Pagination'] {
+  border-top: 1px solid #e8e3db;
+  padding-top: 24px;
+}
+.admin-workspace .admin-metric {
+  border-top: 2px solid #b89b6a;
+}
+@media (min-width: 1024px) {
+  .admin-workspace main { padding: 32px 40px 48px; }
+}
+@media (max-width: 639px) {
+  .admin-workspace [data-slot='table-cell'] { padding: 14px 16px; }
+  .admin-workspace [data-slot='table-head'] { padding-inline: 16px; }
+  .admin-dialog { max-height: 90dvh; overflow-y: auto; }
+}

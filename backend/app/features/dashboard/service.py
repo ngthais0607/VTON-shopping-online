@@ -1,6 +1,6 @@
 """Read-only aggregates and projections for the admin dashboard."""
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.cache import get_cache
@@ -71,7 +71,17 @@ def get_metrics(db: Session, use_cache: bool = True) -> DashboardMetrics:
             func.coalesce(
                 func.sum(
                     case(
-                        (Order.status == OrderStatus.PAID.value, Order.total_amount),
+                        (
+                            Order.status.notin_(
+                                [OrderStatus.CANCELLED.value, OrderStatus.EXPIRED.value]
+                            )
+                            & or_(
+                                Order.status == OrderStatus.PAID.value,
+                                Order.paid_at.isnot(None),
+                                Order.payments.any(Payment.status == "paid"),
+                            ),
+                            Order.total_amount,
+                        ),
                         else_=0,
                     )
                 ),

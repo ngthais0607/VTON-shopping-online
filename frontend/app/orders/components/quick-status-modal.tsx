@@ -1,18 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
-import { Order } from "@/lib/types";
-import { useSWRConfig } from 'swr';
-import { apiPut } from "@/lib/api";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Clock, Truck, Check, XCircle, Loader2 } from "lucide-react";
+import {
+Dialog,
+DialogContent,
+DialogDescription,
+DialogHeader,
+DialogTitle,
+} from "@/components/ui/dialog";
+import { apiPut } from "@/lib/api";
+import { Order } from "@/lib/types";
+import { Check,CheckCircle2,Clock,Loader2,Truck,XCircle } from "lucide-react";
+import { useState } from "react";
+import { useSWRConfig } from 'swr';
 
 interface QuickStatusModalProps {
   order: Order | null;
@@ -28,7 +28,7 @@ const statusOptions: { label: string; value: Order["status"]; icon: any; color: 
   { label: "Shipped", value: "shipped", icon: Truck, color: "text-blue-600 bg-blue-50 border-blue-200" },
   { label: "Delivered", value: "delivered", icon: Check, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   { label: "Cancelled", value: "cancelled", icon: XCircle, color: "text-rose-600 bg-rose-50 border-rose-200" },
-  { label: "Expired", value: "expired", icon: XCircle, color: "text-slate-600 bg-slate-50 border-slate-200" },
+  { label: "Expired", value: "expired", icon: XCircle, color: "text-muted-foreground bg-background border-border" },
 ];
 
 export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: QuickStatusModalProps) {
@@ -60,13 +60,13 @@ export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: Qu
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md bg-white rounded-3xl p-6 shadow-2xl">
+      <DialogContent className="admin-dialog max-w-md bg-white rounded p-6 shadow-none">
         <DialogHeader>
-          <DialogTitle className="text-lg font-bold text-slate-900">
+          <DialogTitle className="text-lg font-bold text-foreground">
             Update Status for Order #{order.id}
           </DialogTitle>
-          <DialogDescription className="text-xs text-slate-500">
-            Select a new fulfillment status for product <span className="font-semibold text-slate-800">{order.product_name}</span>.
+          <DialogDescription className="text-xs text-muted-foreground">
+            Select a new fulfillment status for product <span className="font-semibold text-foreground">{order.product_name}</span>.
           </DialogDescription>
         </DialogHeader>
 
@@ -82,23 +82,23 @@ export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: Qu
                 key={opt.value}
                 disabled={loadingStatus !== null}
                 onClick={() => handleSelectStatus(opt.value)}
-                className={`w-full flex items-center justify-between p-3.5 rounded-2xl border text-sm font-semibold transition-all cursor-pointer ${
+                className={`w-full flex items-center justify-between p-3.5 rounded border text-sm font-semibold transition-all cursor-pointer ${
                   isCurrent
-                    ? `${opt.color} ring-2 ring-indigo-500/20`
-                    : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50/80 text-slate-700"
+                    ? `${opt.color} ring-2 ring-ring/20`
+                    : "border-border hover:border-primary/40 hover:bg-background/80 text-foreground"
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-xl bg-white shadow-xs`}>
+                  <div className={`p-2 rounded-md bg-white shadow-none`}>
                     <Icon className="w-4 h-4" />
                   </div>
                   <span>{opt.label}</span>
                 </div>
 
                 {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
                 ) : isCurrent ? (
-                  <span className="text-xs bg-slate-900 text-white px-2.5 py-0.5 rounded-full font-bold">
+                  <span className="text-xs bg-primary text-white px-2.5 py-0.5 rounded-full font-bold">
                     Current
                   </span>
                 ) : null}
@@ -108,7 +108,7 @@ export function QuickStatusModal({ order, isOpen, onClose, onStatusUpdated }: Qu
         </div>
 
         <div className="flex justify-end">
-          <Button variant="outline" onClick={onClose} className="rounded-xl text-xs font-semibold">
+          <Button variant="outline" onClick={onClose} className="rounded-md text-xs font-semibold">
             Cancel
           </Button>
         </div>

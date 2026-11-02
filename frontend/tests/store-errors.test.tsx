@@ -1,7 +1,7 @@
-import React from 'react';
-import {render,screen} from '@testing-library/react';
-import {expect,it,vi} from 'vitest';
+import { render,screen } from '@testing-library/react';
+import { expect,it,vi } from 'vitest';
 import StorefrontPage from '../app/store/page';
+vi.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams(),useRouter:()=>({replace:vi.fn()})}));
 vi.mock('@/hooks/use-session',()=>({useSession:()=>({user:null})}));
 vi.mock('@/hooks/use-categories',()=>({useCategoryOptions:()=>({categories:[],error:new Error('Category page unavailable'),mutate:vi.fn()})}));
 vi.mock('@/hooks/use-products',()=>({useProducts:()=>({products:[],total:0,error:new Error('Product page unavailable'),mutate:vi.fn()})}));

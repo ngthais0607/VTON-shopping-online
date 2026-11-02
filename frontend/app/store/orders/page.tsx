@@ -10,11 +10,9 @@ import { getOrderStatusPresentation } from "@/lib/order-status";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { ShoppingBag, ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle, RefreshCw, CreditCard, Truck } from "lucide-react";
-import { format } from "date-fns";
 
 export default function CustomerOrdersPage() {
     const [orders, setOrders] = useState<Order[]>([]);
-    const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
@@ -24,16 +22,15 @@ export default function CustomerOrdersPage() {
     const loadData = useCallback(async () => {
         setError(null);
         try {
-            // 1. Lấy thông tin user hiện tại để lấy ID
+            // Fetch the signed-in user.
             const user = await apiGet<User>("/users/me");
-            setCurrentUser(user);
 
-            // 2. Lấy đơn hàng của riêng user này thông qua API /orders/user/{user_id}
+            // Load orders belonging to this user.
             const ordersData = await apiGet<Page<Order> | Order[]>(`/orders/user/${user.id}?limit=20&offset=0`);
             setOrders(Array.isArray(ordersData) ? ordersData : ordersData.items);
         } catch (err) {
             console.error("Failed to load customer orders", err);
-            // Nếu token hết hạn hoặc chưa đăng nhập, tự động đẩy về trang Login
+            // Redirect to sign in when the session is unavailable.
             if (err instanceof ApiError && err.status === 401) router.push("/login?next=/store/orders");
             else setError(err instanceof Error ? err.message : "Unable to load orders");
         } finally {
@@ -71,9 +68,9 @@ export default function CustomerOrdersPage() {
             case "pending":
                 return "bg-amber-50 text-amber-700 border-amber-200";
             case "confirmed":
-                return "bg-blue-50 text-blue-700 border-blue-200";
+                return "bg-[#F1ECE4] text-[#1C1C1C] border-[#E8E3DB]";
             case "shipped":
-                return "bg-sky-50 text-sky-700 border-sky-200";
+                return "bg-[#F1ECE4] text-[#1C1C1C] border-[#E8E3DB]";
             case "delivered":
                 return "bg-emerald-50 text-emerald-700 border-emerald-200";
             case "expired":
@@ -92,9 +89,9 @@ export default function CustomerOrdersPage() {
             case "pending":
                 return <Clock className="w-4 h-4 text-amber-600" />;
             case "confirmed":
-                return <CheckCircle2 className="w-4 h-4 text-blue-600" />;
+                return <CheckCircle2 className="w-4 h-4 text-[#1C1C1C]" />;
             case "shipped":
-                return <Truck className="w-4 h-4 text-sky-600" />;
+                return <Truck className="w-4 h-4 text-[#1C1C1C]" />;
             case "delivered":
                 return <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
             case "cancelled":
@@ -105,134 +102,41 @@ export default function CustomerOrdersPage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
-            {/* Kế thừa Header chung của Storefront */}
-            <Header currentUser={currentUser} onShopNow={() => router.push("/store")} />
-
-            <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-24">
-                {/* Nút quay lại trang mua sắm */}
-                <button
-                    onClick={() => router.push("/store")}
-                    className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-800 transition-colors mb-6 cursor-pointer"
-                >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to Store
-                </button>
-
-                {/* Tiêu đề & Nút tải lại */}
-                <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">My Orders</h1>
-                        <p className="text-sm text-slate-500 mt-1">Track and manage your purchasing history</p>
-                    </div>
-                    <button
-                        onClick={handleRefresh}
-                        disabled={refreshing}
-                        className="p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                        title="Refresh order history"
-                    >
-                        <RefreshCw className={`w-5 h-5 ${refreshing ? "animate-spin" : ""}`} />
-                    </button>
+        <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
+            <Header />
+            <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-40 sm:px-8 lg:px-12 lg:pt-56">
+                <button onClick={() => router.push("/store")} className="mb-7 flex min-h-11 items-center gap-2 text-xs text-[#6B6761] hover:text-[#1C1C1C]"><ArrowLeft className="h-3.5 w-3.5" />Back to store</button>
+                <div className="mb-10 flex items-end justify-between gap-5 border-b border-[#E8E3DB] pb-9">
+                    <div><p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#1C1C1C]">Order history</p><h1 className="text-4xl font-medium leading-[1.05] tracking-[-0.045em] sm:text-6xl" style={{ fontFamily: "var(--font-display)" }}>My<br />orders.</h1><p className="mt-4 text-sm leading-6 text-[#6B6761]">Track and manage your orders.</p></div>
+                    <button onClick={handleRefresh} disabled={refreshing} aria-label="Refresh order history" title="Refresh order history" className="flex h-12 w-12 shrink-0 items-center justify-center border border-[#E8E3DB] bg-white text-[#1C1C1C] hover:border-[#1C1C1C] disabled:opacity-50"><RefreshCw className={"h-4 w-4 " + (refreshing ? "animate-spin" : "")} /></button>
                 </div>
-
-                {/* Nội dung danh sách đơn hàng */}
-                {error ? <p role="alert">{error}<button onClick={handleRefresh}>Retry</button></p> : loading ? (
-                    <div className="bg-white border border-sky-100 rounded-3xl p-12 text-center shadow-xs">
-                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-sky-200 border-t-sky-600 mx-auto mb-3" />
-                        <p className="text-sm font-semibold text-slate-500">Loading your orders...</p>
-                    </div>
+                {error ? <div role="alert" className="flex flex-col justify-between gap-4 border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800 sm:flex-row sm:items-center"><p>{error}</p><button onClick={handleRefresh} className="min-h-11 self-start border-b border-rose-800 font-medium">Retry</button></div> : loading ? (
+                    <div role="status" className="flex min-h-64 items-center justify-center gap-3 border border-[#E8E3DB] bg-white p-6 text-sm text-[#6B6761]"><RefreshCw className="h-5 w-5 animate-spin text-[#1C1C1C]" />Loading your orders...</div>
                 ) : orders.length === 0 ? (
-                    <div className="bg-white border border-sky-100 rounded-3xl p-16 text-center shadow-xs">
-                        <div className="w-16 h-16 rounded-full bg-sky-50 flex items-center justify-center mx-auto mb-4">
-                            <ShoppingBag className="w-8 h-8 text-sky-500" />
-                        </div>
-                        <h3 className="text-lg font-bold text-slate-900 mb-1">No orders yet</h3>
-                        <p className="text-slate-500 text-sm max-w-xs mx-auto mb-6">
-                            Looks like you haven&apos;t placed any orders yet. Check out our products and start shopping!
-                        </p>
-                        <button
-                            onClick={() => router.push("/store")}
-                            className="px-6 py-3 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white text-sm font-bold shadow-md shadow-sky-500/25 cursor-pointer active:scale-95 transition-all"
-                        >
-                            Shop Now
-                        </button>
-                    </div>
+                    <div className="border border-[#E8E3DB] bg-white px-6 py-16 text-center sm:py-24"><ShoppingBag className="mx-auto mb-6 h-10 w-10 text-[#1C1C1C]" /><h2 className="text-3xl font-medium tracking-tight" style={{ fontFamily: "var(--font-display)" }}>No orders yet.</h2><p className="mx-auto mt-3 max-w-sm text-sm leading-7 text-[#6B6761]">Find something you love in the collection and start your TrueLook journey.</p><button onClick={() => router.push("/store")} className="mt-7 min-h-12 bg-[#1C1C1C] px-6 text-sm font-medium text-white hover:bg-[#1C1C1C]">Explore products</button></div>
                 ) : (
-                    <div className="space-y-4">
-                        {orders.map((order) => (
-                            <div
-                                key={order.id}
-                                className="bg-white border border-sky-100 rounded-2xl shadow-xs hover:shadow-md hover:border-sky-200 transition-all p-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
-                            >
-                                {/* Thông tin sản phẩm */}
-                                <div className="space-y-1.5 flex-1">
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-xs font-bold text-sky-600 uppercase tracking-wider">
-                                            Order #{order.id}
-                                        </span>
-                                        <span className="text-xs text-slate-400 font-semibold">
-                                            {displayDate(order.created_at, "MMM dd, yyyy HH:mm")}
-                                        </span>
-                                    </div>
-                                    <h3 className="text-lg font-bold text-slate-900">
-                                        {order.product_name || (order.items && order.items.length > 0 ? (order.items.length === 1 ? order.items[0].product_name : `${order.items[0].product_name} (+${order.items.length - 1} items)`) : `Order #${order.id}`)}
-                                    </h3>
-                                    <div className="flex items-center gap-4 text-sm text-slate-500 font-medium">
-                                        <span>Quantity: <strong className="text-slate-800">{order.quantity ?? (order.items ? order.items.reduce((s, it) => s + it.quantity, 0) : 1)}</strong></span>
-                                        {order.unit_price != null ? (
-                                            <span>Unit Price: <strong className="text-slate-800">{formatCurrency(order.unit_price, order.currency)}</strong></span>
-                                        ) : (order.items && order.items.length > 0 ? (
-                                            <span className="text-xs text-sky-600 font-semibold">{order.items.length} items</span>
-                                        ) : null)}
-                                    </div>
+                    <div>
+                        <div className="mb-5 flex justify-between text-[10px] uppercase tracking-[0.18em] text-[#6B6761]"><span>{orders.length.toString().padStart(2, "0")} orders</span><span>Current status</span></div>
+                        <div className="space-y-4">{orders.map(order => (
+                            <article key={order.id} className="grid gap-6 border border-[#E8E3DB] bg-white p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center lg:gap-8">
+                                <div className="min-w-0">
+                                    <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]"><span className="break-all font-mono text-[#1C1C1C]">#{order.public_code || order.id}</span><span className="text-[#6B6761]">{displayDate(order.created_at, "dd/MM/yyyy HH:mm")}</span></div>
+                                    <h2 className="text-xl font-medium leading-7 tracking-tight" style={{ fontFamily: "var(--font-display)" }}>{order.product_name || (order.items?.length ? order.items[0].product_name + (order.items.length > 1 ? " (+" + (order.items.length - 1) + " items)" : "") : "Order #" + order.id)}</h2>
+                                    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs leading-5 text-[#6B6761]"><span>Quantity: <strong className="font-medium text-[#1C1C1C]">{order.quantity ?? order.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 1}</strong></span>{order.unit_price != null ? <span>Unit price: <strong className="font-medium text-[#1C1C1C]">{formatCurrency(order.unit_price, order.currency)}</strong></span> : order.items?.length ? <span>{order.items.length} items</span> : null}<span>{order.payment_method === "cod" ? "Cash on delivery" : "VietQR payment"}</span></div>
                                 </div>
-
-                                {/* Trạng thái & Tổng tiền */}
-                                <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 min-w-[150px] border-t md:border-t-0 pt-3 md:pt-0">
-                                    <div className="text-left md:text-right">
-                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-0.5">Total Amount</p>
-                                        <p className="text-xl font-black text-slate-950">{formatCurrency(order.total, order.currency)}</p>
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        <span
-                                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border capitalize ${getStatusBadgeClass(
-                                                order.status
-                                            )}`}
-                                        >
-                                            {getStatusIcon(order.status)}
-                                            {getOrderStatusPresentation(order.status).label}
-                                        </span>
-                                    </div>
+                                <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[#E8E3DB] pt-5 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0">
+                                    <div><p className="mb-1 text-[10px] uppercase tracking-[0.16em] text-[#6B6761]">Total</p><p className="text-2xl font-semibold tracking-tight">{formatCurrency(order.total ?? order.total_amount, order.currency)}</p></div>
+                                    <span className={"inline-flex items-center gap-1.5 border px-3 py-1.5 text-[11px] font-medium " + getStatusBadgeClass(order.status)}>{getStatusIcon(order.status)}{getOrderStatusPresentation(order.status).label}</span>
                                 </div>
-
-                                {/* Nút xem chi tiết & theo dõi đơn hàng */}
-                                <div className="md:border-l md:border-sky-100 md:pl-4 flex flex-col sm:flex-row md:flex-col items-center justify-stretch md:justify-center gap-2 w-full md:w-auto pt-2 md:pt-0">
-                                    <button
-                                        onClick={() => router.push(`/store/orders/${order.public_code}`)}
-                                        className="w-full md:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-sky-500/20 active:scale-95 transition-all cursor-pointer"
-                                    >
-                                        <CreditCard className="w-3.5 h-3.5" />
-                                        {order.status === "pending" ? "Pay & Track" : "Track Order"}
-                                    </button>
-                                    {((order.payment_method === "vietqr" && order.status === "pending") || (order.payment_method === "cod" && order.status === "confirmed")) && (
-                                        <button
-                                            onClick={() => handleCancelOrder(order.id)}
-                                            disabled={cancellingId === order.id}
-                                            className="w-full md:w-auto px-3 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                                        >
-                                            <XCircle className="w-3.5 h-3.5" />
-                                            {cancellingId === order.id ? "Cancelling..." : "Cancel Order"}
-                                        </button>
-                                    )}
+                                <div className="flex flex-wrap gap-3 border-t border-[#E8E3DB] pt-5 lg:min-w-40 lg:flex-col lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
+                                    <button onClick={() => order.public_code && router.push("/store/orders/" + encodeURIComponent(order.public_code))} disabled={!order.public_code} className="flex min-h-11 flex-1 items-center justify-center gap-2 bg-[#1C1C1C] px-5 py-3 text-xs font-medium text-white hover:bg-[#1C1C1C] disabled:opacity-50 lg:flex-auto"><CreditCard className="h-3.5 w-3.5" />{order.status === "pending" ? "Pay & Track" : "Track Order"}</button>
+                                    {((order.payment_method === "vietqr" && order.status === "pending") || (order.payment_method === "cod" && order.status === "confirmed")) && <button onClick={() => handleCancelOrder(order.id)} disabled={cancellingId === order.id} className="flex min-h-11 flex-1 items-center justify-center gap-2 border border-rose-200 px-4 py-3 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50 lg:flex-auto"><XCircle className="h-3.5 w-3.5" />{cancellingId === order.id ? "Cancelling..." : "Cancel Order"}</button>}
                                 </div>
-                            </div>
-                        ))}
+                            </article>
+                        ))}</div>
                     </div>
                 )}
             </main>
-
-            {/* Kế thừa Footer chung */}
             <Footer />
         </div>
     );

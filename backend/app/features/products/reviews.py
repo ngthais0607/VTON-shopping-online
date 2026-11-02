@@ -1,3 +1,4 @@
+from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -21,27 +22,20 @@ def list_product_reviews(
 ) -> ReviewPage:
     product_service.get_product(db, product_id)
 
-    all_reviews = (
-        db.query(ProductReview)
-        .options(joinedload(ProductReview.user))
-        .filter(ProductReview.product_id == product_id)
-        .order_by(ProductReview.created_at.desc(), ProductReview.id.desc())
-        .all()
+    base_query = db.query(ProductReview).filter(ProductReview.product_id == product_id)
+    total_reviews, rating, total_fb, small_count, tts_count, large_count = (
+        base_query.with_entities(
+            func.count(ProductReview.id),
+            func.avg(ProductReview.rating),
+            func.count(func.nullif(ProductReview.fit_feedback, "")),
+            func.count(case((ProductReview.fit_feedback == "small", 1))),
+            func.count(case((ProductReview.fit_feedback == "true_to_size", 1))),
+            func.count(case((ProductReview.fit_feedback == "large", 1))),
+        ).one()
     )
-    total_reviews = len(all_reviews)
-    average_rating = (
-        round(sum(review.rating for review in all_reviews) / total_reviews, 1)
-        if all_reviews
-        else None
-    )
-
-    feedback_reviews = [r for r in all_reviews if r.fit_feedback]
+    average_rating = round(float(rating), 1) if rating is not None else None
     fit_feedback_summary = None
-    if feedback_reviews:
-        total_fb = len(feedback_reviews)
-        small_count = sum(1 for r in feedback_reviews if r.fit_feedback == "small")
-        tts_count = sum(1 for r in feedback_reviews if r.fit_feedback == "true_to_size")
-        large_count = sum(1 for r in feedback_reviews if r.fit_feedback == "large")
+    if total_fb:
         fit_feedback_summary = FitFeedbackSummary(
             small=round(small_count / total_fb * 100, 1),
             true_to_size=round(tts_count / total_fb * 100, 1),
@@ -55,7 +49,13 @@ def list_product_reviews(
         fit_feedback=fit_feedback_summary,
     )
 
-    page_items = all_reviews[offset : offset + limit]
+    page_items = (
+        base_query.options(joinedload(ProductReview.user))
+        .order_by(ProductReview.created_at.desc(), ProductReview.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
     return ReviewPage(
         items=page_items,

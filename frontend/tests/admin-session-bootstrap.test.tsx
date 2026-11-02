@@ -1,6 +1,5 @@
-import React from 'react';
-import { act, render, waitFor } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { act,render,waitFor } from '@testing-library/react';
+import { expect,it,vi } from 'vitest';
 import { LayoutClientWrapper } from '../components/layout-client-wrapper';
 const { replace, refresh } = vi.hoisted(() => ({ replace: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/categories', useRouter: () => ({ replace }) }));

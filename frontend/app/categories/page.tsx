@@ -149,22 +149,22 @@ export default function CategoriesPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Header title="Clothing categories" subtitle="Áo · Quần · Váy & Đầm · Áo khoác — quản lý danh mục quần áo hai cấp" />
+      <Header title="Clothing categories" subtitle="Tops · Pants · Skirts & Dresses · Outerwear — manage two-level clothing categories" />
 
       <main className="flex-1 p-4 md:p-8 space-y-6">
         <section aria-label="Clothing groups" className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           {roots.map(root => (
             <button key={root.id} type="button" aria-pressed={group === root.id}
               onClick={() => { setGroup(group === root.id ? null : root.id); setPage(1); }}
-              className={`rounded-2xl border p-4 text-left transition-colors ${group === root.id ? "border-sky-500 bg-sky-50 ring-1 ring-sky-500" : "border-slate-200 bg-white hover:border-sky-300"}`}>
-              <span className="block font-semibold text-slate-900">{root.name}</span>
-              <span className="mt-1 block text-xs text-slate-500">{allCategories.filter(category => category.parent_id === root.id).length} subcategories</span>
+              className={`rounded border p-4 text-left transition-colors ${group === root.id ? "border-primary bg-secondary ring-1 ring-primary" : "border-border bg-white hover:border-primary/40"}`}>
+              <span className="block font-semibold text-foreground">{root.name}</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{allCategories.filter(category => category.parent_id === root.id).length} subcategories</span>
             </button>
           ))}
         </section>
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div className="w-full sm:max-w-sm space-y-1.5">
-            <label htmlFor="category-search" className="text-sm font-medium text-slate-700">Search categories</label>
+            <label htmlFor="category-search" className="text-sm font-medium text-foreground">Search categories</label>
             <Input id="category-search" placeholder="Search clothing categories..." value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} />
           </div>
           <Button variant="outline" onClick={() => { setSearch(""); setGroup(null); setPage(1); }}>All categories ({allCategories.length})</Button>
@@ -189,7 +189,7 @@ export default function CategoriesPage() {
               </Button>
             </DialogTrigger>
 
-            <DialogContent className="max-w-md">
+            <DialogContent className="admin-dialog max-w-md">
               <DialogHeader>
                 <DialogTitle>
                   {editingCategory ? "Edit Category" : "Create Category"}
@@ -220,7 +220,7 @@ export default function CategoriesPage() {
 
                 <div className="grid gap-2">
                   <label htmlFor="parent_id" className="text-sm font-medium">
-                    Parent Category (Danh mục cha)
+                    Parent Category
                   </label>
                   <select
                     id="parent_id"
@@ -234,7 +234,7 @@ export default function CategoriesPage() {
                       }))
                     }
                   >
-                    <option value="">-- None (Danh mục gốc cấp 1) --</option>
+                    <option value="">-- None (Top-level category) --</option>
                     {roots
                       .filter((c) => !editingCategory || c.id !== editingCategory.id)
                       .map((c) => (
@@ -243,12 +243,12 @@ export default function CategoriesPage() {
                         </option>
                       ))}
                   </select>
-                  <p className="text-xs text-slate-500">Only main groups can be parents. Groups with subcategories must remain at the top level.</p>
+                  <p className="text-xs text-muted-foreground">Only main groups can be parents. Groups with subcategories must remain at the top level.</p>
                 </div>
 
                 <div className="grid gap-2">
                   <label htmlFor="slug" className="text-sm font-medium">
-                    Slug (URL định danh)
+                    Slug (URL identifier)
                   </label>
                   <Input
                     id="slug"
@@ -307,7 +307,7 @@ export default function CategoriesPage() {
         {(error || (actionError && !createDialogOpen && !deleteCategory)) && <p role="alert" className="text-sm text-rose-600">{actionError || error?.message}<button onClick={()=>mutate()}>Retry</button></p>}
         <PaginationControls page={page} pageSize={20} total={total} onPageChange={setPage} disabled={loading}/>
         {loading ? (
-          <Card className="p-8 text-center text-slate-600">
+          <Card className="p-8 text-center text-muted-foreground">
             Loading categories...
           </Card>
         ) : (
@@ -315,11 +315,11 @@ export default function CategoriesPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-slate-200 bg-slate-50">
-                    <TableHead className="text-slate-600">Name</TableHead>
-                    <TableHead className="text-slate-600">Parent group</TableHead>
-                    <TableHead className="text-slate-600">Slug</TableHead>
-                    <TableHead className="text-slate-600">
+                  <TableRow className="border-border bg-background">
+                    <TableHead className="text-muted-foreground">Name</TableHead>
+                    <TableHead className="text-muted-foreground">Parent group</TableHead>
+                    <TableHead className="text-muted-foreground">Slug</TableHead>
+                    <TableHead className="text-muted-foreground">
                       Description
                     </TableHead>
 
@@ -327,16 +327,16 @@ export default function CategoriesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {!categories.length && <TableRow><TableCell colSpan={5} className="p-8 text-center text-slate-500">No clothing categories match your search.</TableCell></TableRow>}
+                  {!categories.length && <TableRow><TableCell colSpan={5} className="p-8 text-center text-muted-foreground">No clothing categories match your search.</TableCell></TableRow>}
                   {categories.map((category) => (
-                    <TableRow key={category.id} className="border-slate-200">
-                      <TableCell className="font-medium text-slate-900">
+                    <TableRow key={category.id} className="border-border">
+                      <TableCell className="font-medium text-foreground">
                         {category.name}
-                        <span className="mt-1 block text-xs font-normal text-slate-400">{category.parent_id == null ? "Main group" : "Subcategory"}</span>
+                        <span className="mt-1 block text-xs font-normal text-muted-foreground">{category.parent_id == null ? "Main group" : "Subcategory"}</span>
                       </TableCell>
-                      <TableCell className="text-slate-600">{category.parent_id == null ? "—" : categoryById.get(category.parent_id)?.name || "Unknown group"}</TableCell>
-                      <TableCell className="text-xs text-slate-500">{category.slug}</TableCell>
-                      <TableCell className="text-slate-600">
+                      <TableCell className="text-muted-foreground">{category.parent_id == null ? "—" : categoryById.get(category.parent_id)?.name || "Unknown group"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{category.slug}</TableCell>
+                      <TableCell className="text-muted-foreground">
                         {category.description}
                       </TableCell>
 
@@ -375,7 +375,7 @@ export default function CategoriesPage() {
           open={!!deleteCategory}
           onOpenChange={(open) => { if (!open && !busy) setDeleteCategory(null); }}
         >
-          <AlertDialogContent>
+          <AlertDialogContent className="admin-dialog">
             <AlertDialogTitle>Delete Category</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete &quot;{deleteCategory.name}&quot;?

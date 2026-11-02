@@ -21,12 +21,6 @@ from app.features.users.model import User
 from app.features.users.schemas import LoginCommand, UserPatch
 from app.features.users.session_model import UserSession
 from app.integrations.queue import get_task_queue
-from app.seed import seed_database
-
-
-@pytest.fixture(autouse=True)
-def seed_storage(monkeypatch, product_storage):
-    monkeypatch.setattr("app.seed.MinioProductStorage", lambda _: product_storage)
 
 
 class RecordingQueue:
@@ -54,19 +48,20 @@ def _make_user(db_session, suffix: str, *, role: str = "customer", **values) -> 
     return user
 
 
-def test_seed_database_and_versioned_login(client, db_session, monkeypatch):
-    from importlib import import_module
+def _make_login_admin(db_session) -> User:
+    return _make_user(
+        db_session,
+        "admin",
+        role="admin",
+        username="admin",
+        email="admin@example.com",
+        password_hash=hash_password("Admin@123456"),
+    )
 
-    from app.core.config import get_settings
 
-    settings = get_settings().model_copy(update={"seed_admin_password": "Admin@123456"})
-    monkeypatch.setattr(import_module("app.seed"), "get_settings", lambda: settings)
-    seed_database(db_session)
-
-    admin = db_session.query(User).filter(User.email == "admin@example.com").one()
-    customer = db_session.query(User).filter(User.email == "user@example.com").one()
+def test_versioned_login_sets_refresh_cookie(client, db_session):
+    admin = _make_login_admin(db_session)
     assert (admin.username, admin.role) == ("admin", "admin")
-    assert (customer.username, customer.role) == ("demouser", "customer")
 
     limiter.reset()
     response = client.post(
@@ -81,11 +76,6 @@ def test_seed_database_and_versioned_login(client, db_session, monkeypatch):
     assert response.cookies["refresh_token"]
 
 
-def test_seed_database_is_idempotent(db_session):
-    seed_database(db_session)
-    seed_database(db_session)
-
-
 def test_login_rate_limiting_uses_versioned_route(client):
     limiter.reset()
     payload = {"identifier": "nobody@example.com", "password": "wrongpassword"}
@@ -98,14 +88,8 @@ def test_login_rate_limiting_uses_versioned_route(client):
     assert client.post("/api/v1/users/login", json=payload).status_code == 429
 
 
-def test_refresh_rotates_cookie_and_logout_deletes_it(client, db_session, monkeypatch):
-    from importlib import import_module
-
-    from app.core.config import get_settings
-
-    settings = get_settings().model_copy(update={"seed_admin_password": "Admin@123456"})
-    monkeypatch.setattr(import_module("app.seed"), "get_settings", lambda: settings)
-    seed_database(db_session)
+def test_refresh_rotates_cookie_and_logout_deletes_it(client, db_session):
+    _make_login_admin(db_session)
     limiter.reset()
     login = client.post(
         "/api/v1/users/login",

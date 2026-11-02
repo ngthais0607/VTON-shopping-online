@@ -1,9 +1,8 @@
 "use client";
 
-import React from "react";
-import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Order } from "@/lib/types";
+import { Download } from "lucide-react";
 
 interface ExportCSVButtonProps {
   orders: Order[];
@@ -44,9 +43,9 @@ export function ExportCSVButton({ orders }: ExportCSVButtonProps) {
     <Button
       onClick={handleExport}
       variant="outline"
-      className="flex items-center gap-2 bg-white text-slate-700 hover:bg-slate-50 border-slate-200 shadow-xs text-xs font-semibold"
+      className="flex items-center gap-2 bg-white text-foreground hover:bg-background border-border shadow-none text-xs font-semibold"
     >
-      <Download className="w-3.5 h-3.5 text-indigo-600" />
+      <Download className="w-3.5 h-3.5 text-primary" />
       Export current page
     </Button>
   );

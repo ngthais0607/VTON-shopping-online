@@ -1,6 +1,5 @@
-import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent,render,screen } from "@testing-library/react";
+import { describe,expect,it,vi } from "vitest";
 
 import { FashionFilters } from "@/components/store/fashion-filters";
 import type { ProductFacetsResponse } from "@/lib/types";
@@ -40,18 +39,20 @@ describe("FashionFilters", () => {
     mockSearchParams = new URLSearchParams();
     render(<FashionFilters />);
 
-    expect(screen.getByText("Bộ lọc thời trang")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /giới tính nam/i })).toBeInTheDocument();
+    expect(screen.getByText("Refine by")).toBeInTheDocument();
+    document.querySelectorAll('details summary').forEach(summary => fireEvent.click(summary));
+    expect(screen.getByRole("button", { name: /gender male/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /size m/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /màu đen/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /thương hiệu truelook/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /color đen/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /brand truelook/i })).toBeInTheDocument();
   });
 
   it("updates URL query string when clicking a facet button", () => {
     mockSearchParams = new URLSearchParams();
     render(<FashionFilters />);
 
-    const maleBtn = screen.getByRole("button", { name: /giới tính nam/i });
+    document.querySelectorAll('details summary').forEach(summary => fireEvent.click(summary));
+    const maleBtn = screen.getByRole("button", { name: /gender male/i });
     fireEvent.click(maleBtn);
 
     expect(mockReplace).toHaveBeenCalledWith("?gender=male", { scroll: false });
@@ -71,7 +72,7 @@ describe("FashionFilters", () => {
     mockSearchParams = new URLSearchParams("gender=male&size=M&brand=TrueLook");
     render(<FashionFilters />);
 
-    const resetBtn = screen.getByText(/Đặt lại/i);
+    const resetBtn = screen.getByText(/Clear all/i);
     expect(resetBtn).toBeInTheDocument();
 
     fireEvent.click(resetBtn);

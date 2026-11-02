@@ -1,6 +1,5 @@
-import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { render,screen } from '@testing-library/react';
+import { expect,it,vi } from 'vitest';
 import OrderSuccessPage from '../app/store/orders/success/page';
 const {search} = vi.hoisted(()=>({search:new URLSearchParams('order_ids=11,12')}));
 vi.mock('@/lib/api',()=>({apiGet:vi.fn(async()=>({total_amount:30,currency:'USD'}))}));

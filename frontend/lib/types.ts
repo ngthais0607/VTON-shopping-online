@@ -15,11 +15,15 @@ export interface ProductVariant {
   updated_at?: string | null;
 }
 
+/** Mirrors backend VALID_IMAGE_KINDS (features/products/images.py). */
+export const PRODUCT_IMAGE_KINDS = ["model_photo", "flat_lay", "detail", "size_chart", "catalog"] as const;
+export type ProductImageKind = (typeof PRODUCT_IMAGE_KINDS)[number];
+
 export interface ProductImage {
   id: string;
   url: string;
   color_name?: string | null;
-  kind?: "front" | "back" | "detail" | "model" | "flatlay" | string;
+  kind?: ProductImageKind;
   is_primary?: boolean;
   sort_order?: number;
 }
@@ -325,6 +329,7 @@ export interface VariantLookupItem {
   color_name: string;
   color_hex: string | null;
   price: number;
+  currency?: string;
   stock_quantity: number;
   reserved_quantity: number;
   sold_quantity: number;

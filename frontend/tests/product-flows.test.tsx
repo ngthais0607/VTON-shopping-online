@@ -1,10 +1,9 @@
 /* Test image double avoids the Next.js image optimizer in jsdom. */
 /* eslint-disable @next/next/no-img-element */
-import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
-import { ImageUploader } from '../components/image-uploader';
+import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { beforeEach,expect,it,vi } from 'vitest';
 import ProductsPage from '../app/products/page';
+import { ImageUploader } from '../components/image-uploader';
 const {get,upload,post,patch,remove,productState,categoryState} = vi.hoisted(()=>({get:vi.fn(),upload:vi.fn(),post:vi.fn(),patch:vi.fn(),remove:vi.fn(),productState:{error:null as Error|null,products:[] as any[],total:0},categoryState:{error:null as Error|null}}));
 vi.mock('@/lib/api',()=>({apiGet:get,apiUpload:upload,apiPost:post,apiPatch:patch,apiPut:patch,apiDelete:remove}));
 vi.mock('@/components/ui/dropdown-menu',()=>({DropdownMenu:({children}:any)=><div>{children}</div>,DropdownMenuTrigger:({children}:any)=><>{children}</>,DropdownMenuContent:({children}:any)=><div>{children}</div>,DropdownMenuItem:({children,onClick}:any)=><button onClick={onClick}>{children}</button>}));
@@ -52,12 +51,16 @@ it('clears the pending file after a persisted replacement succeeds',async()=>{
   await waitFor(()=>expect(selected).toHaveBeenLastCalledWith(null));
 });
 it('retains the replacement file for retry if its immediate upload fails',async()=>{
-  const selected=vi.fn();upload.mockRejectedValue(new Error('Replacement unavailable'));
+  const selected=vi.fn();const failure=new Error('Replacement unavailable');upload.mockRejectedValue(failure);
+  const consoleError=vi.spyOn(console,'error').mockImplementation(()=>{});
+  try {
   const file=new File(['b'],'b.png',{type:'image/png'});
   const {container}=render(<ImageUploader productId={7} onUploadSuccess={()=>{}} onFileSelected={selected}/>);
   fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[file]}});
   await screen.findByText('Replacement unavailable');
   expect(selected).toHaveBeenLastCalledWith(file);
+  expect(consoleError).toHaveBeenCalledExactlyOnceWith('Upload failed',failure);
+  } finally { consoleError.mockRestore(); }
 });
 it('displays the persisted image returned by the server', async()=>{
   upload.mockResolvedValue({id:'image-1',url:'https://images.example.test/p.png'});
@@ -80,7 +83,7 @@ it('retries an image failure without creating the product twice', async()=>{
   post.mockResolvedValue({id:7,name:'New product',price:10,currency:'USD',stock_quantity:0,reserved_quantity:0,sold_quantity:0,is_active:true,category:null,description:null,images:[],created_at:null,updated_at:null});
   patch.mockResolvedValue({id:7});
   upload.mockRejectedValueOnce(new Error('Storage offline')).mockResolvedValueOnce({id:'image-1',url:'https://images.example.test/p.png'});
-  const {container}=render(<ProductsPage/>);
+  render(<ProductsPage/>);
   fireEvent.click(screen.getByRole('button',{name:'Create Product'}));
   fireEvent.change(screen.getByPlaceholderText('Enter product name'),{target:{value:'New product'}});
   fireEvent.change(screen.getByPlaceholderText('0.00'),{target:{value:'10'}});
@@ -104,12 +107,12 @@ it('displays warning badge when product has no active variants', async () => {
   productState.products = [{ ...existingProduct, variants: [] }];
   productState.total = 1;
   render(<ProductsPage />);
-  expect(screen.getByText('Chưa hiển thị trên cửa hàng vì chưa có biến thể')).toBeInTheDocument();
+  expect(screen.getByText('Hidden from the store until variants are added')).toBeInTheDocument();
 });
 it('shows activation guidance when creating a product without active variants', async () => {
   render(<ProductsPage />);
   fireEvent.click(screen.getByRole('button', { name: 'Create Product' }));
-  expect(screen.getByText('Thêm biến thể rồi kích hoạt')).toBeInTheDocument();
+  expect(screen.getByText('Add variants, then activate')).toBeInTheDocument();
 });
 
 it('uses the same primary cover in the admin grid as the product response', () => {
@@ -128,12 +131,12 @@ it('fetches full admin detail before editing a product from a summary row', asyn
   fireEvent.click(screen.getByRole('button', { name: 'Edit Product' }));
   expect(await screen.findByRole('button', { name: 'Update Product' })).toBeInTheDocument();
   expect(get).toHaveBeenCalledWith('/products/by-slug/existing');
-  expect(screen.queryByText('Thêm biến thể rồi kích hoạt')).not.toBeInTheDocument();
+  expect(screen.queryByText('Add variants, then activate')).not.toBeInTheDocument();
 });
 
 it('does not claim a summary without variant details has no variants', () => {
   productState.products = [existingProduct];
   productState.total = 1;
   render(<ProductsPage />);
-  expect(screen.queryByText('Chưa hiển thị trên cửa hàng vì chưa có biến thể')).not.toBeInTheDocument();
+  expect(screen.queryByText('Hidden from the store until variants are added')).not.toBeInTheDocument();
 });

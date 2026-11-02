@@ -1,7 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
-import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent,render,screen,waitFor,within } from '@testing-library/react';
+import { beforeEach,describe,expect,it,vi } from 'vitest';
 import ProductsPage from '../app/products/page';
 
 const { post, patch, productState, categoryState } = vi.hoisted(() => ({
@@ -93,8 +92,8 @@ describe('Product Stock Isolation in Admin UI', () => {
     expect(screen.getByRole('heading', { name: 'Create New Product' })).toBeInTheDocument();
 
     // Verify no stock_quantity input
-    expect(screen.queryByLabelText(/stock/i)).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText(/tồn kho/i)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).queryByLabelText(/stock/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/stock/i)).not.toBeInTheDocument();
 
     // Fill required fields
     fireEvent.change(screen.getByLabelText(/Product Name/i), { target: { value: 'New Dress' } });
@@ -124,7 +123,7 @@ describe('Product Stock Isolation in Admin UI', () => {
     expect(screen.getByRole('heading', { name: 'Edit Product' })).toBeInTheDocument();
 
     // Verify no editable stock input in the form
-    expect(screen.queryByLabelText(/stock/i)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).queryByLabelText(/stock/i)).not.toBeInTheDocument();
 
     // Change name
     fireEvent.change(screen.getByLabelText(/Product Name/i), {

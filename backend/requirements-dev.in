@@ -5,3 +5,4 @@ pytest-asyncio==1.4.0
 ruff==0.17.0
 hypothesis==6.169.4
 pip-tools==7.6.2
+httpx2==2.16.0

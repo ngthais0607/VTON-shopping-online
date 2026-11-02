@@ -1,15 +1,15 @@
 "use client";
 
-import React, { Suspense } from "react";
-import { CheckCircle2, ShoppingBag, ArrowRight, Package, Clock, ShieldCheck } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Header } from "../../components/Header";
-import { Footer } from "../../components/Footer";
-import useSWR from 'swr';
 import { apiGet } from '@/lib/api';
 import { Order } from '@/lib/types';
+import { formatCurrency } from "@/lib/utils";
+import { ArrowRight,CheckCircle2,Package } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import useSWR from 'swr';
+import { Footer } from "../../components/Footer";
+import { Header } from "../../components/Header";
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
@@ -25,77 +25,26 @@ function OrderSuccessContent() {
   }, {});
 
   return (
-    <div className="max-w-lg mx-auto bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl text-center space-y-6">
-      <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
-        <CheckCircle2 className="w-10 h-10" />
+    <div className="grid w-full max-w-5xl border border-[#E8E3DB] bg-white lg:grid-cols-[0.8fr_1.2fr]">
+      <div className="flex flex-col justify-between gap-8 border-b border-[#E8E3DB] bg-[#F1ECE4] p-7 sm:p-10 lg:border-b-0 lg:border-r">
+        <div><p className="mb-10 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#1C1C1C]">TrueLook / Orders</p><CheckCircle2 className="mb-6 h-11 w-11 stroke-1 text-[#1C1C1C]" /><h1 className="text-4xl font-medium leading-[1.05] tracking-[-0.045em] sm:text-5xl" style={{ fontFamily: "var(--font-display)" }}>Thank you for<br />choosing us.</h1></div>
+        <p className="max-w-xs text-sm leading-7 text-[#6B6761]">Your order has been placed. Open each order to check its payment and processing status.</p>
       </div>
-
-      <div className="space-y-2">
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Order Placed Successfully!</h1>
-        <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-          Thank you for shopping with TrueLook. Your order was created. View each order for its current payment status.
-        </p>
-      </div>
-
-      {publicCodes.length > 0 ? (
-        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 text-xs text-slate-600 space-y-1">
-          <span className="font-semibold text-slate-500">Order Tracking:</span>
-          <div className="flex flex-wrap gap-1.5 justify-center pt-1 font-mono font-bold text-slate-900">
-            {publicCodes.map((code) => (
-              <Link href={`/store/orders/${code}`} key={code} className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
-                #{code}
-              </Link>
-            ))}
-          </div>
+      <div className="min-w-0 space-y-7 p-7 sm:p-10">
+        <div className="border-b border-[#E8E3DB] pb-6"><p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-[#1C1C1C]">Order Placed Successfully!</p><h2 className="text-2xl font-medium tracking-tight" style={{ fontFamily: "var(--font-display)" }}>Order details</h2></div>
+        {publicCodes.length > 0 ? (
+          <div><p className="mb-3 text-xs text-[#6B6761]">Order tracking code</p><div className="flex flex-col gap-2">{publicCodes.map(code => <Link href={"/store/orders/" + encodeURIComponent(code)} key={code} className="flex min-h-12 items-center justify-between gap-4 border border-[#E8E3DB] px-4 py-3 hover:border-[#1C1C1C]"><span className="break-all font-mono text-xs">#{code}</span><ArrowRight className="h-4 w-4 shrink-0 text-[#1C1C1C]" /></Link>)}</div></div>
+        ) : orderIds.length > 0 ? (
+          <div><p className="mb-3 text-xs text-[#6B6761]">Order Reference IDs</p><div className="flex flex-wrap gap-2">{orderIds.map(id => <Link href={"/store/orders/" + id} key={id} className="inline-flex min-h-11 items-center border border-[#E8E3DB] px-4 font-mono text-xs hover:border-[#1C1C1C]">#{id}</Link>)}</div></div>
+        ) : <p className="text-sm leading-7 text-[#6B6761]">Open your order history to view orders placed with your account.</p>}
+        {isLoading && <p role="status" className="text-sm text-[#6B6761]">Loading committed order total...</p>}
+        {error && <div role="alert" className="border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-800">Unable to load order total. <button onClick={() => mutate()} className="min-h-11 underline underline-offset-4">Retry</button></div>}
+        {totals && <div className="flex flex-col justify-between gap-3 border-y border-[#E8E3DB] py-6 sm:flex-row"><span className="text-sm text-[#6B6761]">Committed order total</span><div className="space-y-1">{Object.entries(totals).map(([currency, total]) => <p key={currency} className="text-2xl font-semibold tracking-tight">{currency === "VND" ? formatCurrency(total, currency) : total.toFixed(2) + " " + currency}</p>)}</div></div>}
+        <div className="flex items-start gap-3 bg-[#FAF8F5] p-4 text-xs leading-6 text-[#6B6761]"><Package className="mt-1 h-4 w-4 shrink-0 text-[#1C1C1C]" /><p>Placing an order does not confirm payment. Check your order details for COD and VietQR status.</p></div>
+        <div className="flex flex-col gap-3">
+          <Link href="/store/orders" className="flex min-h-12 items-center justify-between gap-4 bg-[#1C1C1C] px-5 text-sm font-medium text-white hover:bg-[#1C1C1C]">View My Orders <ArrowRight className="h-4 w-4" /></Link>
+          <Link href="/store" className="inline-flex min-h-11 items-center justify-center text-sm font-medium text-[#6B6761] underline underline-offset-4 hover:text-[#1C1C1C]">Continue Shopping</Link>
         </div>
-      ) : orderIds.length > 0 ? (
-        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 text-xs text-slate-600 space-y-1">
-          <span className="font-semibold text-slate-500">Order Reference IDs:</span>
-          <div className="flex flex-wrap gap-1.5 justify-center pt-1 font-mono font-bold text-slate-900">
-            {orderIds.map((id) => (
-              <Link href={`/store/orders/${id}`} key={id} className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-xs">
-                #{id}
-              </Link>
-            ))}
-          </div>
-        </div>
-      ) : null}
-      {isLoading && <p>Loading committed order total...</p>}
-      {error && <p role="alert">Unable to load order total. <button onClick={()=>mutate()}>Retry</button></p>}
-      {totals && <div><span>Committed order total</span>{Object.entries(totals).map(([currency,total]) => <p key={currency}>{total.toFixed(2)} {currency}</p>)}</div>}
-
-      <div className="grid grid-cols-2 gap-3 text-left text-xs">
-        <div className="p-3.5 rounded-2xl bg-indigo-50/50 border border-indigo-100 flex items-center gap-2.5">
-          <Clock className="w-4 h-4 text-indigo-600 flex-shrink-0" />
-          <div>
-            <span className="font-bold text-slate-900 block">Est. Delivery</span>
-            <span className="text-[11px] text-slate-500">2 - 4 Business Days</span>
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-100 flex items-center gap-2.5">
-          <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-          <div>
-            <span className="font-bold text-slate-900 block">Status</span>
-            <span className="text-[11px] text-emerald-700 font-semibold">View order details</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3 pt-2">
-        <Link href="/store/orders" className="flex-1">
-          <Button variant="outline" className="w-full h-11 rounded-xl text-xs font-semibold border-slate-200">
-            <Package className="w-4 h-4 mr-1.5 text-slate-500" />
-            View My Orders
-          </Button>
-        </Link>
-
-        <Link href="/store" className="flex-1">
-          <Button className="w-full h-11 rounded-xl text-xs font-semibold bg-primary hover:bg-indigo-600 text-white shadow-md shadow-indigo-100 flex items-center justify-center gap-1.5">
-            <span>Continue Shopping</span>
-            <ArrowRight className="w-4 h-4" />
-          </Button>
-        </Link>
       </div>
     </div>
   );
@@ -103,12 +52,10 @@ function OrderSuccessContent() {
 
 export default function OrderSuccessPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50/50">
-      <Header currentUser={null} onShopNow={() => {}} />
-      <main className="flex-1 flex items-center justify-center p-5 py-24">
-        <Suspense fallback={<div className="text-center text-xs text-slate-500">Loading order status...</div>}>
-          <OrderSuccessContent />
-        </Suspense>
+    <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
+      <Header />
+      <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pb-20 pt-40 sm:px-8 lg:px-12 lg:pt-56">
+        <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-[#6B6761]">Loading order status...</div>}><OrderSuccessContent /></Suspense>
       </main>
       <Footer />
     </div>

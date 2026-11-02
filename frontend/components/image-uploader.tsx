@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { UploadCloud, X, Image as ImageIcon, Loader2, CheckCircle2 } from "lucide-react";
-import { ProductImage } from "@/lib/types";
 import { apiUpload } from "@/lib/api";
+import type { ProductImage, ProductImageKind } from "@/lib/types";
+import { Loader2,UploadCloud,X } from "lucide-react";
 import Image from "next/image";
+import React,{ useEffect,useRef,useState } from "react";
 
 interface ImageUploaderProps {
   productId?: number;
@@ -13,9 +13,13 @@ interface ImageUploaderProps {
   onImageUploaded?: (image: ProductImage) => void;
   onFileSelected?: (file: File | null) => void;
   onBusyChange?: (busy: boolean) => void;
+  /** Sent to the API; defaults match the previous behaviour (model_photo, primary). */
+  kind?: ProductImageKind;
+  colorName?: string | null;
+  isPrimary?: boolean;
 }
 
-export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onImageUploaded, onFileSelected, onBusyChange }: ImageUploaderProps) {
+export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onImageUploaded, onFileSelected, onBusyChange, kind = "model_photo", colorName = null, isPrimary = true }: ImageUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
@@ -56,7 +60,9 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("is_primary", "true");
+      formData.append("is_primary", String(isPrimary));
+      formData.append("kind", kind);
+      if (colorName) formData.append("color_name", colorName);
 
       let uploadedUrl: string;
       let uploadedImage: ProductImage | undefined;
@@ -122,10 +128,10 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
           />
 
 
-      <label className="text-xs font-semibold text-slate-700 block">Product Image</label>
+      <label className="text-xs font-semibold text-foreground block">Product Image</label>
 
       {previewUrl ? (
-        <div className="relative rounded-2xl border border-slate-200 overflow-hidden group bg-slate-50 aspect-video flex items-center justify-center">
+        <div className="relative rounded border border-border overflow-hidden group bg-background aspect-video flex items-center justify-center">
           <Image
             src={previewUrl}
             alt="Product Preview"
@@ -133,12 +139,12 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
             sizes="(max-width: 640px) 90vw, 560px"
             className="object-contain"
           />
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-xs">
+          <div className="absolute inset-0 flex items-end justify-center gap-2 bg-black/25 p-3 opacity-100 transition-opacity sm:items-center sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
             <button
               type="button"
               disabled={uploading}
               onClick={() => inputRef.current?.click()}
-              className="px-3 py-1.5 bg-white text-slate-800 text-xs font-semibold rounded-lg shadow-sm hover:bg-slate-100 transition-colors"
+              className="px-3 py-1.5 bg-white text-foreground text-xs font-semibold rounded shadow-none hover:bg-secondary transition-colors"
             >
               Change Image
             </button>
@@ -147,7 +153,7 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
               onClick={handleRemove}
               aria-label="Remove selected image"
               disabled={!!productId || uploading}
-              className="p-1.5 bg-rose-500 text-white rounded-lg shadow-sm hover:bg-rose-600 transition-colors"
+              className="p-1.5 bg-rose-500 text-white rounded shadow-none hover:bg-rose-600 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -155,32 +161,36 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
         </div>
       ) : (
         <div
+          role="button"
+          tabIndex={0}
+          aria-label="Upload product image"
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); inputRef.current?.click(); } }}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
           onDragOver={handleDrag}
           onDrop={handleDrop}
           onClick={() => inputRef.current?.click()}
-          className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer flex flex-col items-center justify-center space-y-2 ${
+          className={`border-2 border-dashed rounded p-6 text-center transition-all cursor-pointer flex flex-col items-center justify-center space-y-2 ${
             dragActive
-              ? "border-indigo-500 bg-indigo-50/50 scale-[0.99]"
-              : "border-slate-300 hover:border-indigo-400 bg-slate-50/50"
+              ? "border-primary bg-secondary/50 scale-[0.99]"
+              : "border-border hover:border-primary bg-background/50"
           }`}
         >
           {uploading ? (
-            <div className="flex flex-col items-center space-y-2 text-indigo-600 py-4">
+            <div className="flex flex-col items-center space-y-2 text-primary py-4">
               <Loader2 className="w-8 h-8 animate-spin" />
               <span className="text-xs font-semibold">Uploading image...</span>
             </div>
           ) : (
             <>
-              <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full bg-secondary text-primary flex items-center justify-center">
                 <UploadCloud className="w-6 h-6" />
               </div>
               <div className="space-y-0.5">
-                <p className="text-xs font-bold text-slate-800">
+                <p className="text-xs font-bold text-foreground">
                   Click to upload or drag & drop
                 </p>
-                <p className="text-[11px] text-slate-400">PNG, JPG, WEBP up to 5MB</p>
+                <p className="text-[11px] text-muted-foreground">PNG, JPG, WEBP up to 5MB</p>
               </div>
             </>
           )}
@@ -188,7 +198,7 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
       )}
 
       {error && <p role="alert" className="text-xs text-rose-500 font-medium">{error}</p>}
-      {uploading && previewUrl && <p role="status" className="text-xs text-indigo-600">Uploading image...</p>}
+      {uploading && previewUrl && <p role="status" className="text-xs text-primary">Uploading image...</p>}
     </div>
   );
 }

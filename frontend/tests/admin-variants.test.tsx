@@ -1,6 +1,5 @@
-import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent,render,screen } from "@testing-library/react";
+import { describe,expect,it,vi } from "vitest";
 
 import { VariantMatrixGenerator } from "@/components/admin/variant-matrix-generator";
 import { VariantStockDialog } from "@/components/admin/variant-stock-dialog";
@@ -9,20 +8,20 @@ import type { ProductVariant } from "@/lib/types";
 describe("VariantMatrixGenerator", () => {
   it("renders clothing size presets without shoe sizes", () => {
     const handleGenerate = vi.fn();
-    render(<VariantMatrixGenerator productId={1} onGenerate={handleGenerate} />);
+    render(<VariantMatrixGenerator onGenerate={handleGenerate} />);
 
-    expect(screen.getByText("Tạo biến thể hàng loạt (Variant Matrix)")).toBeInTheDocument();
-    expect(screen.getByText("Quần áo (XS - XXL)")).toBeInTheDocument();
-    expect(screen.queryByText("Giày dép (36 - 45)")).not.toBeInTheDocument();
+    expect(screen.getByText("Create Variants in Bulk (Variant Matrix)")).toBeInTheDocument();
+    expect(screen.getByText("Apparel (XS - XXL)")).toBeInTheDocument();
+    expect(screen.queryByText("Footwear (36 - 45)")).not.toBeInTheDocument();
     expect(screen.getByText("Freesize (ONE_SIZE)")).toBeInTheDocument();
   });
 
   it("selects apparel preset and generates combinations", () => {
     const handleGenerate = vi.fn();
-    render(<VariantMatrixGenerator productId={1} onGenerate={handleGenerate} />);
+    render(<VariantMatrixGenerator onGenerate={handleGenerate} />);
 
     // Click Apparel preset button
-    const apparelBtn = screen.getByRole("button", { name: /Quần áo \(XS - XXL\)/i });
+    const apparelBtn = screen.getByRole("button", { name: /Apparel \(XS - XXL\)/i });
     fireEvent.click(apparelBtn);
 
     // Verify sizes are selected
@@ -31,13 +30,13 @@ describe("VariantMatrixGenerator", () => {
     expect(screen.getByText("L")).toBeInTheDocument();
 
     // Add a color
-    const colorNameInput = screen.getByPlaceholderText(/Tên màu/i);
+    const colorNameInput = screen.getByPlaceholderText(/Custom color name/i);
     fireEvent.change(colorNameInput, { target: { value: "Đen" } });
-    const addColorBtn = screen.getByRole("button", { name: /Thêm màu/i });
+    const addColorBtn = screen.getByRole("button", { name: /Add Color/i });
     fireEvent.click(addColorBtn);
 
     // Click Generate button
-    const generateBtn = screen.getByRole("button", { name: /Tạo ma trận biến thể/i });
+    const generateBtn = screen.getByRole("button", { name: /Generate Variant Matrix/i });
     fireEvent.click(generateBtn);
 
     expect(handleGenerate).toHaveBeenCalledTimes(1);
@@ -75,19 +74,19 @@ describe("VariantStockDialog", () => {
       />
     );
 
-    expect(screen.getByText(/Điều chỉnh tồn kho biến thể/i)).toBeInTheDocument();
+    expect(screen.getByText(/Adjust Variant Stock/i)).toBeInTheDocument();
     expect(screen.getByText(/TL-AO-DEN-M/i)).toBeInTheDocument();
 
-    const stockInput = screen.getByLabelText(/Tồn kho mới/i);
+    const stockInput = screen.getByLabelText(/New stock/i);
     fireEvent.change(stockInput, { target: { value: "20" } });
 
     // Try submit without reason
-    const submitBtn = screen.getByRole("button", { name: /Xác nhận điều chỉnh/i });
+    const submitBtn = screen.getByRole("button", { name: /Confirm Adjustment/i });
     fireEvent.click(submitBtn);
     expect(handleSubmit).not.toHaveBeenCalled();
 
     // Enter reason and submit
-    const reasonInput = screen.getByLabelText(/Lý do điều chỉnh/i);
+    const reasonInput = screen.getByLabelText(/Adjustment reason/i);
     fireEvent.change(reasonInput, { target: { value: "Nhập thêm hàng từ kho tổng" } });
     fireEvent.click(submitBtn);
 

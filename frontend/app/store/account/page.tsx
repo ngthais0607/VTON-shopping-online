@@ -1,40 +1,39 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { apiGet, apiPatch } from '@/lib/api';
-import { User, Package, Heart, CheckCircle2, Clock, XCircle, ArrowRight, ShieldCheck, Key, Save, AlertCircle, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { apiGet, apiPatch } from "@/lib/api";
+import { User, Package, Heart, CheckCircle2, ArrowRight, Save, AlertCircle, RefreshCw } from "lucide-react";
+import { Header } from "../components/Header";
+import { Footer } from "../components/Footer";
+import { displayDate, formatCurrency } from "@/lib/utils";
+import { getOrderStatusPresentation } from "@/lib/order-status";
+import type { User as UserProfile, Order as OrderItem, Page } from "@/lib/types";
 
-import type { User as UserProfile, Order as OrderItem, Page } from '@/lib/types';
+type SavedItem = { id?: number; slug?: string; name?: string; title?: string; price?: number; currency?: string };
 
 export default function CustomerAccountPage() {
-  const [activeTab, setActiveTab] = useState<'profile' | 'orders' | 'wishlist'>('profile');
+  const [activeTab, setActiveTab] = useState<"profile" | "orders" | "wishlist">("profile");
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
-  
-  // Form states
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [updating, setUpdating] = useState(false);
-
-  // Orders state
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-
-  // Wishlist state
-  const [wishlist, setWishlist] = useState<any[]>([]);
+  const [wishlist, setWishlist] = useState<SavedItem[]>([]);
 
   const fetchUserOrders = useCallback(async (userId: number) => {
     setOrdersLoading(true);
     try {
-      const data = await apiGet<Page<OrderItem> | OrderItem[]>(`/orders/user/${userId}`);
+      const data = await apiGet<Page<OrderItem> | OrderItem[]>("/orders/user/" + userId);
       setOrders(Array.isArray(data) ? data : (data?.items ?? []));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load your orders');
+      setError(err instanceof Error ? err.message : "Unable to load your orders");
     } finally {
       setOrdersLoading(false);
     }
@@ -44,34 +43,30 @@ export default function CustomerAccountPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiGet<UserProfile>('/users/me');
+      const data = await apiGet<UserProfile>("/users/me");
       setProfile(data);
-      setFirstName(data.first_name || '');
-      setLastName(data.last_name || '');
-      setUsername(data.username || '');
-      setEmail(data.email || '');
+      setFirstName(data.first_name || "");
+      setLastName(data.last_name || "");
+      setUsername(data.username || "");
+      setEmail(data.email || "");
       void fetchUserOrders(data.id);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load user profile. Please log in.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load user profile. Please log in.");
     } finally {
       setLoading(false);
     }
   }, [fetchUserOrders]);
 
-  function loadWishlist() {
-    try {
-      const stored = localStorage.getItem('truelook_wishlist') || localStorage.getItem('luxestore_wishlist');
-      if (stored) {
-        setWishlist(JSON.parse(stored));
-      }
-    } catch (e) {
-      console.error('Failed to load wishlist from localStorage', e);
-    }
-  }
-
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'wishlist') setActiveTab('wishlist');
     void fetchProfile();
-    loadWishlist();
+    try {
+      const stored = localStorage.getItem("truelook_wishlist") || localStorage.getItem("luxestore_wishlist");
+      const saved: unknown = stored ? JSON.parse(stored) : [];
+      if (Array.isArray(saved)) setWishlist(saved);
+    } catch {
+      setWishlist([]);
+    }
   }, [fetchProfile]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
@@ -80,378 +75,101 @@ export default function CustomerAccountPage() {
     setSaveSuccess(null);
     setError(null);
     try {
-      const updated = await apiPatch<UserProfile>('/users/me', {
-        username,
-        email,
-        first_name: firstName,
-        last_name: lastName,
-      });
+      const updated = await apiPatch<UserProfile>("/users/me", { username, email, first_name: firstName, last_name: lastName });
       setProfile(updated);
-      setSaveSuccess('Profile information updated successfully!');
+      setSaveSuccess("Your account details have been updated.");
       setTimeout(() => setSaveSuccess(null), 4000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to update profile.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update profile.");
     } finally {
       setUpdating(false);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'paid':
-        return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-full border border-emerald-200">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Paid & Verified
-          </span>
-        );
-      case 'pending':
-        return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-amber-700 bg-amber-50 rounded-full border border-amber-200">
-            <Clock className="w-3.5 h-3.5" /> Pending Payment
-          </span>
-        );
-      case 'confirmed':
-        return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-blue-700 bg-blue-50 rounded-full border border-blue-200">
-            <CheckCircle2 className="w-3.5 h-3.5" /> COD Confirmed
-          </span>
-        );
-      case 'expired':
-      case 'cancelled':
-        return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-rose-700 bg-rose-50 rounded-full border border-rose-200">
-            <XCircle className="w-3.5 h-3.5" /> {status}
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-slate-700 bg-slate-50 rounded-full border border-slate-200">
-            {status}
-          </span>
-        );
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-sky-50/50 py-16 flex items-center justify-center">
-        <div className="flex items-center gap-3 text-sky-700 font-medium">
-          <RefreshCw className="w-6 h-6 animate-spin text-sky-500" />
-          <span>Loading Account Portal...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !profile) {
-    return (
-      <div className="min-h-screen bg-sky-50/50 py-16 px-4">
-        <div className="max-w-md mx-auto bg-white rounded-2xl p-8 border border-sky-100 shadow-xl text-center">
-          <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-6 h-6" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Authentication Required</h2>
-          <p className="text-slate-600 text-sm mb-6">{error}</p>
-          <Link
-            href="/login"
-            className="inline-flex items-center justify-center w-full px-5 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-sky-600 text-white font-medium hover:from-sky-600 hover:to-sky-700 transition shadow-md shadow-sky-500/20"
-          >
-            Sign In to Your Account
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  const tabs = [
+    { id: "profile" as const, label: "Profile", detail: "Profile Details", icon: User },
+    { id: "orders" as const, label: "Orders", detail: "Order History", icon: Package, count: orders.length },
+    { id: "wishlist" as const, label: "Saved items", detail: "Saved on this browser", icon: Heart, count: wishlist.length },
+  ];
+  const inputClass = "min-h-12 w-full border border-[#E8E3DB] bg-[#FAF8F5]/50 px-4 py-3 text-sm outline-none focus:border-[#1C1C1C] focus:ring-2 focus:ring-[#1C1C1C]/15";
+  const displayName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || profile?.username;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-50/70 via-slate-50 to-white text-slate-800">
-      {/* Header Banner */}
-      <div className="relative bg-gradient-to-r from-sky-600 via-sky-500 to-cyan-600 text-white py-12 px-4 shadow-lg overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 via-transparent to-transparent opacity-60"></div>
-        <div className="max-w-6xl mx-auto relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-5">
-            <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-3xl font-extrabold text-white shadow-xl">
-              {profile?.first_name ? profile.first_name[0].toUpperCase() : profile?.username[0].toUpperCase()}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-                  Welcome, {profile?.first_name ? `${profile.first_name} ${profile.last_name || ''}` : profile?.username}
-                </h1>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/20 backdrop-blur-sm border border-white/30 text-white capitalize">
-                  {profile?.role}
-                </span>
-              </div>
-              <p className="text-sky-100 text-sm mt-1">{profile?.email}</p>
-            </div>
+    <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
+      <Header />
+      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-40 sm:px-8 lg:px-12 lg:pt-56">
+        <div className="mb-10 flex flex-col justify-between gap-6 border-b border-[#E8E3DB] pb-10 sm:flex-row sm:items-end">
+          <div>
+            <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#1C1C1C]">Your space</p>
+            <h1 className="text-4xl font-medium leading-tight tracking-[-0.045em] sm:text-6xl" style={{ fontFamily: "var(--font-display)" }}>Your account.</h1>
+            {profile && <p className="mt-4 break-words text-sm text-[#6B6761]">Hello, {displayName}. <span className="mt-1 block sm:ml-2 sm:inline">{profile.email}</span></p>}
           </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/store"
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium border border-white/20 backdrop-blur-sm transition"
-            >
-              Continue Shopping
-            </Link>
-          </div>
+          <Link href="/store" className="inline-flex min-h-11 items-center gap-4 self-start border-b border-[#1C1C1C] py-2 text-sm font-medium sm:self-auto">Continue shopping <ArrowRight className="h-4 w-4" /></Link>
         </div>
-      </div>
-
-      {/* Main Container */}
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Navigation Sidebar */}
-          <div className="md:col-span-1">
-            <div className="bg-white rounded-2xl p-3 border border-sky-100 shadow-sm space-y-1 sticky top-24">
-              <button
-                onClick={() => setActiveTab('profile')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${
-                  activeTab === 'profile'
-                    ? 'bg-sky-50 text-sky-700 font-semibold border border-sky-200/80 shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <User className={`w-4 h-4 ${activeTab === 'profile' ? 'text-sky-600' : 'text-slate-400'}`} />
-                <span>Profile Details</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('orders')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${
-                  activeTab === 'orders'
-                    ? 'bg-sky-50 text-sky-700 font-semibold border border-sky-200/80 shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Package className={`w-4 h-4 ${activeTab === 'orders' ? 'text-sky-600' : 'text-slate-400'}`} />
-                <span>Order History</span>
-                {orders.length > 0 && (
-                  <span className="ml-auto px-2 py-0.5 text-xs rounded-full bg-sky-100 text-sky-700 font-bold">
-                    {orders.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('wishlist')}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition ${
-                  activeTab === 'wishlist'
-                    ? 'bg-sky-50 text-sky-700 font-semibold border border-sky-200/80 shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                }`}
-              >
-                <Heart className={`w-4 h-4 ${activeTab === 'wishlist' ? 'text-sky-600' : 'text-slate-400'}`} />
-                <span>Saved on this browser</span>
-                {wishlist.length > 0 && (
-                  <span className="ml-auto px-2 py-0.5 text-xs rounded-full bg-rose-100 text-rose-700 font-bold">
-                    {wishlist.length}
-                  </span>
-                )}
-              </button>
-            </div>
+        {loading ? (
+          <div role="status" className="flex min-h-64 items-center justify-center gap-3 border border-[#E8E3DB] bg-white p-8 text-sm text-[#6B6761]"><RefreshCw className="h-5 w-5 animate-spin text-[#1C1C1C]" />Loading Account Portal...</div>
+        ) : !profile ? (
+          <div className="mx-auto max-w-lg border border-[#E8E3DB] bg-white p-8 text-center sm:p-12">
+            <AlertCircle className="mx-auto mb-5 h-8 w-8 text-[#1C1C1C]" />
+            <h2 className="text-2xl font-medium tracking-tight" style={{ fontFamily: "var(--font-display)" }}>Sign in to continue</h2>
+            <p role="alert" className="mt-3 text-sm leading-6 text-[#6B6761]">{error}</p>
+            <Link href="/login?next=/store/account" className="mt-6 inline-flex min-h-12 items-center justify-center bg-[#1C1C1C] px-6 text-sm font-medium text-white hover:bg-[#1C1C1C]">Sign In to Your Account</Link>
           </div>
-
-          {/* Content Area */}
-          <div className="md:col-span-3">
-            {/* PROFILE TAB */}
-            {activeTab === 'profile' && (
-              <div className="bg-white rounded-2xl p-6 md:p-8 border border-sky-100 shadow-sm">
-                <div className="flex items-center justify-between pb-6 border-b border-slate-100 mb-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Personal Information</h2>
-                    <p className="text-slate-500 text-sm">Update your personal account details and preferences.</p>
-                  </div>
-                  <ShieldCheck className="w-8 h-8 text-sky-500/40" />
+        ) : (
+          <div className="grid items-start gap-7 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-12">
+            <nav aria-label="Account navigation" className="grid gap-1 border border-[#E8E3DB] bg-white p-2 lg:sticky lg:top-48">
+              {tabs.map(({ id, label, detail, icon: Icon, count }) => <button type="button" key={id} aria-pressed={activeTab === id} onClick={() => setActiveTab(id)} className={"flex min-h-16 items-center gap-3 px-4 py-3 text-left transition-colors " + (activeTab === id ? "bg-[#F1ECE4] text-[#1C1C1C]" : "text-[#6B6761] hover:bg-[#FAF8F5]")}>
+                <Icon className="h-4 w-4 shrink-0" /><span className="flex-1"><span className="block text-sm font-medium">{label}</span><span className="mt-0.5 block text-[10px]">{detail}</span></span>{typeof count === "number" && <span className="font-mono text-xs">{count.toString().padStart(2, "0")}</span>}
+              </button>)}
+            </nav>
+            <div className="min-w-0">
+              {error && <div role="alert" className="mb-5 flex items-start gap-3 border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
+              {activeTab === "profile" && <section className="border border-[#E8E3DB] bg-white p-6 sm:p-9">
+                <div className="mb-8 border-b border-[#E8E3DB] pb-6">
+                  <p className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[#1C1C1C]">01 / Profile</p>
+                  <h2 className="text-2xl font-medium tracking-tight sm:text-3xl" style={{ fontFamily: "var(--font-display)" }}>Personal details</h2>
+                  <p className="mt-2 text-sm leading-6 text-[#6B6761]">Update your account details.</p>
                 </div>
-
-                {saveSuccess && (
-                  <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-xl flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-                    <span>{saveSuccess}</span>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="mb-6 p-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-xl flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
+                {saveSuccess && <p role="status" className="mb-6 flex items-center gap-2 border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="h-4 w-4 shrink-0" />{saveSuccess}</p>}
                 <form onSubmit={handleUpdateProfile} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">First Name</label>
-                      <input
-                        type="text"
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        placeholder="e.g. John"
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Last Name</label>
-                      <input
-                        type="text"
-                        value={lastName}
-                        onChange={(e) => setLastName(e.target.value)}
-                        placeholder="e.g. Doe"
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 text-sm"
-                      />
-                    </div>
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <div className="space-y-2"><label htmlFor="account-first-name" className="block text-xs font-medium">First name</label><input id="account-first-name" autoComplete="given-name" value={firstName} onChange={e => setFirstName(e.target.value)} className={inputClass} /></div>
+                    <div className="space-y-2"><label htmlFor="account-last-name" className="block text-xs font-medium">Last name</label><input id="account-last-name" autoComplete="family-name" value={lastName} onChange={e => setLastName(e.target.value)} className={inputClass} /></div>
+                    <div className="space-y-2"><label htmlFor="account-username" className="block text-xs font-medium">Username</label><input id="account-username" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required className={inputClass} /></div>
+                    <div className="space-y-2"><label htmlFor="account-email" className="block text-xs font-medium">Email</label><input id="account-email" type="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} required className={inputClass} /></div>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Username</label>
-                      <input
-                        type="text"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        required
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Email Address</label>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="pt-4 flex justify-end">
-                    <button
-                      type="submit"
-                      disabled={updating}
-                      className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-sky-600 hover:from-sky-600 hover:to-sky-700 text-white font-medium text-sm transition shadow-md shadow-sky-500/20 disabled:opacity-50"
-                    >
-                      {updating ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" /> Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="w-4 h-4" /> Save Changes
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  <div className="flex justify-end border-t border-[#E8E3DB] pt-6"><button type="submit" disabled={updating} className="inline-flex min-h-12 w-full items-center justify-center gap-3 bg-[#1C1C1C] px-6 text-sm font-medium text-white hover:bg-[#1C1C1C] disabled:opacity-50 sm:w-auto">{updating ? <><RefreshCw className="h-4 w-4 animate-spin" />Saving...</> : <><Save className="h-4 w-4" />Save Changes</>}</button></div>
                 </form>
-              </div>
-            )}
-
-            {/* ORDERS TAB */}
-            {activeTab === 'orders' && (
-              <div className="bg-white rounded-2xl p-6 md:p-8 border border-sky-100 shadow-sm">
-                <div className="flex items-center justify-between pb-6 border-b border-slate-100 mb-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Your Orders</h2>
-                    <p className="text-slate-500 text-sm">Review order history and real-time VietQR fulfillment status.</p>
+              </section>}
+              {activeTab === "orders" && <section className="border border-[#E8E3DB] bg-white p-6 sm:p-9">
+                <div className="mb-7 border-b border-[#E8E3DB] pb-6"><p className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[#1C1C1C]">02 / Orders</p><h2 className="text-2xl font-medium tracking-tight sm:text-3xl" style={{ fontFamily: "var(--font-display)" }}>Order history</h2><p className="mt-2 text-sm leading-6 text-[#6B6761]">View your orders and their current status.</p></div>
+                {ordersLoading ? <p role="status" className="py-12 text-center text-sm text-[#6B6761]">Loading your orders...</p> : orders.length === 0 ? <EmptyState icon="orders" title="You have no orders yet" description="Explore the collection and find your next favorite." /> : <div className="divide-y divide-[#E8E3DB]">{orders.map(order => <article key={order.id} className="flex flex-col justify-between gap-5 py-6 first:pt-0 last:pb-0 sm:flex-row sm:items-center">
+                  <div className="min-w-0 space-y-2">
+                    <p className="break-all font-mono text-[11px] text-[#1C1C1C]">#{order.public_code || order.id}</p>
+                    <h3 className="text-base font-medium leading-6">{order.product_name || order.items?.[0]?.product_name || "Order"}</h3>
+                    <p className="text-xs leading-5 text-[#6B6761]">{displayDate(order.created_at, "dd/MM/yyyy")} · Quantity: {order.quantity ?? order.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 1}</p>
+                    <span className="inline-flex border border-[#E8E3DB] bg-[#FAF8F5] px-2.5 py-1 text-[10px] font-medium">{getOrderStatusPresentation(order.status).label}</span>
                   </div>
-                  <Package className="w-8 h-8 text-sky-500/40" />
-                </div>
-
-                {ordersLoading ? (
-                  <div className="py-12 text-center text-slate-500 text-sm">Loading your orders...</div>
-                ) : orders.length === 0 ? (
-                  <div className="py-12 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                    <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                    <p className="text-slate-600 font-medium mb-1">No orders found</p>
-                    <p className="text-slate-400 text-xs mb-4">You haven&apos;t placed any orders with us yet.</p>
-                    <Link
-                      href="/store"
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 transition"
-                    >
-                      Start Shopping
-                    </Link>
+                  <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 sm:flex-col sm:items-end">
+                    <p className="text-lg font-semibold">{formatCurrency(order.total ?? order.total_amount, order.currency)}</p>
+                    {order.public_code ? <Link href={"/store/orders/" + encodeURIComponent(order.public_code)} className="inline-flex min-h-11 items-center gap-3 border-b border-[#1C1C1C] text-xs font-medium">Track Order <ArrowRight className="h-3.5 w-3.5" /></Link> : <Link href="/store/orders" className="inline-flex min-h-11 items-center border-b border-[#1C1C1C] text-xs font-medium">View My Orders</Link>}
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {orders.map((order) => (
-                      <div
-                        key={order.id}
-                        className="p-5 rounded-2xl border border-sky-100 bg-white hover:border-sky-300 transition shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-3">
-                            <span className="text-base font-bold text-slate-900">Order #{order.id}</span>
-                            {getStatusBadge(order.status)}
-                          </div>
-                          <p className="text-sm font-medium text-slate-700">{order.product_name}</p>
-                          <p className="text-xs text-slate-400">
-                            Quantity: {order.quantity} • Total: <span className="font-bold text-sky-700">${order.total_amount?.toFixed(2)}</span>
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <Link
-                            href={`/store/orders/${order.id}`}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-50 text-sky-700 hover:bg-sky-100 text-xs font-semibold transition border border-sky-200/60"
-                          >
-                            <span>Track Order</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </Link>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* WISHLIST TAB */}
-            {activeTab === 'wishlist' && (
-              <div className="bg-white rounded-2xl p-6 md:p-8 border border-sky-100 shadow-sm">
-                <div className="flex items-center justify-between pb-6 border-b border-slate-100 mb-6">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Saved on this browser</h2>
-                    <p className="text-slate-500 text-sm">Stored only in this browser. These items are not synced to your account or other devices.</p>
-                  </div>
-                  <Heart className="w-8 h-8 text-rose-400/40" />
-                </div>
-
-                {wishlist.length === 0 ? (
-                  <div className="py-12 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                    <Heart className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                    <p className="text-slate-600 font-medium mb-1">Your wishlist is empty</p>
-                    <p className="text-slate-400 text-xs mb-4">Save products you love while browsing our store.</p>
-                    <Link
-                      href="/store"
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-500 text-white text-xs font-semibold hover:bg-sky-600 transition"
-                    >
-                      Browse Products
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {wishlist.map((item, idx) => (
-                      <div key={idx} className="p-4 rounded-xl border border-slate-200 flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-slate-900 text-sm">{item.name || item.title || 'Saved Product'}</p>
-                          <p className="text-xs text-sky-600 font-bold">${item.price}</p>
-                        </div>
-                        <Link
-                          href="/store"
-                          className="px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 text-xs font-semibold hover:bg-sky-100"
-                        >
-                          View
-                        </Link>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+                </article>)}</div>}
+              </section>}
+              {activeTab === "wishlist" && <section className="border border-[#E8E3DB] bg-white p-6 sm:p-9">
+                <div className="mb-7 border-b border-[#E8E3DB] pb-6"><p className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[#1C1C1C]">03 / Saved</p><h2 className="text-2xl font-medium tracking-tight sm:text-3xl" style={{ fontFamily: "var(--font-display)" }}>Your selections</h2><p className="mt-2 text-sm leading-6 text-[#6B6761]">Saved only in this browser. These items do not sync across accounts or devices.</p></div>
+                {wishlist.length === 0 ? <EmptyState icon="wishlist" title="No saved items yet" description="Save your favorites as you explore the store." /> : <div className="grid gap-4 sm:grid-cols-2">{wishlist.map((item, idx) => <div key={idx} className="flex min-w-0 items-start justify-between gap-4 border border-[#E8E3DB] p-5"><div className="min-w-0"><p className="text-sm font-medium leading-6">{item.name || item.title || "Saved items"}</p>{item.price != null && <p className="mt-2 text-sm text-[#1C1C1C]">{formatCurrency(Number(item.price), item.currency)}</p>}</div><Link href={item.slug || item.id ? `/store/products/${item.slug || item.id}` : "/store/collection"} className="inline-flex min-h-11 items-center border-b border-[#1C1C1C] text-xs font-medium">View <ArrowRight className="ml-2 h-3.5 w-3.5" /></Link></div>)}</div>}
+              </section>}
+            </div>
           </div>
-        </div>
-      </div>
+        )}
+      </main>
+      <Footer />
     </div>
   );
+}
+
+function EmptyState({ icon, title, description }: { icon: "orders" | "wishlist"; title: string; description: string }) {
+  const Icon = icon === "orders" ? Package : Heart;
+  return <div className="bg-[#FAF8F5] px-5 py-12 text-center"><Icon className="mx-auto mb-5 h-8 w-8 text-[#1C1C1C]" /><h3 className="text-lg font-medium">{title}</h3><p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-[#6B6761]">{description}</p><Link href="/store" className="mt-5 inline-flex min-h-11 items-center gap-3 border-b border-[#1C1C1C] text-sm font-medium">Explore products <ArrowRight className="h-4 w-4" /></Link></div>;
 }

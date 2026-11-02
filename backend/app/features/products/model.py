@@ -12,8 +12,10 @@ from sqlalchemy import (
     Numeric,
     String,
     UniqueConstraint,
+    func,
+    select,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import column_property, relationship
 
 from app.core.database import Base
 from app.core.slug import slugify
@@ -155,17 +157,12 @@ class Product(Base):
 
     @property
     def rating_avg(self) -> float | None:
-        if getattr(self, "reviews", None):
-            revs = self.reviews
-            if revs:
-                return round(sum(r.rating for r in revs) / len(revs), 1)
-        return None
+        average = self._rating_average
+        return round(float(average), 1) if average is not None else None
 
     @property
     def review_count(self) -> int:
-        if getattr(self, "reviews", None):
-            return len(self.reviews)
-        return 0
+        return self._review_count or 0
 
     variants = relationship(
         "ProductVariant", back_populates="product", cascade="all, delete-orphan"
@@ -232,3 +229,18 @@ class ProductReview(Base):
 
     product = relationship("Product", back_populates="reviews")
     user = relationship("User")
+
+
+# Correlated aggregates keep catalog/detail DTOs independent of review collection size.
+Product._rating_average = column_property(
+    select(func.avg(ProductReview.rating))
+    .where(ProductReview.product_id == Product.id)
+    .correlate_except(ProductReview)
+    .scalar_subquery()
+)
+Product._review_count = column_property(
+    select(func.count(ProductReview.id))
+    .where(ProductReview.product_id == Product.id)
+    .correlate_except(ProductReview)
+    .scalar_subquery()
+)
