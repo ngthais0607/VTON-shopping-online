@@ -64,7 +64,8 @@ def _eligibility_for(
 ):
     product = product_service.get_product(db, product_id)
     cloth_type = cloth_type_for_category(product.category)
-    if cloth_type == "overall" and "skirt" in (product.name or "").lower() and "dress" not in (product.name or "").lower():
+    name = (product.name or "").lower()
+    if cloth_type == "overall" and "skirt" in name and "dress" not in name:
         cloth_type = "lower"
     if cloth_type is None:
         return product, None, None, "category_unsupported"
