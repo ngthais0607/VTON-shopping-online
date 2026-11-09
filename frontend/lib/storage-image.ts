@@ -4,6 +4,8 @@ export function normalizeStorageUrls<T>(value: T): T {
   function visit(input: unknown): unknown {
     if (Array.isArray(input)) return input.map(visit);
     if (!input || typeof input !== 'object') return input;
+    const proto = Object.getPrototypeOf(input);
+    if (proto !== Object.prototype && proto !== null) return input; // Blob, Date, ...
     return Object.fromEntries(Object.entries(input).map(([key, item]) => [
       key,
       (key === 'url' || key === 'image_url') && typeof item === 'string' && item.startsWith(base + '/')

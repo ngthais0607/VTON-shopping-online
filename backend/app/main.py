@@ -18,6 +18,7 @@ from app.features.orders.router import router as order_router
 from app.features.products.router import router as product_router
 from app.features.products.variant_router import router as variant_router
 from app.features.users.router import router as user_router
+from app.features.vton.router import router as vton_router
 from app.integrations.queue import ArqTaskQueue, create_task_queue
 from app.integrations.storage import MinioProductStorage
 
@@ -76,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(categories_router)
     application.include_router(order_router)
     application.include_router(dashboard_router)
+    application.include_router(vton_router)
 
     @application.get("/")
     def root() -> dict[str, str]:

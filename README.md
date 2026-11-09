@@ -151,7 +151,7 @@ Compose runs migrations before starting the API and worker. Confirm the schema v
 docker compose exec api alembic current
 ```
 
-The current head is `f8a1b2c3d4e5`. See the [migration guide](docs/MIGRATION_NOTES.md) for revision history and destructive rollback limits.
+The current head is `a7d3e1f9c2b4`. See the [migration guide](docs/MIGRATION_NOTES.md) for revision history and destructive rollback limits.
 
 The main local Compose project is `truelook`, using the default ports above. Start and manage it from this repository with `docker compose`. For an additional isolated stack, use a different project name (for example, `docker compose -p truelook-test ...`) and distinct host ports. Do not start the retired `fastapi-founder` or `truelook-demo` stacks on this machine.
 
@@ -346,11 +346,11 @@ See [backup and restore](docs/DEMO_BACKUP.md). SQL dumps do not include MinIO ob
 <a id="current-limits--new-modules"></a>
 ## 🧩 Current Limits & New Modules
 
-Contact does not submit messages, wishlist is browser-only, and blog/careers/press pages are informational. Dynamic shipping rates, carrier integrations, coupons, automatic refunds, and VTON are not implemented. Load/p95 latency, GPU inference, and real SMTP delivery have not been benchmarked or certified.
+Contact does not submit messages, wishlist is browser-only, and blog/careers/press pages are informational. Dynamic shipping rates, carrier integrations, coupons, automatic refunds, and automatic refunds are not implemented. VTON is implemented (see below) but real CatVTON output is unverified on this repository's CI. Load/p95 latency, GPU inference, and real SMTP delivery have not been benchmarked or certified.
 
 A new module should start as a feature slice with its own router, schemas, service, models, and Alembic revisions. Preserve `variant_id` contracts, order-item snapshots, and inventory invariants. Long-running work needs its own durable task states, retries/idempotency, recovery behavior, and worker/queue boundaries rather than sharing order-expiration work. User photos require private storage, ownership checks, and a retention/deletion policy; the public product-image path is not suitable.
 
-See the [VTON prerequisites](docs/VTON_READINESS.md). A stable release still requires environment-specific acceptance and recovery checks; green unit tests alone are not production certification.
+See the [virtual try-on guide](docs/VTON.md) (architecture, mock vs. CatVTON engine, GPU setup, privacy, limits). A stable release still requires environment-specific acceptance and recovery checks; green unit tests alone are not production certification.
 
 <a id="license"></a>
 ## 📄 License

@@ -12,6 +12,7 @@ import {
   Minus,
   Plus,
   Ruler,
+  Sparkles,
   ShoppingCart,
   Star,
   Zap,
@@ -22,11 +23,12 @@ import { Footer } from "../../components/Footer";
 import { getAvailableStock } from "@/lib/inventory";
 
 import { SizeChartModal } from "@/components/store/size-chart-modal";
+import { TryOnModal } from "@/components/store/try-on-modal";
 import { useVariantSelection } from "@/hooks/use-variant-selection";
 import { apiGet, apiPost } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { DEFAULT_PRODUCT_PLACEHOLDER, getProductImageUrl } from "@/lib/placeholder-images";
-import type { FitFeedbackType, Product, ReviewSummary, Page } from "@/lib/types";
+import type { FitFeedbackType, Product, ReviewSummary, Page, VtonEligibility } from "@/lib/types";
 import { useCart } from "../../context/CartContext";
 
 export default function ProductDetailPage() {
@@ -45,6 +47,8 @@ export default function ProductDetailPage() {
   const [wishlisted, setWishlisted] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
+  const [isTryOnOpen, setIsTryOnOpen] = useState(false);
+  const [tryOn, setTryOn] = useState<VtonEligibility | null>(null);
   const [activeTab, setActiveTab] = useState<"details" | "reviews">("details");
 
   // Review states
@@ -136,6 +140,18 @@ export default function ProductDetailPage() {
     setQuantity(current => Math.min(current, Math.max(1, selectedVariant ? getAvailableStock(selectedVariant) : 1)));
   }, [selectedVariant]);
 
+  // Virtual try-on availability depends on category and a raster garment image per colour.
+  const productId = product?.id;
+  useEffect(() => {
+    if (!productId) return;
+    let ignore = false;
+    const query = selectedColor ? `?color=${encodeURIComponent(selectedColor)}` : "";
+    apiGet<VtonEligibility>(`/vton/products/${productId}/eligibility${query}`)
+      .then((result) => { if (!ignore) setTryOn(result); })
+      .catch(() => { if (!ignore) setTryOn(null); });
+    return () => { ignore = true; };
+  }, [productId, selectedColor]);
+
   // Switch image when color changes
   useEffect(() => {
     if (!product || !selectedColor || !product.images) return;
@@ -222,7 +238,9 @@ export default function ProductDetailPage() {
     );
   }
 
-  const images = product.images?.length > 0 ? product.images : [{ id: "placeholder", url: product.image_url || DEFAULT_PRODUCT_PLACEHOLDER }];
+  // vton_garment images are model inputs, not storefront gallery photos.
+  const galleryImages = (product.images ?? []).filter((img) => img.kind !== "vton_garment");
+  const images = galleryImages.length > 0 ? galleryImages : [{ id: "placeholder", url: product.image_url || DEFAULT_PRODUCT_PLACEHOLDER }];
   const mainImage = images[activeImageIndex] || images[0];
   const rating = reviewsData?.average_rating ?? product.rating_avg;
   const reviewCount = reviewsData?.total_reviews ?? product.review_count ?? 0;
@@ -481,6 +499,10 @@ export default function ProductDetailPage() {
                 </button>
               </div>
 
+              {tryOn?.eligible === true && (
+                <button type="button" onClick={() => setIsTryOnOpen(true)} className="flex min-h-12 w-full items-center justify-center gap-2 border border-foreground text-[11px] uppercase tracking-[0.1em] hover:bg-secondary"><Sparkles className="h-4 w-4" />Virtual try-on</button>
+              )}
+
               <button type="button" onClick={toggleWishlist} aria-label="Save product" aria-pressed={wishlisted} className="flex min-h-12 w-full items-center justify-center gap-2 border border-border text-[11px] uppercase tracking-[0.1em] hover:bg-secondary"><Heart className={"h-4 w-4 " + (wishlisted ? "fill-foreground" : "")} />{wishlisted ? "Saved to favorites" : "Save to favorites"}</button>
               <p className="pt-2 text-xs leading-6 text-muted-foreground">{product.description}</p>
             </div>
@@ -704,6 +726,19 @@ export default function ProductDetailPage() {
       </main>
 
       <Footer />
+
+      {tryOn?.eligible === true && (
+        <TryOnModal
+          isOpen={isTryOnOpen}
+          onClose={() => setIsTryOnOpen(false)}
+          productId={product.id}
+          productName={product.name}
+          variantId={selectedVariant?.id}
+          colorName={selectedColor ?? undefined}
+          eligibility={tryOn}
+        />
+      )}
+
 
       {zoomOpen && <StoreDialog open onClose={() => setZoomOpen(false)} title={product.name} description="Image detail · Scroll to explore, press Escape to close" wide><div className="relative min-h-0 flex-1 overflow-auto bg-secondary"><div className="relative aspect-[4/5] w-full min-w-[1000px]"><Image src={mainImage.url} alt={product.name + " · zoomed"} fill sizes="90vw" className="object-contain" /></div></div></StoreDialog>}
 

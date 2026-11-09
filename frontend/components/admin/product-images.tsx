@@ -26,6 +26,7 @@ const KIND_LABELS: Record<ProductImageKind, string> = {
   detail: "Detail",
   size_chart: "Size chart",
   catalog: "Catalog",
+  vton_garment: "Try-on garment (hidden from gallery)",
 };
 
 export function AdminProductImages({ productId, images = [], onImagesChange, onUploadSuccess, onFileSelected, onBusyChange, colors = [] }: Props) {

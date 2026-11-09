@@ -105,6 +105,13 @@ def product_storage():
             self.put_payloads.append(stream.read())
             self.content_types.append(content_type)
 
+        def get(self, object_name):
+            if object_name not in self.put_objects:
+                raise KeyError(object_name)
+            return self.put_payloads[
+                len(self.put_objects) - 1 - self.put_objects[::-1].index(object_name)
+            ]
+
         def delete(self, object_name):
             self.deleted.append(object_name)
 

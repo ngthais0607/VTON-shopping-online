@@ -43,6 +43,7 @@ VALID_IMAGE_KINDS = {
     "detail",
     "size_chart",
     "catalog",
+    "vton_garment",
 }
 
 
@@ -60,8 +61,8 @@ def sniff_image_type(data: bytes) -> str | None:
     return None
 
 
-def validate_image_content(payload: bytes) -> None:
-    """Verify file structure and decode a bounded, static catalog image."""
+def validate_image_content(payload: bytes, label: str = "Product image") -> None:
+    """Verify file structure and decode a bounded, static image."""
     try:
         with Image.open(BytesIO(payload), formats=("PNG", "JPEG", "WEBP")) as image:
             width, height = image.size
@@ -71,18 +72,18 @@ def validate_image_content(payload: bytes) -> None:
                 or width * height > MAX_IMAGE_PIXELS
             ):
                 raise BusinessRuleError(
-                    "Product image must be at most 8192 pixels per side and 16 megapixels",
+                    f"{label} must be at most 8192 pixels per side and 16 megapixels",
                     code="image_dimensions_exceeded",
                 )
             if getattr(image, "n_frames", 1) != 1:
                 raise BusinessRuleError(
-                    "Product image must be a static image",
+                    f"{label} must be a static image",
                     code="invalid_product_image",
                 )
             # libjpeg can decode a JPEG missing its mandatory end-of-image marker.
             if image.format == "JPEG" and not payload.endswith(b"\xff\xd9"):
                 raise BusinessRuleError(
-                    "Product JPEG is truncated",
+                    f"{label} JPEG is truncated",
                     code="invalid_product_image",
                 )
             image.verify()
@@ -91,12 +92,12 @@ def validate_image_content(payload: bytes) -> None:
             image.load()
     except Image.DecompressionBombError as error:
         raise BusinessRuleError(
-            "Product image dimensions exceed the allowed limit",
+            f"{label} dimensions exceed the allowed limit",
             code="image_dimensions_exceeded",
         ) from error
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as error:
         raise BusinessRuleError(
-            "Product image is corrupt or cannot be decoded",
+            f"{label} is corrupt or cannot be decoded",
             code="invalid_product_image",
         ) from error
 
