@@ -505,3 +505,23 @@ def test_mock_engine_output_is_visibly_labelled_demo():
     assert image.size == (768, 1024)
     # Banner strip at the bottom is dark slate, never the person photo.
     assert sum(image.getpixel((400, 1010))[:3]) < 200
+
+
+def test_default_timeouts_allow_long_generation_and_stay_consistent():
+    settings = get_settings()
+    assert settings.vton_service_timeout_seconds >= 3600
+    # Recovery must never fail a task that is still legitimately running.
+    assert (
+        settings.vton_stale_processing_minutes * 60
+        > settings.vton_service_timeout_seconds + 60
+    )
+
+
+def test_settings_reject_stale_threshold_below_engine_timeout():
+    from app.core.config import Settings
+
+    base = get_settings().model_dump()
+    base["vton_stale_processing_minutes"] = 5
+    base["vton_service_timeout_seconds"] = 3600
+    with pytest.raises(ValueError, match="vton_stale_processing_minutes"):
+        Settings.model_validate(base)

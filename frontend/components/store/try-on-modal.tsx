@@ -7,11 +7,13 @@ import { toast } from "sonner";
 
 import { apiDelete, apiGet, apiGetBlob, apiUpload } from "@/lib/api";
 import { useSession } from "@/hooks/use-session";
-import type { VtonEligibility, VtonQuota, VtonTask } from "@/lib/types";
+import type { VtonEligibility, VtonQuota, VtonTask, VtonTaskPage } from "@/lib/types";
 import {
   VTON_MAX_PHOTO_BYTES,
   VTON_POLL_INTERVAL_MS,
+  VTON_POLL_MAX_NETWORK_ERRORS,
   VTON_POLL_TIMEOUT_MS,
+  isTransientVtonError,
   isVtonTerminal,
   newIdempotencyKey,
   vtonErrorMessage,
@@ -51,6 +53,7 @@ export function TryOnModal({
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelled = useRef(false);
   const pollRef = useRef<((taskId: string, startedAt: number) => void) | null>(null);
+  const networkErrors = useRef(0);
 
   const stopPolling = () => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -68,6 +71,29 @@ export function TryOnModal({
   useEffect(() => {
     if (isOpen && user) void loadQuota();
   }, [isOpen, user, loadQuota]);
+
+  // Closing the modal does not cancel generation: pick an in-flight task back up.
+  useEffect(() => {
+    if (!isOpen || !user) return;
+    let active = true;
+    void (async () => {
+      try {
+        const page = await apiGet<VtonTaskPage>("/vton/tasks?limit=5");
+        const running = Array.isArray(page?.items)
+          ? page.items.find((t) => t.product_id === productId && !isVtonTerminal(t.status))
+          : undefined;
+        if (!active || !running || pollTimer.current) return;
+        setTask(running);
+        setPhase("working");
+        pollRef.current?.(running.id, Date.now());
+      } catch {
+        // Resume is best effort; the form still works.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isOpen, user, productId]);
 
   useEffect(() => {
     cancelled.current = false;
@@ -117,15 +143,19 @@ export function TryOnModal({
         if (cancelled.current) return;
         try {
           const current = await apiGet<VtonTask>(`/vton/tasks/${taskId}`);
+          networkErrors.current = 0;
           setTask(current);
           if (isVtonTerminal(current.status)) {
             await finish(current);
             return;
           }
         } catch (err) {
-          setError(vtonErrorMessage(err));
-          setPhase("failed");
-          return;
+          networkErrors.current += 1;
+          if (!isTransientVtonError(err) || networkErrors.current > VTON_POLL_MAX_NETWORK_ERRORS) {
+            setError(vtonErrorMessage(err));
+            setPhase("failed");
+            return;
+          }
         }
         if (Date.now() - startedAt > VTON_POLL_TIMEOUT_MS) {
           setError(vtonErrorMessage("engine_timeout"));
@@ -320,7 +350,10 @@ export function TryOnModal({
             <p className="text-sm font-semibold text-slate-800">
               {task?.status === "processing" ? "Creating your try-on…" : "Waiting in queue…"}
             </p>
-            <p className="text-xs text-slate-500">This can take from a few seconds to a few minutes.</p>
+            <p className="text-xs text-slate-500">
+              This can take anywhere from a few seconds to several minutes. You can keep this window open - your
+              result will appear here automatically.
+            </p>
           </div>
         ) : phase === "done" ? (
           <div className="space-y-4">

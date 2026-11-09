@@ -67,12 +67,15 @@ class Settings(BaseSettings):
     # "mock" renders a clearly watermarked CPU preview; "catvton" calls the GPU service.
     vton_engine: str = "mock"
     vton_service_url: str = "http://catvton:8080"
-    vton_service_timeout_seconds: int = Field(default=300, gt=0)
+    # Generation time is not capped tightly: first runs download model weights and
+    # CPU/low-end GPUs can take many minutes. The stale threshold below must stay
+    # above this timeout so the recovery cron never fails a task still running.
+    vton_service_timeout_seconds: int = Field(default=3600, gt=0)
     vton_daily_quota: int = Field(default=10, ge=1)
     vton_retention_hours: int = Field(default=24, ge=1)
     vton_queue_name: str = "vton"
     vton_max_attempts: int = Field(default=2, ge=1, le=5)
-    vton_stale_processing_minutes: int = Field(default=10, ge=1)
+    vton_stale_processing_minutes: int = Field(default=75, ge=1)
 
     emails_enabled: bool = True
     emails_console_log: bool = True
@@ -115,6 +118,17 @@ class Settings(BaseSettings):
         if self.refresh_cookie_samesite == "none" and not self.refresh_cookie_secure:
             raise ValueError(
                 "refresh_cookie_secure must be True when refresh_cookie_samesite is 'none'"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_vton_timeouts(self) -> "Settings":
+        # job_timeout is service timeout + 60s; recovery must not fire before it.
+        stale_seconds = self.vton_stale_processing_minutes * 60
+        if stale_seconds < self.vton_service_timeout_seconds + 120:
+            raise ValueError(
+                "vton_stale_processing_minutes must exceed vton_service_timeout_seconds "
+                "by at least 2 minutes"
             )
         return self
 

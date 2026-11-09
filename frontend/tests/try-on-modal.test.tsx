@@ -110,6 +110,41 @@ describe("TryOnModal", () => {
   });
 });
 
+describe("TryOnModal long-running generation", () => {
+  const running = { ...doneTask, status: "processing" as const, has_result: false };
+
+  it("resumes an in-flight task when the modal is reopened", async () => {
+    api.apiGet.mockImplementation(async (path: string) => {
+      if (path.startsWith("/vton/quota")) return { limit: 10, used: 1, remaining: 9, retention_hours: 24 };
+      if (path.startsWith("/vton/tasks?")) return { items: [running], total: 1 };
+      return { ...doneTask };
+    });
+    api.apiGetBlob.mockResolvedValue(new Blob(["x"], { type: "image/png" }));
+    render(<TryOnModal {...baseProps} />);
+    expect(await screen.findByRole("status")).toHaveTextContent(/Creating your try-on|Waiting in queue/);
+    expect(await screen.findByAltText("Try-on result", undefined, { timeout: 5000 })).toBeInTheDocument();
+  }, 12000);
+
+  it("keeps polling through a transient network error", async () => {
+    let polls = 0;
+    api.apiUpload.mockResolvedValue({ ...doneTask, status: "queued", has_result: false });
+    api.apiGetBlob.mockResolvedValue(new Blob(["x"], { type: "image/png" }));
+    api.apiGet.mockImplementation(async (path: string) => {
+      if (path.startsWith("/vton/quota")) return { limit: 10, used: 1, remaining: 9, retention_hours: 24 };
+      if (path.startsWith("/vton/tasks?")) return { items: [], total: 0 };
+      polls += 1;
+      if (polls === 1) throw new TypeError("Failed to fetch");
+      return { ...doneTask };
+    });
+    render(<TryOnModal {...baseProps} />);
+    pickPhoto();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Try it on" }));
+    expect(await screen.findByAltText("Try-on result", undefined, { timeout: 8000 })).toBeInTheDocument();
+    expect(polls).toBeGreaterThanOrEqual(2);
+  }, 12000);
+});
+
 describe("vtonErrorMessage", () => {
   it("maps known codes and falls back for unknown ones", () => {
     expect(vtonErrorMessage("vton_quota_exceeded")).toMatch(/come back tomorrow/);

@@ -39,3 +39,16 @@ Garment images: `ProductImage.kind = vton_garment` (or `flat_lay`/`catalog`), ra
 ## Known gaps
 
 No GPU benchmark; no admin UI for category mapping or garment kinds; no moderation of uploaded photos beyond format checks; the one-active-task check is not a DB constraint (two simultaneous requests can both pass).
+
+## Long-running generation
+
+Generation time is not capped for the user. Timeouts are layered so nothing fails a task that is still running:
+
+| Layer | Setting | Default |
+| --- | --- | --- |
+| Engine HTTP call to the GPU service | `VTON_SERVICE_TIMEOUT_SECONDS` | 3600 s |
+| ARQ job timeout | service timeout + 60 s | 3660 s |
+| Recovery cron fails a `processing` task after | `VTON_STALE_PROCESSING_MINUTES` | 75 min |
+| Storefront polling | `VTON_POLL_TIMEOUT_MS` (frontend) | 2 h |
+
+`VTON_STALE_PROCESSING_MINUTES` must exceed the service timeout by at least 2 minutes (enforced at startup). The storefront keeps polling through transient network errors and re-attaches to an in-flight task when the modal is reopened, so the user can close it and come back. The first real CatVTON run also downloads model weights, which can add several minutes.

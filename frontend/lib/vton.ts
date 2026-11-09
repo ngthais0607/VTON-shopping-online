@@ -2,7 +2,10 @@ import { ApiError } from "@/lib/api";
 import type { VtonStatus } from "@/lib/types";
 
 export const VTON_POLL_INTERVAL_MS = 2000;
-export const VTON_POLL_TIMEOUT_MS = 6 * 60 * 1000;
+// Generation time is unbounded for the user: keep polling well past the backend's
+// own limit (service timeout 1h + queue wait) and let the server decide the outcome.
+export const VTON_POLL_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+export const VTON_POLL_MAX_NETWORK_ERRORS = 5;
 export const VTON_MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
 const MESSAGES: Record<string, string> = {
@@ -37,6 +40,10 @@ export function vtonErrorMessage(codeOrError: unknown): string {
   if (codeOrError instanceof Error && codeOrError.message) return codeOrError.message;
   return "Unable to run the try-on right now. Please try again.";
 }
+
+// Network blips and 5xx must not abort a long-running generation: keep polling.
+export const isTransientVtonError = (error: unknown) =>
+  !(error instanceof ApiError) || error.status === undefined || error.status === 0 || error.status >= 500;
 
 export const isVtonTerminal = (status: VtonStatus) =>
   status === "succeeded" || status === "failed";
