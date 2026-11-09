@@ -64,6 +64,8 @@ def _eligibility_for(
 ):
     product = product_service.get_product(db, product_id)
     cloth_type = cloth_type_for_category(product.category)
+    if cloth_type == "overall" and "skirt" in (product.name or "").lower() and "dress" not in (product.name or "").lower():
+        cloth_type = "lower"
     if cloth_type is None:
         return product, None, None, "category_unsupported"
     garment = pick_garment_image(product.images, color)

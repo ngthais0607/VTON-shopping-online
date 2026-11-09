@@ -250,11 +250,11 @@ export default function ProductDetailPage() {
     reviewsData?.fit_breakdown;
 
   return (
-    <div className="min-h-screen bg-background pt-24 lg:pt-36">
+    <div className="min-h-screen bg-background pt-16 lg:pt-[106px]">
       <Header />
       {/* Breadcrumb & Navigation */}
       <div className="border-b border-border bg-background">
-        <div className="max-w-[1440px] mx-auto px-5 md:px-10 lg:px-20 py-5 flex items-center justify-between">
+        <div className="max-w-[1440px] mx-auto px-5 md:px-10 lg:px-20 py-3 flex items-center justify-between">
           <button
             onClick={() => router.back()}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-primary transition-colors"
@@ -271,8 +271,8 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      <main className="max-w-[1440px] mx-auto px-5 md:px-10 lg:px-20 py-8 md:py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-16">
+      <main className="max-w-[1440px] mx-auto px-5 md:px-10 lg:px-20 py-6 md:py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12">
           {/* Gallery Column */}
           <div className="lg:col-span-7 flex flex-col gap-4">
             <div className="relative aspect-[4/5] w-full overflow-hidden bg-[#F1ECE4]">
@@ -332,7 +332,7 @@ export default function ProductDetailPage() {
                 )}
               </div>
 
-              <h1 className="text-4xl sm:text-5xl font-normal text-foreground tracking-[-0.025em] leading-[1.08] mb-5" style={{ fontFamily: "var(--font-display)" }}>
+              <h1 className="text-3xl sm:text-4xl font-normal text-foreground tracking-[-0.025em] leading-[1.1] mb-3" style={{ fontFamily: "var(--font-display)" }}>
                 {product.name}
               </h1>
 
@@ -540,7 +540,7 @@ export default function ProductDetailPage() {
         </div>
 
         {/* Specifications & Reviews Tabs */}
-        <section className="mt-16 pt-10 border-t border-border">
+        <section className="mt-10 pt-8 border-t border-border">
           <div className="flex items-center gap-6 border-b border-border pb-4 mb-8">
             <button
               aria-pressed={activeTab === "details"}

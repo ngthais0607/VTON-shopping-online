@@ -8,6 +8,10 @@ OVERALL = "overall"
 CLOTH_TYPES = (UPPER, LOWER, OVERALL)
 
 CATEGORY_CLOTH_TYPES: dict[str, str] = {
+    "tops": UPPER,
+    "outerwear": UPPER,
+    "bottoms": LOWER,
+    "dresses-skirts": OVERALL,
     "ao-thun": UPPER,
     "ao-so-mi": UPPER,
     "ao-polo": UPPER,
