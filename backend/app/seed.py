@@ -601,7 +601,11 @@ def seed_database(db=None, force: bool = False):
             # Seed Image if not existing
             img = (
                 db.query(ProductImage)
-                .filter(ProductImage.product_id == prod.id)
+                .filter(
+                    ProductImage.product_id == prod.id,
+                    ProductImage.kind != "vton_garment",
+                )
+                .order_by(ProductImage.sort_order, ProductImage.id)
                 .first()
             )
             if not img:
@@ -621,6 +625,35 @@ def seed_database(db=None, force: bool = False):
             ):
                 img.object_name = object_name
                 img.kind = "flat_lay"
+                db.commit()
+
+            # Raster garment-only images (one per colour) are the VTON inputs.
+            # SVG illustrations above are display-only: engines cannot read them.
+            stem = pdata["image_asset"].removesuffix(".svg")
+            garment_colors = list(dict.fromkeys(v[1] for v in pdata["variants"]))
+            for g_index, g_color in enumerate(garment_colors, start=1):
+                g_name = f"products/demo/{stem}__{slugify(g_color)}.png"
+                g_asset = Path(__file__).parent / "seed_assets" / Path(g_name).name
+                with g_asset.open("rb") as stream:
+                    storage.put(g_name, stream, "image/png")
+                g_id = f"img_{prod.id}_garment_{g_index}"
+                g_img = db.get(ProductImage, g_id)
+                if g_img is None:
+                    db.add(
+                        ProductImage(
+                            id=g_id,
+                            product_id=prod.id,
+                            object_name=g_name,
+                            kind="vton_garment",
+                            color_name=g_color,
+                            is_primary=False,
+                            sort_order=10 + g_index,
+                        )
+                    )
+                else:
+                    g_img.object_name = g_name
+                    g_img.kind = "vton_garment"
+                    g_img.color_name = g_color
                 db.commit()
 
             # Seed Variants

@@ -8,7 +8,13 @@ from fastapi import Request
 
 
 class TaskQueue(Protocol):
-    async def enqueue(self, task_name: str, *args: object) -> None: ...
+    async def enqueue(
+        self,
+        task_name: str,
+        *args: object,
+        queue_name: str | None = None,
+        job_id: str | None = None,
+    ) -> None: ...
 
 
 class ArqTaskQueue:
@@ -17,16 +23,28 @@ class ArqTaskQueue:
         self._pool: ArqRedis | None = None
         self._pool_lock = asyncio.Lock()
 
-    async def enqueue(self, task_name: str, *args: object) -> None:
+    async def enqueue(
+        self,
+        task_name: str,
+        *args: object,
+        queue_name: str | None = None,
+        job_id: str | None = None,
+    ) -> None:
         if self._pool is None:
             async with self._pool_lock:
                 if self._pool is None:
                     self._pool = await create_pool(
                         parse_redis_settings(self._redis_url)
                     )
-        job = await self._pool.enqueue_job(task_name, *args)
-        if job is None:
+        options: dict[str, str] = {}
+        if queue_name is not None:
+            options["_queue_name"] = queue_name
+        if job_id is not None:
+            options["_job_id"] = job_id
+        job = await self._pool.enqueue_job(task_name, *args, **options)
+        if job is None and job_id is None:
             raise RuntimeError(f"Queue did not accept task {task_name!r}")
+        # With a caller-supplied job_id, None means the job already exists: idempotent.
 
     async def aclose(self) -> None:
         if self._pool is not None:
@@ -35,7 +53,13 @@ class ArqTaskQueue:
 
 
 class _UnavailableTaskQueue:
-    async def enqueue(self, task_name: str, *args: object) -> None:
+    async def enqueue(
+        self,
+        task_name: str,
+        *args: object,
+        queue_name: str | None = None,
+        job_id: str | None = None,
+    ) -> None:
         raise RuntimeError("Task queue is not configured")
 
 

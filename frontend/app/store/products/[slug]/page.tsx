@@ -10,7 +10,7 @@ import {
   Minus,
   Plus,
   Ruler,
-  Share2,
+  Sparkles,
   ShieldCheck,
   ShoppingCart,
   Star,
@@ -20,11 +20,12 @@ import {
 import { toast } from "sonner";
 
 import { SizeChartModal } from "@/components/store/size-chart-modal";
+import { TryOnModal } from "@/components/store/try-on-modal";
 import { useVariantSelection } from "@/hooks/use-variant-selection";
 import { apiGet, apiPost } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { DEFAULT_PRODUCT_PLACEHOLDER } from "@/lib/placeholder-images";
-import type { FitFeedbackType, Product, ReviewSummary } from "@/lib/types";
+import type { FitFeedbackType, Product, ReviewSummary, VtonEligibility } from "@/lib/types";
 import { useCart } from "../../context/CartContext";
 
 export default function ProductDetailPage() {
@@ -40,6 +41,8 @@ export default function ProductDetailPage() {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
+  const [isTryOnOpen, setIsTryOnOpen] = useState(false);
+  const [tryOn, setTryOn] = useState<VtonEligibility | null>(null);
   const [activeTab, setActiveTab] = useState<"details" | "reviews">("details");
 
   // Review states
@@ -100,6 +103,18 @@ export default function ProductDetailPage() {
     variants: product?.variants ?? [],
     defaultPrice: product?.price ?? 0,
   });
+
+  // Virtual try-on availability depends on category and a raster garment image per colour.
+  const productId = product?.id;
+  useEffect(() => {
+    if (!productId) return;
+    let ignore = false;
+    const query = selectedColor ? `?color=${encodeURIComponent(selectedColor)}` : "";
+    apiGet<VtonEligibility>(`/vton/products/${productId}/eligibility${query}`)
+      .then((result) => { if (!ignore) setTryOn(result); })
+      .catch(() => { if (!ignore) setTryOn(null); });
+    return () => { ignore = true; };
+  }, [productId, selectedColor]);
 
   // Switch image when color changes
   useEffect(() => {
@@ -178,7 +193,9 @@ export default function ProductDetailPage() {
     );
   }
 
-  const images = product.images?.length > 0 ? product.images : [{ id: "placeholder", url: DEFAULT_PRODUCT_PLACEHOLDER }];
+  // vton_garment images are model inputs, not storefront gallery photos.
+  const galleryImages = (product.images ?? []).filter((img) => img.kind !== "vton_garment");
+  const images = galleryImages.length > 0 ? galleryImages : [{ id: "placeholder", url: DEFAULT_PRODUCT_PLACEHOLDER }];
   const mainImage = images[activeImageIndex] || images[0];
   const fitBreakdown =
     reviewsData?.summary?.fit_feedback ??
@@ -429,6 +446,16 @@ export default function ProductDetailPage() {
                 </button>
               </div>
 
+              {tryOn?.eligible === true && (
+                <button
+                  type="button"
+                  onClick={() => setIsTryOnOpen(true)}
+                  className="w-full py-3 px-6 rounded-2xl border-2 border-sky-500 text-sky-700 font-bold text-sm hover:bg-sky-50 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" /> Virtual try-on
+                </button>
+              )}
+
               {/* Guarantees */}
               <div className="grid grid-cols-2 gap-3 pt-3">
                 <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
@@ -650,6 +677,18 @@ export default function ProductDetailPage() {
           )}
         </section>
       </main>
+
+      {tryOn?.eligible === true && (
+        <TryOnModal
+          isOpen={isTryOnOpen}
+          onClose={() => setIsTryOnOpen(false)}
+          productId={product.id}
+          productName={product.name}
+          variantId={selectedVariant?.id}
+          colorName={selectedColor ?? undefined}
+          eligibility={tryOn}
+        />
+      )}
 
       {/* Size Chart Modal */}
       <SizeChartModal

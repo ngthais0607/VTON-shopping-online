@@ -1,6 +1,6 @@
 # Migration và dữ liệu
 
-Nguồn chuẩn: `backend/alembic/versions/`. Head hiện tại: `f8a1b2c3d4e5`.
+Nguồn chuẩn: `backend/alembic/versions/`. Head hiện tại: `a7d3e1f9c2b4`.
 
 ## Chạy migration
 
@@ -24,6 +24,7 @@ Sao lưu trước khi đổi schema theo [DEMO_BACKUP.md](DEMO_BACKUP.md). Khôn
 | `d4e5f6a7b8c9` | Loại review trùng và thêm unique constraint |
 | `e6f7a8b9c0d1` | Ràng buộc reserved + sold không vượt stock; từ chối dữ liệu sai, không tự sửa |
 | `f8a1b2c3d4e5` | Refresh session riêng cho từng thiết bị |
+| `a7d3e1f9c2b4` | Bảng vton_tasks (thử đồ ảo); downgrade xóa lịch sử task, không xóa object trong storage |
 
 ## Giới hạn khi mở rộng
 

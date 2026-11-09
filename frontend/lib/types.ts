@@ -332,3 +332,34 @@ export interface VariantLookupItem {
   is_active: boolean;
   image_url?: string | null;
 }
+
+export type VtonStatus = "queued" | "processing" | "succeeded" | "failed";
+
+export interface VtonEligibility {
+  eligible: boolean;
+  cloth_type?: "upper" | "lower" | "overall" | null;
+  reason?: string | null;
+  engine: "mock" | "catvton";
+  daily_quota: number;
+}
+
+export interface VtonQuota {
+  limit: number;
+  used: number;
+  remaining: number;
+  retention_hours: number;
+}
+
+export interface VtonTask {
+  id: string;
+  product_id: number;
+  variant_id: number | null;
+  cloth_type: string;
+  status: VtonStatus;
+  engine: "mock" | "catvton";
+  error_code: string | null;
+  has_result: boolean;
+  has_person_image: boolean;
+  created_at: string;
+  finished_at: string | null;
+}

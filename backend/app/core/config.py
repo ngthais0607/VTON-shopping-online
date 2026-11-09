@@ -63,6 +63,17 @@ class Settings(BaseSettings):
     vietqr_account_name: str = "TRUELOOK"
     vietqr_webhook_secret: str = ""
 
+    vton_enabled: bool = True
+    # "mock" renders a clearly watermarked CPU preview; "catvton" calls the GPU service.
+    vton_engine: str = "mock"
+    vton_service_url: str = "http://catvton:8080"
+    vton_service_timeout_seconds: int = Field(default=300, gt=0)
+    vton_daily_quota: int = Field(default=10, ge=1)
+    vton_retention_hours: int = Field(default=24, ge=1)
+    vton_queue_name: str = "vton"
+    vton_max_attempts: int = Field(default=2, ge=1, le=5)
+    vton_stale_processing_minutes: int = Field(default=10, ge=1)
+
     emails_enabled: bool = True
     emails_console_log: bool = True
     smtp_host: str = "smtp.gmail.com"
@@ -80,6 +91,14 @@ class Settings(BaseSettings):
         endpoint = info.data.get("minio_endpoint", "localhost:9000")
         scheme = "https" if info.data.get("minio_secure", False) else "http"
         return f"{scheme}://{endpoint}"
+
+    @field_validator("vton_engine")
+    @classmethod
+    def validate_vton_engine(cls, value: str) -> str:
+        val = value.strip().lower()
+        if val not in {"mock", "catvton"}:
+            raise ValueError("vton_engine must be 'mock' or 'catvton'")
+        return val
 
     @field_validator("refresh_cookie_samesite")
     @classmethod

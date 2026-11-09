@@ -153,7 +153,7 @@ Compose runs migrations before starting the API and worker. Confirm the schema v
 docker compose exec api alembic current
 ```
 
-The current head is `f8a1b2c3d4e5`. See the [migration guide](docs/MIGRATION_NOTES.md) for revision history and destructive rollback limits.
+The current head is `a7d3e1f9c2b4`. See the [migration guide](docs/MIGRATION_NOTES.md) for revision history and destructive rollback limits.
 
 For multiple stacks, consistently use a separate project name, such as `docker compose -p truelook-demo ...`, and distinct host ports. The existing developer demo may use storefront/API ports 13000/18000 and MinIO ports 19000/19001; these are not the defaults above.
 
@@ -239,7 +239,7 @@ To send real email, set `EMAILS_ENABLED=true`, `EMAILS_CONSOLE_LOG=false`, and v
 | Admin | admin@example.com | `DemoAdmin!482` |
 | Customer | user@example.com | `DemoCustomer!482` |
 
-Seed creates 12 clothing products across tops, trousers, skirts/dresses, and outerwear, with size/color variants and three sample orders. It uploads bundled SVG illustrations to MinIO. These are demo images, not product photography or evidence of VTON quality; SVG is not accepted by the admin upload API.
+Seed creates 12 clothing products across tops, trousers, skirts/dresses, and outerwear, with size/color variants and three sample orders. It uploads bundled SVG illustrations plus one raster garment image per colour (`kind=vton_garment`, used as try-on input) to MinIO. These are demo images, not product photography or evidence of VTON quality; SVG is not accepted by the admin upload API.
 
 Passwords come from `SEED_ADMIN_PASSWORD` and `SEED_CUSTOMER_PASSWORD`. If omitted, seed generates and prints passwords when creating accounts. Existing account passwords are preserved. Seed is for development/demo environments, not production.
 
@@ -369,11 +369,11 @@ See [backup and restore](docs/DEMO_BACKUP.md). SQL dumps do not include MinIO ob
 <a id="current-limits--new-modules"></a>
 ## 🧩 Current Limits & New Modules
 
-Contact does not submit messages, wishlist is browser-only, and blog/careers/press pages are informational. Dynamic shipping rates, carrier integrations, coupons, automatic refunds, and VTON are not implemented. Load/p95 latency, GPU inference, and real SMTP delivery have not been benchmarked or certified.
+Contact does not submit messages, wishlist is browser-only, and blog/careers/press pages are informational. Dynamic shipping rates, carrier integrations, coupons, automatic refunds, and automatic refunds are not implemented. VTON is implemented (see below) but real CatVTON output is unverified on this repository's CI. Load/p95 latency, GPU inference, and real SMTP delivery have not been benchmarked or certified.
 
 A new module should start as a feature slice with its own router, schemas, service, models, and Alembic revisions. Preserve `variant_id` contracts, order-item snapshots, and inventory invariants. Long-running work needs its own durable task states, retries/idempotency, recovery behavior, and worker/queue boundaries rather than sharing order-expiration work. User photos require private storage, ownership checks, and a retention/deletion policy; the public product-image path is not suitable.
 
-See the [VTON prerequisites](docs/VTON_READINESS.md). A stable release still requires environment-specific acceptance and recovery checks; green unit tests alone are not production certification.
+See the [virtual try-on guide](docs/VTON.md) (architecture, mock vs. CatVTON engine, GPU setup, privacy, limits). A stable release still requires environment-specific acceptance and recovery checks; green unit tests alone are not production certification.
 
 <a id="license"></a>
 ## 📄 License

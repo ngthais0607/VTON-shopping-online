@@ -21,6 +21,11 @@ x-backend-env: &backend-env
   REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-true}
   REFRESH_COOKIE_SAMESITE: ${REFRESH_COOKIE_SAMESITE:-lax}
   FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-}
+  VTON_ENABLED: ${VTON_ENABLED:-true}
+  VTON_ENGINE: ${VTON_ENGINE:-mock}
+  VTON_SERVICE_URL: ${VTON_SERVICE_URL:-http://catvton:8080}
+  VTON_DAILY_QUOTA: ${VTON_DAILY_QUOTA:-10}
+  VTON_RETENTION_HOURS: ${VTON_RETENTION_HOURS:-24}
   EMAILS_ENABLED: ${EMAILS_ENABLED:-true}
   EMAILS_CONSOLE_LOG: ${EMAILS_CONSOLE_LOG:-true}
   SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
@@ -128,6 +133,44 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  # Separate queue/container: long inference must not delay order e-mails.
+  vton_worker:
+    build: ./backend
+    command: arq app.vton_worker.WorkerSettings
+    restart: always
+    environment: *backend-env
+    depends_on:
+      redis:
+        condition: service_healthy
+      mariadb:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Real CatVTON inference. NVIDIA GPU (>= 16 GB VRAM recommended) required:
+  #   docker compose --profile gpu up -d catvton   with VTON_ENGINE=catvton
+  catvton:
+    profiles: ["gpu"]
+    build: ./vton-service
+    restart: always
+    volumes:
+      - catvton_models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 120s
+
   frontend:
     build:
       context: ./frontend
@@ -154,3 +197,4 @@ volumes:
   mariadb_data:
   redis_data:
   minio_data:
+  catvton_models:

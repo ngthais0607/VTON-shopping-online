@@ -110,8 +110,25 @@ def test_seed_database_fashion_catalog_and_idempotence(
         i.object_name.startswith("products/demo/")
         for i in db_session.query(ProductImage)
     )
-    assert len(seed_storage.put_objects) == 12
-    assert all(payload.startswith(b"<svg") for payload in seed_storage.put_payloads)
+    svgs = [
+        p
+        for o, p in zip(seed_storage.put_objects, seed_storage.put_payloads)
+        if o.endswith(".svg")
+    ]
+    garments = [o for o in seed_storage.put_objects if o.endswith(".png")]
+    assert len(svgs) == 12 and all(p.startswith(b"<svg") for p in svgs)
+    # One raster VTON garment image per product colour, tagged with that colour.
+    garment_rows = (
+        db_session.query(ProductImage).filter(ProductImage.kind == "vton_garment").all()
+    )
+    assert len(garments) == len(garment_rows) == 24
+    assert all(r.color_name and r.object_name.endswith(".png") for r in garment_rows)
+    for p in products:
+        colors = {
+            v.color_name
+            for v in db_session.query(ProductVariant).filter_by(product_id=p.id)
+        }
+        assert colors == {r.color_name for r in garment_rows if r.product_id == p.id}
 
     # 3. Test Idempotence: Run seed a second time
     seed_database(db=db_session, force=True)
@@ -129,6 +146,7 @@ def test_seed_database_fashion_catalog_and_idempotence(
     assert second_cat_count == initial_cat_count, (
         f"Categories duplicated: {initial_cat_count} vs {second_cat_count}"
     )
+    assert db_session.query(ProductImage).count() == 36
     assert second_variant_count == initial_variant_count, (
         f"Variants duplicated: {initial_variant_count} vs {second_variant_count}"
     )

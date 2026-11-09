@@ -121,6 +121,10 @@ export async function apiGet<T>(path: string): Promise<T> {
     return apiClient.get<T, T>(path);
 }
 
+export async function apiGetBlob(path: string): Promise<Blob> {
+    return apiClient.get<Blob, Blob>(path, { responseType: 'blob' });
+}
+
 export async function apiDelete<T>(path: string): Promise<T> {
     return apiClient.delete<T, T>(path);
 }
@@ -143,11 +147,13 @@ export async function apiPatch<T, B = unknown>(path: string, body: B): Promise<T
 
 export async function apiUpload<T>(
     path: string,
-    formData: FormData
+    formData: FormData,
+    extraHeaders: Record<string, string> = {}
 ): Promise<T> {
     return apiClient.post<T, T, FormData>(path, formData, {
         headers: {
             'Content-Type': 'multipart/form-data',
+            ...extraHeaders,
         }
     });
 }
