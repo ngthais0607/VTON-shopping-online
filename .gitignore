@@ -51,3 +51,8 @@ docs/superpowers/
 .idea/
 *.swp
 .agents/
+
+# Local scratch
+output/
+.codex/
+venv_install.log

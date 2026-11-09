@@ -54,7 +54,7 @@ export default function OrderSuccessPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
       <Header />
-      <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pb-20 pt-40 sm:px-8 lg:px-12 lg:pt-56">
+      <main className="mx-auto flex w-full max-w-7xl flex-1 items-center justify-center px-5 pb-20 pt-24 sm:px-8 lg:px-12 lg:pt-36">
         <Suspense fallback={<div role="status" className="py-16 text-center text-sm text-[#6B6761]">Loading order status...</div>}><OrderSuccessContent /></Suspense>
       </main>
       <Footer />

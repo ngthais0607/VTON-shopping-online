@@ -208,7 +208,7 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background pt-32 lg:pt-48">
+      <div className="min-h-screen bg-background pt-24 lg:pt-36">
         <Header />
         <main aria-busy="true" className="mx-auto grid max-w-[1440px] gap-8 px-5 py-12 md:grid-cols-2 md:px-10 lg:px-20">
           <div className="aspect-[4/5] bg-secondary motion-safe:animate-pulse" />
@@ -221,7 +221,7 @@ export default function ProductDetailPage() {
 
   if (error || !product) {
     return (
-      <div className="min-h-screen bg-background pt-32 lg:pt-48">
+      <div className="min-h-screen bg-background pt-24 lg:pt-36">
         <Header />
         <main className="flex min-h-[65vh] flex-col items-center justify-center p-6 text-center">
         <h2 className="text-xl font-bold text-foreground mb-2">Product not found</h2>
@@ -250,7 +250,7 @@ export default function ProductDetailPage() {
     reviewsData?.fit_breakdown;
 
   return (
-    <div className="min-h-screen bg-background pt-32 lg:pt-48">
+    <div className="min-h-screen bg-background pt-24 lg:pt-36">
       <Header />
       {/* Breadcrumb & Navigation */}
       <div className="border-b border-border bg-background">

@@ -22,19 +22,19 @@ export function Header({ title, subtitle, children }: HeaderProps) {
   const initials = `${user?.first_name?.charAt(0) || ''}${user?.last_name?.charAt(0) || ''}`.toUpperCase() || 'AD';
   return <header className="border-b border-border bg-white">
     {logoutError && <p role="alert" className="border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">{logoutError}</p>}
-    <div className="flex flex-wrap items-start justify-between gap-6 px-4 py-7 sm:px-6 lg:px-10 lg:py-9">
+    <div className="flex min-h-[104px] flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-10">
       <div className="min-w-0">
-        <p className="mb-3 flex items-center gap-3 text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground"><span className="h-px w-7 bg-[#B89B6A]" />TrueLook / Administration</p>
-        <h1 className="font-display text-[38px] font-normal leading-none tracking-[-0.025em] text-foreground sm:text-5xl">{title}</h1>
-        {subtitle && <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">{subtitle}</p>}
+        <p className="mb-1.5 flex items-center gap-3 text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground"><span className="h-px w-7 bg-[#B89B6A]" />TrueLook / Administration</p>
+        <h1 className="font-display text-[26px] font-normal leading-tight tracking-[-0.02em] text-foreground sm:text-[32px]">{title}</h1>
+        {subtitle && <p className="mt-1 max-w-xl text-[13px] leading-snug text-muted-foreground">{subtitle}</p>}
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         {children}
-        <Link href="/store" className="hidden min-h-10 items-center gap-2 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-secondary xl:inline-flex">View store<ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" /></Link>
+        <Link href="/store" className="hidden min-h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-secondary xl:inline-flex">View store<ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" /></Link>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" aria-label="Account menu" className="h-11 gap-2 rounded-md border border-border bg-card px-2.5">
-              <Avatar className="h-7 w-7"><AvatarFallback className="bg-secondary text-[10px] font-semibold text-primary">{initials}</AvatarFallback></Avatar>
+            <Button variant="ghost" aria-label="Account menu" className="h-9 gap-2 rounded-md border border-border bg-card px-2">
+              <Avatar className="h-6 w-6"><AvatarFallback className="bg-secondary text-[10px] font-semibold text-primary">{initials}</AvatarFallback></Avatar>
               <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>

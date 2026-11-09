@@ -135,7 +135,7 @@ export default function CheckoutPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
       <Header />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-40 sm:px-8 lg:px-12 lg:pt-56">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-24 sm:px-8 lg:px-12 lg:pt-36">
         <ol aria-label="Checkout progress" className="mb-12 flex items-center justify-center gap-4 border-b border-border pb-8 text-[10px] uppercase tracking-[0.16em] sm:gap-10">
           <li><a href="#shipping">01 · Shipping</a></li><li aria-hidden="true" className="h-px w-6 bg-border sm:w-16" /><li><a href="#payment" className="text-muted-foreground">02 · Payment</a></li><li aria-hidden="true" className="h-px w-6 bg-border sm:w-16" /><li><a href="#review" className="text-muted-foreground">03 · Review</a></li>
         </ol>
@@ -156,7 +156,7 @@ export default function CheckoutPage() {
         ) : (
           <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.85fr)] lg:gap-10">
             <form onSubmit={handleCheckoutSubmit} className="min-w-0 space-y-6">
-              <section id="shipping" className="scroll-mt-48 border border-[#E8E3DB] bg-white p-5 sm:p-8">
+              <section id="shipping" className="scroll-mt-28 border border-[#E8E3DB] bg-white p-5 sm:p-8">
                 <div className="mb-7 flex items-center gap-4 border-b border-[#E8E3DB] pb-5">
                   <span className="font-mono text-xs text-[#1C1C1C]">01</span>
                   <h2 className="text-xl font-medium tracking-tight sm:text-2xl" style={{ fontFamily: "var(--font-display)" }}>Delivery details</h2>
@@ -169,7 +169,7 @@ export default function CheckoutPage() {
                   <div className="space-y-2 sm:col-span-2"><label htmlFor="checkout-notes" className="text-xs font-medium">Notes <span className="font-normal text-[#6B6761]">(optional)</span></label><textarea id="checkout-notes" rows={3} placeholder="Deliver during office hours..." value={notes} onChange={e => setNotes(e.target.value)} className="w-full resize-y border border-[#E8E3DB] bg-[#FAF8F5]/50 p-3 text-sm outline-none focus:border-[#1C1C1C] focus:ring-2 focus:ring-[#1C1C1C]/15" /></div>
                 </div>
               </section>
-              <fieldset id="payment" className="min-w-0 scroll-mt-48 border border-[#E8E3DB] bg-white p-5 sm:p-8">
+              <fieldset id="payment" className="min-w-0 scroll-mt-28 border border-[#E8E3DB] bg-white p-5 sm:p-8">
                 <legend className="sr-only">Payment method</legend>
                 <div className="mb-6 flex items-center gap-4 border-b border-[#E8E3DB] pb-5"><span className="font-mono text-xs text-[#1C1C1C]">02</span><h2 className="text-xl font-medium tracking-tight sm:text-2xl" style={{ fontFamily: "var(--font-display)" }}>Payment method</h2><CreditCard className="ml-auto h-4 w-4 text-[#6B6761]" /></div>
                 <div className="space-y-3">
@@ -191,7 +191,7 @@ export default function CheckoutPage() {
               </Button>
               <p className="text-center text-xs leading-6 text-[#6B6761]">By placing your order, you confirm that these details are correct. <Link href="/store/terms" className="text-[#1C1C1C] underline underline-offset-4">Terms of use</Link></p>
             </form>
-            <aside id="review" aria-label="Order summary" className="min-w-0 scroll-mt-48 border border-[#E8E3DB] bg-white lg:sticky lg:top-48">
+            <aside id="review" aria-label="Order summary" className="min-w-0 scroll-mt-28 border border-[#E8E3DB] bg-white lg:sticky lg:top-28">
               <div className="flex items-start justify-between gap-4 border-b border-[#E8E3DB] p-5 sm:p-7"><div><p className="mb-2 text-[10px] uppercase tracking-[0.2em] text-[#1C1C1C]">Your selections</p><h2 className="text-2xl font-medium tracking-tight" style={{ fontFamily: "var(--font-display)" }}>Order summary</h2></div><span className="pt-1 font-mono text-xs text-[#6B6761]">{cartItems.length.toString().padStart(2, "0")}</span></div>
               <div className="max-h-[440px] space-y-5 overflow-y-auto p-5 sm:p-7">
                 {cartItems.map(({ product, quantity, variant, variantId }) => <div key={variantId || product.id} className="flex items-start gap-4">

@@ -79,7 +79,7 @@ export function FeaturedProducts({ listing = false, onResetFilters, products, lo
   const router = useRouter();
   const totalPages = Math.ceil(totalProducts / pageSize);
   const control = "min-h-11 w-full border border-border bg-background px-3 text-sm";
-  return <section id="products" className="scroll-mt-44 bg-background px-6 py-8 md:py-12 lg:px-20">
+  return <section id="products" className="scroll-mt-28 bg-background px-6 py-8 md:py-12 lg:px-20">
     <div className="mx-auto max-w-[1280px]">
       {listing && <nav aria-label="Breadcrumb" className="mb-5 text-[10px] uppercase tracking-[0.16em] text-muted-foreground"><Link href="/store">Home</Link><span className="px-3">/</span><span className="text-foreground">Collection</span></nav>}
       <div className="mb-6 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
@@ -99,7 +99,7 @@ export function FeaturedProducts({ listing = false, onResetFilters, products, lo
         </form>
       </div>
       <div className={listing ? "mt-8 grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12" : ""}>
-      {(showFilters || listing) && <aside id="catalog-filters" className={listing ? ((showFilters ? "block" : "hidden") + " border-b border-border pb-6 lg:sticky lg:top-44 lg:block lg:max-h-[calc(100dvh-12rem)] lg:self-start lg:overflow-y-auto lg:border-b-0 lg:pr-3") : "border-b border-border py-6"}>
+      {(showFilters || listing) && <aside id="catalog-filters" className={listing ? ((showFilters ? "block" : "hidden") + " border-b border-border pb-6 lg:sticky lg:top-28 lg:block lg:max-h-[calc(100dvh-8rem)] lg:self-start lg:overflow-y-auto lg:border-b-0 lg:pr-3") : "border-b border-border py-6"}>
         {listing && <CategoryNavigation categories={categories} selected={selectedCategory} onSelect={setSelectedCategory} />}
         <FashionFilters hideStock />
         <details className="border-b border-border"><summary className="min-h-12 cursor-pointer py-4 text-xs">Price & availability</summary><div className={"mb-4 grid items-end gap-4 border-t border-border pt-6 " + (listing ? "grid-cols-1" : "sm:grid-cols-2 lg:grid-cols-4")}>

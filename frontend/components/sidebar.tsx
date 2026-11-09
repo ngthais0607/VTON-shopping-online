@@ -27,9 +27,9 @@ export function Sidebar() {
     catch { /* The shared session notice survives the layout unmounting. */ }
   };
   const content = (mobile = false) => <>
-    <Link href="/dashboard" onClick={() => setOpen(false)} className="block border-b border-border px-7 pb-8 pt-10">
-      <span className="font-display text-[38px] font-normal leading-none tracking-[-0.035em] text-foreground">TrueLook<span className="ml-1 align-top text-sm text-[#B89B6A]">®</span></span>
-      <span className="mt-3 block text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground">The administration atelier</span>
+    <Link href="/dashboard" onClick={() => setOpen(false)} className="flex min-h-[104px] flex-col justify-center border-b border-border px-7">
+      <span className="font-display text-[32px] font-normal leading-none tracking-[-0.035em] text-foreground">TrueLook<span className="ml-1 align-top text-sm text-[#B89B6A]">®</span></span>
+      <span className="mt-2 block text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground">The administration atelier</span>
     </Link>
     <nav aria-label={mobile ? 'Mobile admin' : 'Admin'} className="flex-1 space-y-2 overflow-y-auto px-4 py-8">
       <p className="mb-5 px-3 text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Manage your store</p>

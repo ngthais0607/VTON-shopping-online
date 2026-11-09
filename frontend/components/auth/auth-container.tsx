@@ -1,7 +1,7 @@
 // Path: frontend/components/auth/auth-container.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 
@@ -39,11 +39,17 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
         setError("");
     }, [defaultTab]);
 
+    // Switch tabs in place: swapping the route remounts the form and makes the layout jump.
+    const syncUrl = (tab: "signin" | "signup") => {
+        const next = safeReturnPath(new URLSearchParams(window.location.search).get("next"));
+        window.history.replaceState(null, "", `${tab === "signin" ? "/login" : "/register"}${next ? `?next=${encodeURIComponent(next)}` : ""}`);
+    };
+
     const handleTabChange = (tab: "signin" | "signup") => {
+        if (tab === activeTab) return;
         setActiveTab(tab);
         setError("");
-        const next = safeReturnPath(new URLSearchParams(window.location.search).get("next"));
-        router.push(`${tab === 'signin' ? '/login' : '/register'}${next ? `?next=${encodeURIComponent(next)}` : ''}`);
+        syncUrl(tab);
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,7 +122,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
                 // Switch to Sign In tab and preset values
                 setTimeout(() => {
                     setActiveTab("signin");
-                    router.push("/login");
+                    syncUrl("signin");
                     setFormData((prev) => ({
                         ...prev,
                         password: "",
@@ -132,10 +138,14 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
         }
     };
 
-    return <div className="grid w-full max-w-[496px] overflow-hidden rounded border border-border bg-card lg:min-h-[720px] lg:max-w-[1120px] lg:grid-cols-[0.95fr_1.05fr]">
+    const isSignup = activeTab === "signup";
+    const inputClass = "h-11 rounded-md";
+
+    return <>
       <Toaster position="top-right" richColors closeButton />
+      <div className="grid w-full max-w-[496px] overflow-hidden rounded border border-border bg-card lg:min-h-[800px] lg:max-w-[1120px] lg:grid-cols-[0.95fr_1.05fr]">
       <aside className="relative isolate hidden min-w-0 flex-col justify-between overflow-hidden bg-secondary p-10 text-white lg:flex xl:p-12">
-        <Image src="/images/luxury-campaign.png" alt="Elegant style in natural light" fill priority sizes="(min-width: 1280px) 532px, 45vw" className="-z-20 object-cover object-[76%_center]" />
+        <Image src="/images/luxury-campaign.webp" alt="Elegant style in natural light" fill priority sizes="(min-width: 1280px) 532px, 45vw" className="-z-20 object-cover object-[76%_center]" />
         <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/75 via-black/10 to-black/15" />
         <p className="text-[10px] font-medium uppercase tracking-[0.24em]">The TrueLook Edit / 01</p>
         <div>
@@ -145,33 +155,44 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
           <p className="mt-8 border-t border-white/25 pt-5 text-[9px] uppercase tracking-[0.18em] text-white/75">Considered silhouettes. Everyday elegance.</p>
         </div>
       </aside>
-      <section aria-label={activeTab === 'signin' ? 'Sign in' : 'Sign up'} className="mx-auto flex w-full max-w-[496px] min-w-0 flex-col justify-center px-6 py-9 sm:px-12 sm:py-12 lg:max-w-none lg:px-10 xl:px-16">
+      <section aria-label={isSignup ? 'Sign up' : 'Sign in'} className="mx-auto flex w-full max-w-[496px] min-w-0 flex-col justify-start px-6 py-9 sm:px-12 sm:py-12 lg:max-w-none lg:px-10 lg:py-10 xl:px-16">
         <div className="mx-auto w-full max-w-[400px]">
         <p className="text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Your TrueLook account</p>
-        <h1 className="mt-4 font-display text-[36px] font-normal leading-[1.12] tracking-[-0.025em] text-foreground sm:text-[42px]">{activeTab === 'signin' ? 'Welcome back.' : 'Start with TrueLook.'}</h1>
-        <p className="mt-3 max-w-sm text-[13px] leading-6 text-muted-foreground">{activeTab === 'signin' ? 'Sign in to continue shopping and track your orders.' : 'Create an account to shop and manage your details.'}</p>
-        <div aria-label="Authentication" className="my-6 flex border-b border-border">
-          <button type="button" aria-pressed={activeTab === 'signin'} onClick={() => handleTabChange('signin')} className={`min-h-11 flex-1 border-b-2 py-3 text-sm font-medium transition-colors ${activeTab === 'signin' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Sign in</button>
-          <button type="button" aria-pressed={activeTab === 'signup'} onClick={() => handleTabChange('signup')} className={`min-h-11 flex-1 border-b-2 py-3 text-sm font-medium transition-colors ${activeTab === 'signup' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Sign up</button>
+        {/* Fixed-height heading block: copy changes never move the tabs or the form. */}
+        <div className="min-h-[104px]">
+          <h1 className="mt-4 font-display text-[36px] font-normal leading-[1.12] tracking-[-0.025em] text-foreground sm:text-[42px]">{isSignup ? 'Start with TrueLook.' : 'Welcome back.'}</h1>
+          <p className="mt-3 max-w-sm text-[13px] leading-6 text-muted-foreground">{isSignup ? 'Create an account to shop and manage your details.' : 'Sign in to continue shopping and track your orders.'}</p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4" aria-busy={loading} aria-describedby={error ? 'auth-error' : undefined}>
-          {error && <div id="auth-error" role="alert" className="flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive"><AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
-          {activeTab === 'signup' && <div className="space-y-2"><label htmlFor="fullName" className="text-xs font-semibold text-foreground">Full name</label><Input id="fullName" name="fullName" autoComplete="name" placeholder="Full name" value={formData.fullName} onChange={handleChange} required className="h-12 rounded-md" /></div>}
-          <div className="space-y-2"><label htmlFor="email" className="text-xs font-semibold text-foreground">{activeTab === 'signup' ? 'Email' : 'Email or username'}</label><Input id="email" name="email" type={activeTab === 'signup' ? 'email' : 'text'} autoComplete={activeTab === 'signup' ? 'email' : 'username'} autoCapitalize="none" spellCheck={false} placeholder="Email or Username" value={formData.email} onChange={handleChange} required className="h-12 rounded-md" /></div>
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-xs font-semibold text-foreground">Password</label>
-            <div className="relative"><Input id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete={activeTab === 'signin' ? 'current-password' : 'new-password'} placeholder="Password" value={formData.password} onChange={handleChange} required aria-describedby={activeTab === 'signup' ? 'password-help' : undefined} className="h-12 rounded-md pr-12" /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)} className="absolute right-0 top-0 flex h-12 w-12 items-center justify-center rounded-md text-muted-foreground hover:text-foreground">{showPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}</button></div>
-            {activeTab === 'signup' && <p id="password-help" className="text-xs text-muted-foreground">At least 8 characters; maximum 72 UTF-8 bytes.</p>}
+        <div role="tablist" aria-label="Authentication" className="relative mb-6 grid grid-cols-2 rounded-md bg-muted p-1">
+          <span aria-hidden="true" className={`absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded bg-background shadow-sm transition-transform duration-300 ease-out motion-reduce:transition-none ${isSignup ? 'translate-x-full' : 'translate-x-0'}`} />
+          {(['signin', 'signup'] as const).map((tab) => <button key={tab} type="button" role="tab" id={`auth-tab-${tab}`} aria-selected={activeTab === tab} aria-controls="auth-panel" onClick={() => handleTabChange(tab)} className={`relative z-10 min-h-10 rounded py-2 text-sm font-medium transition-colors ${activeTab === tab ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{tab === 'signin' ? 'Sign in' : 'Sign up'}</button>)}
+        </div>
+        <form id="auth-panel" role="tabpanel" aria-labelledby={`auth-tab-${activeTab}`} onSubmit={handleSubmit} aria-busy={loading} aria-describedby={error ? 'auth-error' : undefined}>
+          <Collapse open={!!error}>{error && <div id="auth-error" role="alert" className="mb-4 flex items-start gap-2 rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive"><AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}</Collapse>
+          <Collapse open={isSignup}><div className="pb-4"><label htmlFor="fullName" className="mb-2 block text-xs font-semibold text-foreground">Full name</label><Input id="fullName" name="fullName" autoComplete="name" placeholder="Full name" value={formData.fullName} onChange={handleChange} required={isSignup} className={inputClass} /></div></Collapse>
+          <div className="pb-4"><label htmlFor="email" className="mb-2 block text-xs font-semibold text-foreground">{isSignup ? 'Email' : 'Email or username'}</label><Input id="email" name="email" type={isSignup ? 'email' : 'text'} autoComplete={isSignup ? 'email' : 'username'} autoCapitalize="none" spellCheck={false} placeholder="Email or Username" value={formData.email} onChange={handleChange} required className={inputClass} /></div>
+          <div className="pb-4">
+            <label htmlFor="password" className="mb-2 block text-xs font-semibold text-foreground">Password</label>
+            <div className="relative"><Input id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete={isSignup ? 'new-password' : 'current-password'} placeholder="Password" value={formData.password} onChange={handleChange} required aria-describedby={isSignup ? 'password-help' : undefined} className={`${inputClass} pr-12`} /><button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground">{showPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}</button></div>
+            <Collapse open={isSignup}><p id="password-help" className="pt-2 text-xs text-muted-foreground">At least 8 characters; maximum 72 UTF-8 bytes.</p></Collapse>
           </div>
-          {activeTab === 'signup' && <div className="space-y-2">
-            <label htmlFor="confirmPassword" className="text-xs font-semibold text-foreground">Confirm password</label>
-            <div className="relative"><Input id="confirmPassword" name="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="Confirm password" value={formData.confirmPassword} onChange={handleChange} required className="h-12 rounded-md pr-12" /><button type="button" aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-0 top-0 flex h-12 w-12 items-center justify-center rounded-md text-muted-foreground hover:text-foreground">{showConfirmPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}</button></div>
-          </div>}
-          {activeTab === 'signup' && <p className="text-xs leading-relaxed text-muted-foreground">By signing up, you agree to the <Link href="/store/terms" className="font-medium text-primary underline underline-offset-4">Terms</Link> and <Link href="/store/privacy" className="font-medium text-primary underline underline-offset-4">Privacy Policy</Link>.</p>}
-          <Button type="submit" disabled={loading} className="h-12 w-full justify-between rounded-md px-5">{loading ? (activeTab === 'signin' ? 'Signing in...' : 'Creating account...') : (activeTab === 'signin' ? 'Sign in' : 'Sign up')}<ArrowRight aria-hidden="true" className="h-4 w-4" /></Button>
+          <Collapse open={isSignup}><div className="pb-4">
+            <label htmlFor="confirmPassword" className="mb-2 block text-xs font-semibold text-foreground">Confirm password</label>
+            <div className="relative"><Input id="confirmPassword" name="confirmPassword" type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" placeholder="Confirm password" value={formData.confirmPassword} onChange={handleChange} required={isSignup} className={`${inputClass} pr-12`} /><button type="button" aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'} aria-pressed={showConfirmPassword} onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:text-foreground">{showConfirmPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}</button></div>
+          </div></Collapse>
+          <Collapse open={isSignup}><p className="pb-4 text-xs leading-relaxed text-muted-foreground">By signing up, you agree to the <Link href="/store/terms" className="font-medium text-primary underline underline-offset-4">Terms</Link> and <Link href="/store/privacy" className="font-medium text-primary underline underline-offset-4">Privacy Policy</Link>.</p></Collapse>
+          <Button type="submit" disabled={loading} className="h-11 w-full justify-between rounded-md px-5">{loading ? (isSignup ? 'Creating account...' : 'Signing in...') : (isSignup ? 'Sign up' : 'Sign in')}<ArrowRight aria-hidden="true" className="h-4 w-4" /></Button>
         </form>
-        <p className="mt-6 text-center text-xs leading-6 text-muted-foreground">{activeTab === 'signin' ? 'New here?' : 'Already have an account?'} <button type="button" onClick={() => handleTabChange(activeTab === 'signin' ? 'signup' : 'signin')} className="font-medium text-primary underline underline-offset-4">{activeTab === 'signin' ? 'Sign up' : 'Sign in'}</button></p>
+        <p className="mt-6 text-center text-xs leading-6 text-muted-foreground">{isSignup ? 'Already have an account?' : 'New here?'} <button type="button" onClick={() => handleTabChange(isSignup ? 'signin' : 'signup')} className="font-medium text-primary underline underline-offset-4">{isSignup ? 'Sign in' : 'Sign up'}</button></p>
         </div>
       </section>
+      </div>
+    </>;
+}
+
+/** Height-animated container: collapsed content is inert, so it cannot be tabbed to or announced. */
+function Collapse({ open, children }: { open: boolean; children: ReactNode }) {
+    return <div inert={!open} aria-hidden={!open} className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+      <div className="-mx-1 min-h-0 overflow-hidden px-1">{children}</div>
     </div>;
 }

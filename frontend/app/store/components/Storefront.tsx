@@ -74,7 +74,7 @@ function StorefrontContent({ listing = false }: { listing?: boolean }) {
         <div className="min-h-screen bg-background text-foreground antialiased font-sans flex flex-col">
             <Header />
 
-            <main className={listing ? "flex-1 pt-32 lg:pt-44" : "flex-1"}>
+            <main className={listing ? "flex-1 pt-24 lg:pt-32" : "flex-1"}>
                 {!listing && <><HeroSection /><CategoryStories /></>}
 
                 <div className="scroll-mt-24">

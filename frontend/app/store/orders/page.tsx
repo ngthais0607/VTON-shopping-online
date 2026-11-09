@@ -104,11 +104,15 @@ export default function CustomerOrdersPage() {
     return (
         <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
             <Header />
-            <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-40 sm:px-8 lg:px-12 lg:pt-56">
-                <button onClick={() => router.push("/store")} className="mb-7 flex min-h-11 items-center gap-2 text-xs text-[#6B6761] hover:text-[#1C1C1C]"><ArrowLeft className="h-3.5 w-3.5" />Back to store</button>
-                <div className="mb-10 flex items-end justify-between gap-5 border-b border-[#E8E3DB] pb-9">
-                    <div><p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#1C1C1C]">Order history</p><h1 className="text-4xl font-medium leading-[1.05] tracking-[-0.045em] sm:text-6xl" style={{ fontFamily: "var(--font-display)" }}>My<br />orders.</h1><p className="mt-4 text-sm leading-6 text-[#6B6761]">Track and manage your orders.</p></div>
-                    <button onClick={handleRefresh} disabled={refreshing} aria-label="Refresh order history" title="Refresh order history" className="flex h-12 w-12 shrink-0 items-center justify-center border border-[#E8E3DB] bg-white text-[#1C1C1C] hover:border-[#1C1C1C] disabled:opacity-50"><RefreshCw className={"h-4 w-4 " + (refreshing ? "animate-spin" : "")} /></button>
+            <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-24 sm:px-8 lg:px-12 lg:pt-36">
+                <button onClick={() => router.push("/store")} className="mb-4 flex min-h-11 items-center gap-2 text-sm text-[#4A4640] hover:text-[#1C1C1C]"><ArrowLeft className="h-4 w-4" />Back to store</button>
+                <div className="mb-8 flex flex-col gap-5 border-b border-[#E8E3DB] pb-7 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#4A4640]">Order history</p>
+                        <h1 className="text-4xl font-medium leading-tight tracking-[-0.03em] sm:text-5xl" style={{ fontFamily: "var(--font-display)" }}>My orders</h1>
+                        <p className="mt-3 text-base leading-6 text-[#4A4640]">Track and manage your orders.</p>
+                    </div>
+                    <button onClick={handleRefresh} disabled={refreshing} aria-label="Refresh order history" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start border border-[#1C1C1C] bg-white px-5 text-sm font-medium text-[#1C1C1C] hover:bg-[#1C1C1C] hover:text-white disabled:opacity-50 sm:self-auto"><RefreshCw className={"h-4 w-4 " + (refreshing ? "animate-spin" : "")} />{refreshing ? "Refreshing..." : "Refresh"}</button>
                 </div>
                 {error ? <div role="alert" className="flex flex-col justify-between gap-4 border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800 sm:flex-row sm:items-center"><p>{error}</p><button onClick={handleRefresh} className="min-h-11 self-start border-b border-rose-800 font-medium">Retry</button></div> : loading ? (
                     <div role="status" className="flex min-h-64 items-center justify-center gap-3 border border-[#E8E3DB] bg-white p-6 text-sm text-[#6B6761]"><RefreshCw className="h-5 w-5 animate-spin text-[#1C1C1C]" />Loading your orders...</div>

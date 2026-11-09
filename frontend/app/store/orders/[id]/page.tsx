@@ -129,7 +129,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   return (
     <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
       <Header />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-40 sm:px-8 lg:px-12 lg:pt-56">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-24 sm:px-8 lg:px-12 lg:pt-36">
         <button onClick={() => router.push("/store/orders")} className="mb-7 inline-flex min-h-11 items-center gap-2 text-xs text-[#6B6761] hover:text-[#1C1C1C]"><ArrowLeft className="h-3.5 w-3.5" />Back to My Orders</button>
         {error && <div role="alert" className="mb-6 flex flex-wrap items-center justify-between gap-3 border border-rose-200 bg-rose-50 px-5 py-3 text-sm text-rose-800"><p>{error}</p><button onClick={() => fetchTrackingData()} className="min-h-11 font-medium underline underline-offset-4">Retry</button></div>}
         {loading ? (

@@ -11,7 +11,7 @@ export function ContentPage({ eyebrow, title, description, children }: ContentPa
   return (
     <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
       <Header />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-28 sm:px-8 lg:px-12 lg:pt-36">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-24 sm:px-8 lg:px-12 lg:pt-36">
         <div className="border-b border-[#E8E3DB] pb-10 sm:pb-14">
           <Link href="/store" className="mb-8 inline-flex items-center gap-2 text-xs font-medium text-[#6B6761] hover:text-[#1C1C1C]">TrueLook <span aria-hidden="true">/</span> {eyebrow}</Link>
           <div className="grid gap-5 lg:grid-cols-[1.3fr_1fr] lg:items-end lg:gap-16">

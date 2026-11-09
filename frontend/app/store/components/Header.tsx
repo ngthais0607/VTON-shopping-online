@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Search, Heart, ShoppingBag, UserRound, Menu, X, LogOut } from "lucide-react";
 import { useSession } from "@/hooks/use-session";
@@ -11,17 +11,32 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const lastY = useRef(0);
+  const keepOpen = mobileOpen || searchOpen;
+  useEffect(() => {
+    lastY.current = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 8);
+      if (Math.abs(y - lastY.current) < 8) return;
+      setHidden(y > lastY.current && y > 120);
+      lastY.current = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const signOut = async () => { try { await logout(); setMobileOpen(false); } catch (error) { setLogoutError(error instanceof Error ? error.message : "Unable to confirm sign out. Please try again."); } };
-  return <header className="fixed inset-x-0 top-0 z-40 border-b border-[#E8E3DB] bg-white text-[#1C1C1C]">
-    <div className="flex min-h-8 items-center justify-center bg-[#F1ECE4] px-6 py-1.5 text-center text-[9px] tracking-[0.14em] sm:text-[10px]">COMPLIMENTARY SHIPPING ON ALL ORDERS · DEMO STORE</div>
+  return <header className={"fixed inset-x-0 top-0 z-40 border-b border-[#E8E3DB] bg-white/95 text-[#1C1C1C] backdrop-blur transition-transform duration-300 " + (hidden && !keepOpen ? "-translate-y-full " : "translate-y-0 ") + (scrolled ? "shadow-sm" : "")}>
     {logoutError && <p role="alert" className="px-6 py-2 text-xs text-red-700">{logoutError}</p>}
-    <div className="relative mx-auto flex h-20 max-w-[1440px] items-center justify-between px-6 lg:px-20">
+    <div className="relative mx-auto flex h-16 max-w-[1440px] items-center justify-between px-6 lg:px-20">
       <div className="flex items-center gap-1 sm:gap-3"><button aria-label="Open menu" aria-expanded={mobileOpen} aria-controls="store-mobile-nav" onClick={() => setMobileOpen(!mobileOpen)} className="flex h-11 w-9 items-center justify-center lg:hidden">{mobileOpen ? <X size={19} /> : <Menu size={19} />}</button><button aria-label="Search products" aria-expanded={searchOpen} aria-controls="store-search" onClick={() => setSearchOpen(!searchOpen)} className="flex h-11 w-9 items-center justify-center"><Search size={18} strokeWidth={1.4}/></button><span className="hidden text-[10px] uppercase tracking-[0.15em] lg:block">Discover your everyday</span></div>
-      <Link href="/store" aria-label="TrueLook home" className="absolute left-1/2 -translate-x-1/2 text-[37px] leading-none tracking-[-0.045em] sm:text-[43px]" style={{ fontFamily: "var(--font-display)" }}>TrueLook<span className="ml-1 align-top text-[10px] leading-6">®</span></Link>
+      <Link href="/store" aria-label="TrueLook home" className="absolute left-1/2 -translate-x-1/2 text-[30px] leading-none tracking-[-0.045em] sm:text-[34px]" style={{ fontFamily: "var(--font-display)" }}>TrueLook<span className="ml-1 align-top text-[10px] leading-6">®</span></Link>
       <div className="flex items-center gap-0.5 sm:gap-3"><Link href="/store/account?tab=wishlist" aria-label="Wishlist" className="hidden h-11 w-9 items-center justify-center sm:flex"><Heart size={18} strokeWidth={1.4}/></Link>{user ? <details className="relative"><summary aria-label="Account menu" className="flex h-11 w-9 cursor-pointer list-none items-center justify-center [&::-webkit-details-marker]:hidden"><UserRound size={18} strokeWidth={1.4}/></summary><div className="absolute right-0 top-full w-56 border border-[#E8E3DB] bg-white p-4 text-xs"><p className="mb-3 truncate text-[#6B6761]">{user.first_name || user.username}</p><Link href="/store/account" className="flex min-h-10 items-center">My account & wishlist</Link><Link href="/store/orders" className="flex min-h-10 items-center">My orders</Link>{user.role === "admin" && <Link href="/dashboard" className="flex min-h-10 items-center">Dashboard</Link>}<button onClick={signOut} className="flex min-h-10 items-center gap-2"><LogOut size={14}/>Sign out</button></div></details> : <Link href="/login" aria-label="Sign in" className="flex h-11 w-9 items-center justify-center"><UserRound size={18} strokeWidth={1.4}/></Link>}<button onClick={() => setIsCartOpen(true)} aria-label={`Shopping bag (${totalCount || 0})`} className="flex h-11 min-w-9 items-center justify-center gap-1.5"><ShoppingBag size={18} strokeWidth={1.4}/><span className="text-[10px]">{totalCount || 0}</span></button></div>
     </div>
-    <nav aria-label="Main navigation" className="hidden h-11 items-center justify-center gap-10 border-t border-[#E8E3DB]/60 lg:flex">{links.map(([label, href]) => <Link key={label} href={href} className="flex h-full items-center text-[10px] uppercase tracking-[0.18em] transition-colors hover:text-[#B89B6A]">{label}</Link>)}</nav>
+    <nav aria-label="Main navigation" className="hidden h-10 items-center justify-center gap-10 border-t border-[#E8E3DB]/60 lg:flex">{links.map(([label, href]) => <Link key={label} href={href} className="flex h-full items-center text-[11px] uppercase tracking-[0.16em] transition-colors hover:text-[#B89B6A]">{label}</Link>)}</nav>
     {searchOpen && <form id="store-search" action="/store/collection" className="mx-auto flex max-w-[1440px] gap-4 border-t border-[#E8E3DB] px-6 py-5 lg:px-20"><label htmlFor="store-search-input" className="sr-only">Search products</label><input id="store-search-input" name="search" type="search" autoFocus required placeholder="Search the collection…" className="min-h-11 min-w-0 flex-1 border-b border-[#E8E3DB] bg-white text-sm outline-none focus:border-[#B89B6A]"/><button type="submit" className="px-2 text-[10px] uppercase tracking-widest">Search</button></form>}
-    {mobileOpen && <nav id="store-mobile-nav" aria-label="Mobile navigation" className="max-h-[calc(100dvh-7rem)] overflow-y-auto border-t border-[#E8E3DB] bg-white px-6 py-5 lg:hidden">{links.map(([label, href]) => <Link key={label} href={href} onClick={() => setMobileOpen(false)} className="flex min-h-12 items-center border-b border-[#E8E3DB] text-[11px] uppercase tracking-[0.18em]">{label}</Link>)}<Link href="/store/account" onClick={() => setMobileOpen(false)} className="flex min-h-12 items-center text-xs">My account & wishlist</Link><Link href="/store/about" className="flex min-h-12 items-center text-xs">Our story</Link>{user && <button onClick={signOut} className="min-h-12 text-xs">Sign out</button>}</nav>}
+    {mobileOpen && <nav id="store-mobile-nav" aria-label="Mobile navigation" className="max-h-[calc(100dvh-4.5rem)] overflow-y-auto border-t border-[#E8E3DB] bg-white px-6 py-5 lg:hidden">{links.map(([label, href]) => <Link key={label} href={href} onClick={() => setMobileOpen(false)} className="flex min-h-12 items-center border-b border-[#E8E3DB] text-[11px] uppercase tracking-[0.18em]">{label}</Link>)}<Link href="/store/account" onClick={() => setMobileOpen(false)} className="flex min-h-12 items-center text-xs">My account & wishlist</Link><Link href="/store/about" className="flex min-h-12 items-center text-xs">Our story</Link>{user && <button onClick={signOut} className="min-h-12 text-xs">Sign out</button>}</nav>}
   </header>;
 }

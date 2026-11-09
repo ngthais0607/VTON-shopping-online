@@ -149,27 +149,27 @@ export default function CategoriesPage() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Header title="Clothing categories" subtitle="Tops · Pants · Skirts & Dresses · Outerwear — manage two-level clothing categories" />
+      <Header title="Clothing categories" subtitle="Organise the store into main groups and optional subcategories." />
 
-      <main className="flex-1 p-4 md:p-8 space-y-6">
+      <main className="flex-1 space-y-5 p-4 md:p-8">
         <section aria-label="Clothing groups" className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           {roots.map(root => (
             <button key={root.id} type="button" aria-pressed={group === root.id}
               onClick={() => { setGroup(group === root.id ? null : root.id); setPage(1); }}
               className={`rounded border p-4 text-left transition-colors ${group === root.id ? "border-primary bg-secondary ring-1 ring-primary" : "border-border bg-white hover:border-primary/40"}`}>
               <span className="block font-semibold text-foreground">{root.name}</span>
-              <span className="mt-1 block text-xs text-muted-foreground">{allCategories.filter(category => category.parent_id === root.id).length} subcategories</span>
+              <span className="mt-1 block text-xs text-muted-foreground">{(() => { const n = allCategories.filter(category => category.parent_id === root.id).length; return n ? `${n} subcategor${n === 1 ? "y" : "ies"}` : "Main group"; })()}</span>
             </button>
           ))}
         </section>
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="w-full sm:max-w-sm space-y-1.5">
-            <label htmlFor="category-search" className="text-sm font-medium text-foreground">Search categories</label>
-            <Input id="category-search" placeholder="Search clothing categories..." value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="w-full sm:max-w-sm">
+            <label htmlFor="category-search" className="sr-only">Search categories</label>
+            <Input id="category-search" type="search" placeholder="Search categories..." value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} />
           </div>
-          <Button variant="outline" onClick={() => { setSearch(""); setGroup(null); setPage(1); }}>All categories ({allCategories.length})</Button>
-        </div>
-        <div className="mb-6 flex justify-end">
+          {(search || group != null) && <Button variant="ghost" onClick={() => { setSearch(""); setGroup(null); setPage(1); }}>Clear filters</Button>}
+          <p className="text-sm text-muted-foreground sm:ml-auto sm:mr-3" aria-live="polite">{total} of {allCategories.length} categories</p>
+          <div className="flex justify-end">
           <Dialog
             open={createDialogOpen}
             onOpenChange={(open) => {
@@ -252,7 +252,7 @@ export default function CategoriesPage() {
                   </label>
                   <Input
                     id="slug"
-                    placeholder="VD: ao-thun-nam"
+                    placeholder="e.g. mens-t-shirts"
                     value={formData.slug}
                     onChange={(e) =>
                       setFormData((current) => ({
@@ -303,9 +303,10 @@ export default function CategoriesPage() {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
         {(error || (actionError && !createDialogOpen && !deleteCategory)) && <p role="alert" className="text-sm text-rose-600">{actionError || error?.message}<button onClick={()=>mutate()}>Retry</button></p>}
-        <PaginationControls page={page} pageSize={20} total={total} onPageChange={setPage} disabled={loading}/>
+        {total > 20 && <PaginationControls page={page} pageSize={20} total={total} onPageChange={setPage} disabled={loading}/>}
         {loading ? (
           <Card className="p-8 text-center text-muted-foreground">
             Loading categories...

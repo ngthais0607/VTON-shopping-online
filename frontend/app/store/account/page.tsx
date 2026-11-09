@@ -97,7 +97,7 @@ export default function CustomerAccountPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
       <Header />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-40 sm:px-8 lg:px-12 lg:pt-56">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pb-20 pt-24 sm:px-8 lg:px-12 lg:pt-36">
         <div className="mb-10 flex flex-col justify-between gap-6 border-b border-[#E8E3DB] pb-10 sm:flex-row sm:items-end">
           <div>
             <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#1C1C1C]">Your space</p>
@@ -117,7 +117,7 @@ export default function CustomerAccountPage() {
           </div>
         ) : (
           <div className="grid items-start gap-7 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-12">
-            <nav aria-label="Account navigation" className="grid gap-1 border border-[#E8E3DB] bg-white p-2 lg:sticky lg:top-48">
+            <nav aria-label="Account navigation" className="grid gap-1 border border-[#E8E3DB] bg-white p-2 lg:sticky lg:top-28">
               {tabs.map(({ id, label, detail, icon: Icon, count }) => <button type="button" key={id} aria-pressed={activeTab === id} onClick={() => setActiveTab(id)} className={"flex min-h-16 items-center gap-3 px-4 py-3 text-left transition-colors " + (activeTab === id ? "bg-[#F1ECE4] text-[#1C1C1C]" : "text-[#6B6761] hover:bg-[#FAF8F5]")}>
                 <Icon className="h-4 w-4 shrink-0" /><span className="flex-1"><span className="block text-sm font-medium">{label}</span><span className="mt-0.5 block text-[10px]">{detail}</span></span>{typeof count === "number" && <span className="font-mono text-xs">{count.toString().padStart(2, "0")}</span>}
               </button>)}
