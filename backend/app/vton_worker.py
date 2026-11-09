@@ -10,6 +10,7 @@ from arq.cron import cron
 
 from app.core.config import get_settings
 from app.core.database import SessionLocal
+from app.features import models_registry  # noqa: F401
 from app.integrations.queue import parse_redis_settings
 from app.integrations.storage import MinioProductStorage
 from app.integrations.vton_engine import create_vton_engine

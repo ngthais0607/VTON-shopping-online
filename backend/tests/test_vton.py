@@ -554,3 +554,23 @@ def test_settings_reject_stale_threshold_below_engine_timeout():
     base["vton_service_timeout_seconds"] = 3600
     with pytest.raises(ValueError, match="vton_stale_processing_minutes"):
         Settings.model_validate(base)
+
+
+def test_vton_worker_alone_can_configure_all_mappers():
+    """The worker container never imports the routers; it must map every model itself."""
+    import os
+    import subprocess
+    import sys
+
+    code = (
+        "import app.vton_worker\n"
+        "from sqlalchemy.orm import configure_mappers\n"
+        "configure_mappers()\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env={**os.environ},
+    )
+    assert result.returncode == 0, result.stderr[-800:]
