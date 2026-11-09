@@ -417,7 +417,7 @@ def test_retryable_engine_error_requeues_until_attempts_exhausted(
         name = "x"
 
         async def run(self, *_):
-            raise VtonEngineError("down", code="engine_unavailable", retryable=True)
+            raise VtonEngineError("boom", code="engine_error", retryable=True)
 
     task_id = _post(client, tee).json()["id"]
     attempts = get_settings().vton_max_attempts
@@ -426,6 +426,35 @@ def test_retryable_engine_error_requeues_until_attempts_exhausted(
         outcomes.append(_run_job(db_session, product_storage, task_id, Flaky()))
         db_session.expire_all()
     assert outcomes == ["requeued"] * (attempts - 1) + ["failed"]
+    assert db_session.get(VtonTask, task_id).error_code == "engine_error"
+
+
+def test_engine_still_starting_waits_without_burning_attempts(
+    client, db_session, mock_user_auth, queue, product_storage, tee
+):
+    class Down:
+        name = "x"
+
+        async def run(self, *_):
+            raise VtonEngineError("down", code="engine_unavailable", retryable=True)
+
+    task_id = _post(client, tee).json()["id"]
+    for _ in range(get_settings().vton_max_attempts + 2):
+        assert _run_job(db_session, product_storage, task_id, Down()) == "requeued"
+        db_session.expire_all()
+    task = db_session.get(VtonTask, task_id)
+    assert (task.status, task.attempts) == ("queued", 0)
+
+    # ...but never forever: past the stale threshold, normal attempts apply again.
+    task.created_at = service.utcnow() - timedelta(
+        minutes=get_settings().vton_stale_processing_minutes + 1
+    )
+    db_session.commit()
+    outcomes = []
+    for _ in range(get_settings().vton_max_attempts):
+        outcomes.append(_run_job(db_session, product_storage, task_id, Down()))
+        db_session.expire_all()
+    assert outcomes[-1] == "failed"
     assert db_session.get(VtonTask, task_id).error_code == "engine_unavailable"
 
 

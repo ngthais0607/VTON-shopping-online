@@ -51,6 +51,11 @@ def _claim(db: Session, task_id: str) -> VtonTask | None:
     return db.get(VtonTask, task_id)
 
 
+def _expired(created_at, settings: Settings) -> bool:
+    age = service.utcnow() - created_at
+    return age > timedelta(minutes=settings.vton_stale_processing_minutes)
+
+
 async def process_vton_task(
     db: Session,
     storage: ProductStorage,
@@ -64,6 +69,7 @@ async def process_vton_task(
         return "skipped"
     person_object, garment_object = task.person_object, task.garment_object
     cloth_type, attempts = task.cloth_type, task.attempts
+    created_at = task.created_at
 
     if not person_object:
         _fail(db, task_id, "person_image_missing")
@@ -90,12 +96,21 @@ async def process_vton_task(
             storage.put, result_object, BytesIO(output), "image/png"
         )
     except VtonEngineError as error:
-        if error.retryable and attempts < settings.vton_max_attempts:
+        # A service that is still starting (first run downloads model weights) is
+        # not a failed attempt: wait for it, bounded by the stale threshold.
+        waiting = error.code == "engine_unavailable" and not _expired(
+            created_at, settings
+        )
+        if error.retryable and (waiting or attempts < settings.vton_max_attempts):
             logger.warning(
                 "VTON retryable failure task=%s code=%s", task_id, error.code
             )
             db.query(VtonTask).filter(VtonTask.id == task_id).update(
-                {VtonTask.status: "queued", VtonTask.error_code: error.code}
+                {
+                    VtonTask.status: "queued",
+                    VtonTask.error_code: error.code,
+                    VtonTask.attempts: attempts - 1 if waiting else attempts,
+                }
             )
             db.commit()
             return "requeued"

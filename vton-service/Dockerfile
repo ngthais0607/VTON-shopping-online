@@ -3,7 +3,8 @@
 FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
 
 ARG CATVTON_REF=main
-ENV PYTHONUNBUFFERED=1 MODELS_DIR=/models PYTHONPATH=/opt/CatVTON
+# HF_HOME lives on the /models volume: the non-root user has no home directory.
+ENV PYTHONUNBUFFERED=1 MODELS_DIR=/models HF_HOME=/models/hf PYTHONPATH=/opt/CatVTON
 
 RUN apt-get update && apt-get install -y --no-install-recommends git libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
