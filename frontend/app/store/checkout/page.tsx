@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useCart } from "../context/CartContext";
-import { apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 import { checkoutSchema } from "@/lib/validations/checkout";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
@@ -131,6 +131,29 @@ export default function CheckoutPage() {
     if (createdOrderIds.length) parts.push(`order_ids=${createdOrderIds.join(",")}`);
     router.push(`/store/orders/success${parts.length ? `?${parts.join("&")}` : ""}`);
   };
+
+  // While the VietQR dialog is open, watch the order(s) and move on as soon as
+  // the bank transfer has been confirmed.
+  useEffect(() => {
+    if (!vietqrModalOpen || createdOrderIds.length === 0) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const orders = await Promise.all(
+          createdOrderIds.map((id) => apiGet<{ status: string }>(`/orders/${id}`)),
+        );
+        if (!cancelled && orders.every((o) => o.status !== "pending")) handleContinue();
+      } catch {
+        // transient error: try again on the next tick
+      }
+    };
+    const timer = setInterval(check, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vietqrModalOpen, createdOrderIds]);
 
   return (
     <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">

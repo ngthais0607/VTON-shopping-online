@@ -14,6 +14,7 @@ class TaskQueue(Protocol):
         *args: object,
         queue_name: str | None = None,
         job_id: str | None = None,
+        defer_seconds: float | None = None,
     ) -> None: ...
 
 
@@ -29,6 +30,7 @@ class ArqTaskQueue:
         *args: object,
         queue_name: str | None = None,
         job_id: str | None = None,
+        defer_seconds: float | None = None,
     ) -> None:
         if self._pool is None:
             async with self._pool_lock:
@@ -36,11 +38,13 @@ class ArqTaskQueue:
                     self._pool = await create_pool(
                         parse_redis_settings(self._redis_url)
                     )
-        options: dict[str, str] = {}
+        options: dict[str, str | float] = {}
         if queue_name is not None:
             options["_queue_name"] = queue_name
         if job_id is not None:
             options["_job_id"] = job_id
+        if defer_seconds is not None:
+            options["_defer_by"] = defer_seconds
         job = await self._pool.enqueue_job(task_name, *args, **options)
         if job is None and job_id is None:
             raise RuntimeError(f"Queue did not accept task {task_name!r}")
@@ -59,6 +63,7 @@ class _UnavailableTaskQueue:
         *args: object,
         queue_name: str | None = None,
         job_id: str | None = None,
+        defer_seconds: float | None = None,
     ) -> None:
         raise RuntimeError("Task queue is not configured")
 

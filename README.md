@@ -1,8 +1,8 @@
-# TrueLook (AI-VTON) — E-Commerce Platform & Admin Dashboard
+# TrueLook — E-Commerce Platform & Admin Dashboard
 
-A full-stack clothing shop with a customer storefront, an admin dashboard, a versioned FastAPI API, variant-based inventory, COD and VietQR checkout, MinIO product images, and ARQ background jobs.
+A full-stack clothing shop with a customer storefront, an admin dashboard, a versioned FastAPI API, variant-based inventory, COD and VietQR checkout, MinIO product images, and ARQ background jobs, and an optional virtual try-on (mock engine by default, CatVTON on GPU).
 
-The current release focuses on a working commerce foundation. **Virtual try-on is not implemented yet.** VietQR supports QR generation and an application-specific payment webhook; automatic bank/provider integration is a separate step.
+Virtual try-on is implemented; see the [virtual try-on guide](docs/VTON.md). The default `VTON_ENGINE=mock` never runs AI and stamps "DEMO PREVIEW" on results. VietQR supports QR generation and an application-specific payment webhook; automatic bank/provider integration is a separate step.
 
 ## 📑 Table of Contents
 
@@ -40,7 +40,8 @@ The backend uses synchronous SQLAlchemy/PyMySQL and MinIO clients. It is not a f
 | Frontend | Next.js 16 App Router, React 19, TypeScript, Tailwind CSS, Radix UI |
 | Client data | Axios and SWR |
 | Authentication | JWT access tokens, HttpOnly refresh cookies, persistent device sessions |
-| Jobs and cache | Redis 7 and ARQ; scheduled order expiration and email jobs |
+| Jobs and cache | Redis 7 and ARQ; scheduled order expiration and email jobs; separate ARQ worker for try-on |
+| Virtual try-on | Mock engine (default) or CatVTON inference in `vton-service/` (NVIDIA GPU) |
 | Images | MinIO object storage, Pillow validation, Next.js image optimization |
 | Email | aiosmtplib and Jinja2; SMTP or console mode |
 | Verification | Pytest, Hypothesis, Ruff, Vitest, Testing Library, Playwright, GitHub Actions |
@@ -85,12 +86,14 @@ backend/
   alembic/versions/        schema migrations
   app/
     core/                 settings, database, auth, errors, rate limiting, cache
-    features/             users, categories, products, orders, dashboard, health
+    features/             users, categories, products, orders, dashboard, health, vton
     integrations/         MinIO, Redis queue, SMTP, VietQR
     jobs/                 email and order-expiration tasks
     templates/emails/     HTML notification templates
     main.py               app factory, middleware, routes, startup
     worker.py             ARQ tasks and cron configuration
+    vton_worker.py        separate ARQ worker for try-on tasks
+  scripts/                demo helpers (seed_users, simulate_vietqr_payment)
   tests/                  unit/regression and MariaDB integration tests
 frontend/
   app/                    storefront, auth, and admin routes
@@ -99,6 +102,7 @@ frontend/
   lib/                    API, sessions, types, and utilities
   tests/                  Vitest component and client tests
   e2e/                    Playwright acceptance scenarios
+vton-service/             CatVTON inference service (GPU, not part of normal CI)
 .github/
   workflows/              CI checks
   scripts/                disposable Compose tests, demo checks, and backup tools
@@ -218,6 +222,7 @@ Environment variables override `.env`. The frontend has its own `.env.local` for
 | `VIETQR_BANK_ID`, `VIETQR_BANK_NAME`, `VIETQR_ACCOUNT_NO`, `VIETQR_ACCOUNT_NAME` | QR receiving-bank configuration |
 | `VIETQR_WEBHOOK_SECRET` | Expected `X-Webhook-Secret`; an empty secret does not authorize callbacks |
 | `ORDER_EXPIRE_MINUTES` | Pending VietQR lifetime; default 30 minutes, shared by API and worker |
+| `VTON_ENABLED`, `VTON_ENGINE`, `VTON_SERVICE_URL`, `VTON_DAILY_QUOTA`, `VTON_RETENTION_HOURS` | Virtual try-on: engine (`mock` or `catvton`), inference service URL, per-user daily quota, result retention |
 | `APP_ENV` | Environment name |
 | `EMAILS_ENABLED`, `EMAILS_CONSOLE_LOG` | Email disabled, console-only, or SMTP mode |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAILS_FROM_EMAIL`, `EMAILS_FROM_NAME` | SMTP sender configuration |
@@ -232,11 +237,13 @@ To send real email, set `EMAILS_ENABLED=true`, `EMAILS_CONSOLE_LOG=false`, and v
 <a id="first-admin-account"></a>
 ## First Admin Account
 
-The project ships **no seed data**: a new database starts with no users, categories, products or orders. Existing database contents are preserved. Create the first administrator with the CLI (it prompts for the password; public registration cannot assign an admin role):
+The project ships **no seed catalog**: a new database starts with no users, categories, products or orders. Existing database contents are preserved. Create the first administrator with the CLI (it prompts for the password; public registration cannot assign an admin role):
 
 ```powershell
 docker compose exec api python -m app.cli create-admin --email admin@your-domain.test --username shopadmin
 ```
+
+For local demos only, `backend/scripts/seed_users.py` creates an admin and a customer account (idempotent; refuses to run when `APP_ENV=production`). From `backend/`: `python -m scripts.seed_users`, add `--reset-password` to reset existing passwords. Override credentials with `SEED_ADMIN_*` / `SEED_USER_*` environment variables.
 
 Then sign in at `/login`, create categories, products, variants and images from the admin area, and register customer accounts through the storefront.
 
@@ -346,7 +353,7 @@ See [backup and restore](docs/DEMO_BACKUP.md). SQL dumps do not include MinIO ob
 <a id="current-limits--new-modules"></a>
 ## 🧩 Current Limits & New Modules
 
-Contact does not submit messages, wishlist is browser-only, and blog/careers/press pages are informational. Dynamic shipping rates, carrier integrations, coupons, automatic refunds, and automatic refunds are not implemented. VTON is implemented (see below) but real CatVTON output is unverified on this repository's CI. Load/p95 latency, GPU inference, and real SMTP delivery have not been benchmarked or certified.
+Contact does not submit messages, wishlist is browser-only, and blog/careers/press pages are informational. Dynamic shipping rates, carrier integrations, coupons, and automatic refunds are not implemented. VTON is implemented (see below) but real CatVTON output is unverified on this repository's CI. Load/p95 latency, GPU inference, and real SMTP delivery have not been benchmarked or certified.
 
 A new module should start as a feature slice with its own router, schemas, service, models, and Alembic revisions. Preserve `variant_id` contracts, order-item snapshots, and inventory invariants. Long-running work needs its own durable task states, retries/idempotency, recovery behavior, and worker/queue boundaries rather than sharing order-expiration work. User photos require private storage, ownership checks, and a retention/deletion policy; the public product-image path is not suitable.
 

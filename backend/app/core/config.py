@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     vietqr_account_no: str = Field(min_length=1)
     vietqr_account_name: str = "TRUELOOK"
     vietqr_webhook_secret: str = ""
+    # Demo only: auto-confirm VietQR orders after N seconds (0 = off). Ignored in production.
+    demo_auto_pay_seconds: int = Field(default=0, ge=0)
 
     vton_enabled: bool = True
     # "mock" renders a clearly watermarked CPU preview; "catvton" calls the GPU service.

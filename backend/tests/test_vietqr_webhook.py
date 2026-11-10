@@ -401,3 +401,32 @@ def test_is_payment_transaction_uniqueness_error():
         Exception("CHECK constraint failed: total_amount >= 0"),
     )
     assert _is_payment_transaction_uniqueness_error(unrelated_err) is False
+
+
+def test_successful_webhook_queues_payment_received_email_once(client, db_session):
+    from app.integrations.queue import get_task_queue
+    from app.main import app
+
+    calls = []
+
+    class Recorder:
+        async def enqueue(self, task_name, *args, **options):
+            calls.append((task_name, args))
+
+    app.dependency_overrides[get_task_queue] = lambda: Recorder()
+    try:
+        order, _ = setup_test_order(db_session)
+        payload = {
+            "transaction_id": "TXN_EMAIL",
+            "amount": 100.0,
+            "content": f"TL{order.id}",
+        }
+        headers = {"X-Webhook-Secret": SECRET}
+        first = client.post(WEBHOOK_URL, json=payload, headers=headers)
+        again = client.post(WEBHOOK_URL, json=payload, headers=headers)
+    finally:
+        app.dependency_overrides.pop(get_task_queue, None)
+
+    assert first.json()["status"] == "success"
+    assert again.json()["status"] == "already_processed"
+    assert calls == [("send_payment_received_email_task", (order.id,))]

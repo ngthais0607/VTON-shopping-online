@@ -28,6 +28,7 @@ from app.features.orders.domain import (
 )
 from app.features.orders.model import Order, OrderItem, Payment
 from app.features.orders.schemas import (
+    CartItemRequest,
     CheckoutCommand,
     CheckoutResponse,
     LatePaymentResponse,
@@ -203,6 +204,21 @@ async def _enqueue_best_effort(queue: TaskQueue, task_name: str, order_id: int) 
         )
 
 
+def demo_auto_pay_delay() -> int | None:
+    """Seconds before a demo order is auto-paid, or None when disabled."""
+    settings = get_settings()
+    if settings.app_env == "production" or settings.demo_auto_pay_seconds <= 0:
+        return None
+    return settings.demo_auto_pay_seconds
+
+
+async def _enqueue_demo_auto_pay(queue: TaskQueue, order_id: int, delay: int) -> None:
+    try:
+        await queue.enqueue("demo_auto_pay_order_task", order_id, defer_seconds=delay)
+    except Exception:
+        logger.exception("Failed to schedule demo auto-pay for order %s", order_id)
+
+
 def _dispatch_email(
     queue: TaskQueue,
     task_name: str,
@@ -368,6 +384,9 @@ def checkout_cart(
         background_tasks=background_tasks,
     )
 
+    if is_vietqr and (delay := demo_auto_pay_delay()) is not None:
+        background_tasks.add_task(_enqueue_demo_auto_pay, queue, order.id, delay)
+
     order_resp = order_to_response(order)
     response = CheckoutResponse(
         message="Checkout created successfully",
@@ -382,6 +401,45 @@ def checkout_cart(
 
 # Alias for centralized interface
 create_checkout = checkout_cart
+
+
+def reorder_order(
+    db: Session,
+    public_code: str,
+    user: User,
+    queue: TaskQueue,
+    background_tasks: BackgroundTasks,
+) -> CheckoutResponse:
+    """Place a brand-new VietQR order from an expired or cancelled one.
+
+    Goes through checkout_cart, so price, stock and locking are re-checked.
+    """
+    order = db.query(Order).filter(Order.public_code == public_code).first()
+    if order is None:
+        raise OrderNotFoundError("Order not found")
+    if user.role != "admin" and order.user_id != user.id:
+        raise ForbiddenError("You do not have permission to reorder this order")
+    if order.status not in (OrderStatus.EXPIRED.value, OrderStatus.CANCELLED.value):
+        raise BusinessRuleError(
+            "Only expired or cancelled orders can be ordered again",
+            code="order_not_reorderable",
+        )
+    if not order.items or any(item.variant_id is None for item in order.items):
+        raise BusinessRuleError(
+            "This order cannot be reordered", code="order_not_reorderable"
+        )
+    command = CheckoutCommand(
+        items=[
+            CartItemRequest(variant_id=item.variant_id, quantity=item.quantity)
+            for item in order.items
+        ],
+        customer_name=order.customer_name,
+        customer_phone=order.customer_phone,
+        shipping_address=order.shipping_address,
+        notes=order.notes,
+        payment_method=OrderPaymentMethod.VIETQR,
+    )
+    return checkout_cart(db, user, command, queue, background_tasks=background_tasks)
 
 
 def list_orders(db: Session, limit: int, offset: int) -> Page[OrderResponse]:

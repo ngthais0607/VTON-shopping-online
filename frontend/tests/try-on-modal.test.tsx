@@ -61,6 +61,25 @@ describe("TryOnModal", () => {
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
   });
 
+  it("lists earlier finished try-ons for this product and reopens one", async () => {
+    api.apiGet.mockImplementation(async (path: string) => {
+      if (path.startsWith("/vton/tasks")) {
+        return {
+          items: [doneTask, { ...doneTask, id: "other", product_id: 99 }, { ...doneTask, id: "gone", has_result: false }],
+          total: 3,
+        };
+      }
+      return { limit: 10, used: 2, remaining: 8, retention_hours: 24 };
+    });
+    api.apiGetBlob.mockResolvedValue(new Blob(["x"], { type: "image/png" }));
+    render(<TryOnModal {...baseProps} />);
+    const thumbs = await screen.findAllByRole("button", { name: /View try-on from/ });
+    expect(thumbs).toHaveLength(1);
+    expect(api.apiGetBlob).toHaveBeenCalledWith("/vton/tasks/t1/result");
+    fireEvent.click(thumbs[0]);
+    expect(await screen.findByAltText("Try-on result")).toBeInTheDocument();
+  });
+
   it("flags demo mode and blocks submit until photo and consent are given", async () => {
     render(<TryOnModal {...baseProps} />);
     expect(screen.getByText(/Demo mode/)).toBeInTheDocument();

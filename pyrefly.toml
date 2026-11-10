@@ -1,3 +1,0 @@
-preset = "basic"
-python-interpreter-path = "d:\\fastapi-founder\\backend\\.venv\\Scripts\\python.exe"
-search_path = ["backend"]

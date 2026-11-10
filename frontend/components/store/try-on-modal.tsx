@@ -54,6 +54,8 @@ export function TryOnModal({
   const cancelled = useRef(false);
   const pollRef = useRef<((taskId: string, startedAt: number) => void) | null>(null);
   const networkErrors = useRef(0);
+  const historyUrls = useRef<string[]>([]);
+  const [history, setHistory] = useState<{ task: VtonTask; url: string; blob: Blob }[]>([]);
 
   const stopPolling = () => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -71,6 +73,41 @@ export function TryOnModal({
   useEffect(() => {
     if (isOpen && user) void loadQuota();
   }, [isOpen, user, loadQuota]);
+
+  // Earlier finished try-ons for this product (the server keeps them for the retention window).
+  const loadHistory = useCallback(async () => {
+    try {
+      const page = await apiGet<VtonTaskPage>("/vton/tasks?limit=20");
+      const items = Array.isArray(page?.items) ? page.items : [];
+      const done = items
+        .filter((t) => t.product_id === productId && t.status === "succeeded" && t.has_result)
+        .slice(0, 6);
+      const loaded = await Promise.all(
+        done.map(async (t) => {
+          try {
+            const blob = await apiGetBlob(`/vton/tasks/${t.id}/result`);
+            return { task: t, blob, url: URL.createObjectURL(blob) };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const next = loaded.filter((x): x is { task: VtonTask; url: string; blob: Blob } => x !== null);
+      historyUrls.current.forEach((u) => URL.revokeObjectURL(u));
+      historyUrls.current = next.map((x) => x.url);
+      setHistory(next);
+    } catch {
+      // History is optional; the form still works without it.
+    }
+  }, [productId]);
+
+  useEffect(() => {
+    if (isOpen && user) void loadHistory();
+  }, [isOpen, user, loadHistory]);
+  useEffect(() => {
+    const urls = historyUrls;
+    return () => urls.current.forEach((u) => URL.revokeObjectURL(u));
+  }, []);
 
   // Closing the modal does not cancel generation: pick an in-flight task back up.
   useEffect(() => {
@@ -135,7 +172,8 @@ export function TryOnModal({
       setPhase("failed");
     }
     void loadQuota();
-  }, [loadQuota]);
+    void loadHistory();
+  }, [loadQuota, loadHistory]);
 
   const poll = useCallback(
     (taskId: string, startedAt: number) => {
@@ -221,6 +259,7 @@ export function TryOnModal({
       setFile(null);
       setPreviewUrl(null);
       reset();
+      void loadHistory();
     } catch (err) {
       toast.error(vtonErrorMessage(err));
     }
@@ -334,6 +373,34 @@ export function TryOnModal({
             </label>
 
             {error && <p role="alert" className="text-sm font-medium text-rose-600">{error}</p>}
+
+            {history.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold text-slate-800">
+                  Your recent try-ons (kept {quota?.retention_hours ?? 24} hours)
+                </p>
+                <ul className="flex gap-3 overflow-x-auto pb-1">
+                  {history.map(({ task: past, url, blob }) => (
+                    <li key={past.id} className="shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviewUrl(null);
+                          setResultUrl(URL.createObjectURL(blob));
+                          setTask(past);
+                          setPhase("done");
+                        }}
+                        aria-label={`View try-on from ${new Date(past.finished_at ?? past.created_at).toLocaleString()}`}
+                        className="block overflow-hidden rounded-xl border border-slate-200 hover:border-sky-400"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="Previous try-on" className="h-28 w-20 object-cover" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <button
               type="button"

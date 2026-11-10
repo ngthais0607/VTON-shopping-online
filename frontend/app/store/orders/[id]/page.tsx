@@ -3,7 +3,7 @@
 import { useEffect, useState, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { apiGet, ApiError } from "@/lib/api";
+import { apiGet, apiPost, ApiError } from "@/lib/api";
 import { TrackingResponse } from "@/lib/types";
 import { Header } from "../../components/Header";
 import { Footer } from "../../components/Footer";
@@ -31,6 +31,20 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
   const [refreshing, setRefreshing] = useState(false);
   const [copiedMemo, setCopiedMemo] = useState(false);
   const [copiedAccount, setCopiedAccount] = useState(false);
+  const [reordering, setReordering] = useState(false);
+  const [reorderError, setReorderError] = useState<string | null>(null);
+
+  const reorder = async () => {
+    setReordering(true);
+    setReorderError(null);
+    try {
+      const res = await apiPost<{ orders: { public_code: string }[] }>(`/orders/track/${orderId}/reorder`, {});
+      router.push(`/store/orders/${res.orders[0].public_code}`);
+    } catch (err) {
+      setReorderError(err instanceof Error ? err.message : "Unable to place the order again.");
+      setReordering(false);
+    }
+  };
 
   const fetchTrackingData = useCallback(async () => {
     setError(null);
@@ -145,6 +159,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                 <button onClick={() => { setRefreshing(true); fetchTrackingData(); }} disabled={refreshing} aria-label="Refresh order status" title="Refresh order status" className="flex h-11 w-11 shrink-0 items-center justify-center border border-[#E8E3DB] bg-white text-[#1C1C1C] hover:border-[#1C1C1C] disabled:opacity-50"><RefreshCw className={"h-4 w-4 " + (refreshing ? "animate-spin" : "")} /></button>
               </div>
             </div>
+            {(order.status === "expired" || order.status === "cancelled") && order.payment_method === "vietqr" && <div className="mb-6 flex flex-wrap items-center gap-4 border border-[#E8E3DB] bg-white p-4 text-sm"><p className="min-w-0 flex-1 text-[#6B6761]">This order is no longer open for payment. You can place it again with the same items and details; stock and prices are checked again.</p><button onClick={reorder} disabled={reordering} className="min-h-11 bg-[#1C1C1C] px-5 text-xs font-medium uppercase tracking-widest text-white hover:opacity-90 disabled:opacity-50">{reordering ? "Placing…" : "Order again"}</button>{reorderError && <p role="alert" className="w-full text-xs text-red-700">{reorderError}</p>}</div>}
             {order.status === "pending" && <p role="status" className="mb-6 flex items-start gap-3 border border-amber-200 bg-amber-50 p-4 text-xs leading-6 text-amber-900"><Clock className="mt-1 h-4 w-4 shrink-0" />Awaiting administrator verification of your VietQR payment. Status refreshes every 5 seconds.</p>}
             <section className="mb-6 border border-[#E8E3DB] bg-white p-5 sm:p-8">
               <div className="mb-7 flex items-center gap-3"><span className="font-mono text-xs text-[#1C1C1C]">01</span><h2 className="text-2xl font-medium tracking-tight" style={{ fontFamily: "var(--font-display)" }}>Order progress</h2></div>
@@ -161,7 +176,7 @@ export default function OrderTrackingPage({ params }: { params: Promise<{ id: st
                   <div className="flex flex-wrap items-center justify-between gap-3 bg-[#F1ECE4] px-3 py-2 text-[#1C1C1C]"><dt className="text-xs font-medium">Payment memo</dt><dd className="flex min-w-0 items-center gap-2"><span className="break-all font-mono text-xs font-semibold">{order.vietqr.memo}</span><button onClick={() => handleCopy(order.vietqr!.memo, "memo")} title="Copy Transfer Memo" aria-label="Copy Transfer Memo" className="flex h-11 w-11 shrink-0 items-center justify-center hover:bg-white">{copiedMemo ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}</button></dd></div>
                 </dl>
               </div>
-              <div className="flex flex-col items-center justify-center border border-[#E8E3DB] bg-[#FAF8F5] p-5 sm:p-8"><div className="relative aspect-square w-full max-w-56 border border-[#E8E3DB] bg-white"><Image src={order.vietqr.qr_url} alt="VietQR Payment Code" fill sizes="224px" className="object-contain p-3" /></div><p className="mt-5 text-xs text-[#6B6761]">Transfer amount</p><strong className="mt-2 text-xl font-semibold text-[#1C1C1C]">{formatCurrency(order.total_amount, order.currency)}</strong></div>
+              <div className="flex flex-col items-center justify-center border border-[#E8E3DB] bg-[#FAF8F5] p-5 sm:p-8"><div className="relative aspect-square w-full max-w-56 border border-[#E8E3DB] bg-white"><Image src={order.vietqr.qr_url} alt="VietQR Payment Code" fill sizes="224px" unoptimized className="object-contain p-3" /></div><p className="mt-5 text-xs text-[#6B6761]">Transfer amount</p><strong className="mt-2 text-xl font-semibold text-[#1C1C1C]">{formatCurrency(order.total_amount, order.currency)}</strong></div>
             </section>}
             <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.8fr)]">
               <section className="min-w-0 border border-[#E8E3DB] bg-white p-5 sm:p-8">

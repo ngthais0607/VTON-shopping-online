@@ -17,6 +17,9 @@ os.environ["MINIO_SECRET_KEY"] = "test-minio-secret-key"
 os.environ["MINIO_EXTERNAL_URL"] = ""
 os.environ["VIETQR_BANK_ID"] = "MB"
 os.environ["VIETQR_BANK_NAME"] = "MB Bank (Ngan hang Quan doi)"
+os.environ["DEMO_AUTO_PAY_SECONDS"] = (
+    "0"  # a local .env must not leak demo behaviour into tests
+)
 os.environ["VIETQR_ACCOUNT_NO"] = "0000000000"
 os.environ["VIETQR_ACCOUNT_NAME"] = "TRUELOOK"
 os.environ["VIETQR_WEBHOOK_SECRET"] = "test-webhook-secret-32-chars-long-abc"
