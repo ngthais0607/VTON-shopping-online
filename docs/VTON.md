@@ -17,6 +17,8 @@ Updated 2026-11-09. Pipeline is implemented and tested with a CPU **mock** engin
 | `mock` (default) | Overlays the garment on the photo and stamps "DEMO PREVIEW". No AI. For dev/CI. |
 | `catvton` | HTTP call to `vton-service` (CatVTON, `upper`/`lower`/`overall`). Needs an NVIDIA GPU; first start downloads ~10 GB into the `catvton_models` volume. |
 
+Denoising steps default to 10 (`CATVTON_STEPS`, set in `.env`; upstream uses 50). Fewer steps are faster but blurrier; raise it if results look unfinished.
+
 Run real inference: set `VTON_ENGINE=catvton`, then `docker compose --profile gpu up -d --build catvton vton_worker`. Pin `CATVTON_REF` in `vton-service/Dockerfile` to a reviewed upstream commit.
 
 ## Catalog mapping

@@ -27,6 +27,7 @@ x-backend-env: &backend-env
   VTON_SERVICE_URL: ${VTON_SERVICE_URL:-http://catvton:8080}
   VTON_DAILY_QUOTA: ${VTON_DAILY_QUOTA:-10}
   VTON_RETENTION_HOURS: ${VTON_RETENTION_HOURS:-24}
+  VTON_CLOTH_TYPES: ${VTON_CLOTH_TYPES:-upper,lower,overall}
   EMAILS_ENABLED: ${EMAILS_ENABLED:-true}
   EMAILS_CONSOLE_LOG: ${EMAILS_CONSOLE_LOG:-true}
   SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
@@ -155,7 +156,12 @@ services:
   catvton:
     profiles: ["gpu"]
     build: ./vton-service
+    image: truelook-catvton:local
     restart: always
+    environment:
+      # Diffusion denoising steps: fewer = faster, lower quality (upstream uses 50).
+      CATVTON_STEPS: ${CATVTON_STEPS:-10}
+      CATVTON_GUIDANCE: ${CATVTON_GUIDANCE:-2.5}
     volumes:
       - catvton_models:/models
     deploy:
@@ -171,6 +177,33 @@ services:
       timeout: 5s
       retries: 40
       start_period: 120s
+
+  # Same service on CPU for machines without an NVIDIA GPU (slow: minutes per image).
+  # Answers as "catvton" so VTON_SERVICE_URL stays the same. Do not run with "gpu".
+  #   docker compose --profile cpu up -d catvton_cpu   with VTON_ENGINE=catvton
+  catvton_cpu:
+    profiles: ["cpu"]
+    build: ./vton-service
+    image: truelook-catvton:local
+    restart: always
+    environment:
+      CATVTON_DEVICE: cpu
+      MPLCONFIGDIR: /tmp/matplotlib
+      CATVTON_DTYPE: ${CATVTON_CPU_DTYPE:-float32}
+      CATVTON_CPU_THREADS: ${CATVTON_CPU_THREADS:-0}
+      CATVTON_STEPS: ${CATVTON_STEPS:-10}
+      CATVTON_GUIDANCE: ${CATVTON_GUIDANCE:-2.5}
+    volumes:
+      - catvton_models:/models
+    networks:
+      default:
+        aliases: [catvton]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 60
+      start_period: 300s
 
   frontend:
     build:

@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     vton_queue_name: str = "vton"
     vton_max_attempts: int = Field(default=2, ge=1, le=5)
     vton_stale_processing_minutes: int = Field(default=75, ge=1)
+    # Comma-separated CatVTON cloth types offered to shoppers (upper, lower, overall).
+    vton_cloth_types: str = "upper,lower,overall"
 
     emails_enabled: bool = True
     emails_console_log: bool = True

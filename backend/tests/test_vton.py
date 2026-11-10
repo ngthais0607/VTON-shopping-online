@@ -172,6 +172,32 @@ def test_eligibility_reports_support_and_reasons(client, db_session, tee):
     assert unsupported.json()["reason"] == "category_unsupported"
 
 
+def test_cloth_types_setting_limits_try_on(client, db_session, monkeypatch, tee):
+    jeans = make_product(
+        db_session,
+        name="Vton Jeans",
+        category_id=_category(db_session, "quan-jeans").id,
+    )
+    db_session.add(
+        ProductImage(
+            id="img-jeans",
+            product_id=jeans.id,
+            object_name="products/demo/jeans.png",
+            kind="vton_garment",
+        )
+    )
+    db_session.commit()
+    original = client.app.state.settings
+    limited = original.model_copy(update={"vton_cloth_types": "upper"})
+    monkeypatch.setattr(client.app.state, "settings", limited)
+
+    lower = client.get(f"/api/v1/vton/products/{jeans.id}/eligibility").json()
+    assert lower["eligible"] is False
+    assert lower["reason"] == "cloth_type_disabled"
+    upper = client.get(f"/api/v1/vton/products/{tee.product.id}/eligibility").json()
+    assert upper["eligible"] is True
+
+
 # --- task creation -------------------------------------------------------------
 
 

@@ -69,6 +69,9 @@ def _eligibility_for(
         cloth_type = "lower"
     if cloth_type is None:
         return product, None, None, "category_unsupported"
+    enabled = {part.strip() for part in settings.vton_cloth_types.split(",")}
+    if cloth_type not in enabled:
+        return product, cloth_type, None, "cloth_type_disabled"
     garment = pick_garment_image(product.images, color)
     if garment is None:
         return product, cloth_type, None, "garment_image_missing"
