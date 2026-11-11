@@ -1,6 +1,6 @@
 # TrueLook — E-Commerce Platform & Admin Dashboard
 
-A full-stack clothing shop with a customer storefront, an admin dashboard, a versioned FastAPI API, variant-based inventory, COD and VietQR checkout, MinIO product images, and ARQ background jobs, and an optional virtual try-on (mock engine by default, CatVTON on GPU).
+A full-stack clothing shop with a customer storefront, an admin dashboard, a versioned FastAPI API, variant-based inventory, COD and VietQR checkout, MinIO product images, and ARQ background jobs, and an optional virtual try-on (mock engine by default, CatVTON on GPU or, slowly, on CPU).
 
 Virtual try-on is implemented; see the [virtual try-on guide](docs/VTON.md). The default `VTON_ENGINE=mock` never runs AI and stamps "DEMO PREVIEW" on results. VietQR supports QR generation and an application-specific payment webhook; automatic bank/provider integration is a separate step.
 
@@ -41,7 +41,7 @@ The backend uses synchronous SQLAlchemy/PyMySQL and MinIO clients. It is not a f
 | Client data | Axios and SWR |
 | Authentication | JWT access tokens, HttpOnly refresh cookies, persistent device sessions |
 | Jobs and cache | Redis 7 and ARQ; scheduled order expiration and email jobs; separate ARQ worker for try-on |
-| Virtual try-on | Mock engine (default) or CatVTON inference in `vton-service/` (NVIDIA GPU) |
+| Virtual try-on | Mock engine (default) or CatVTON inference in `vton-service/` (NVIDIA GPU, or a native CPU service, slow; see `docs/VTON.md`) |
 | Images | MinIO object storage, Pillow validation, Next.js image optimization |
 | Email | aiosmtplib and Jinja2; SMTP or console mode |
 | Verification | Pytest, Hypothesis, Ruff, Vitest, Testing Library, Playwright, GitHub Actions |

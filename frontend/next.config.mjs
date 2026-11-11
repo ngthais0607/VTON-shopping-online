@@ -49,6 +49,9 @@ const nextConfig = {
   },
   images: {
     remotePatterns,
+    // Next 16 refuses to optimise images served from localhost/private IPs. Local
+    // development loads MinIO from http://localhost:9000, so allow it outside production.
+    dangerouslyAllowLocalIP: process.env.NODE_ENV !== 'production',
   },
 };
 

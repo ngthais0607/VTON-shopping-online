@@ -11,6 +11,7 @@ import io
 import logging
 import os
 import threading
+import time
 
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -18,10 +19,14 @@ from fastapi.responses import Response
 from huggingface_hub import snapshot_download
 from PIL import Image
 
+logging.basicConfig(level=logging.INFO)  # uvicorn leaves the root logger at WARNING
 logger = logging.getLogger("catvton-service")
 app = FastAPI(title="CatVTON inference")
 
-WIDTH, HEIGHT = 768, 1024
+# Working resolution (multiples of 64, 3:4). Cost grows faster than pixel count,
+# so CPU-only machines should lower it (e.g. 576x768 or 512x682 -> use 512x704).
+WIDTH = int(os.environ.get("CATVTON_WIDTH", "768"))
+HEIGHT = int(os.environ.get("CATVTON_HEIGHT", "1024"))
 MODELS_DIR = os.environ.get("MODELS_DIR", "/models")
 STEPS = int(os.environ.get("CATVTON_STEPS", "10"))
 GUIDANCE = float(os.environ.get("CATVTON_GUIDANCE", "2.5"))
@@ -142,6 +147,39 @@ def health() -> dict[str, str]:
     return {"status": "ok" if "pipeline" in _state else "loading"}
 
 
+def _log_denoise_steps(pipeline) -> None:
+    """Log one line per diffusion step (tqdm's \\r bar never reaches `docker logs`)."""
+    scheduler = getattr(pipeline, "noise_scheduler", None)
+    if scheduler is None or getattr(scheduler, "_progress_logged", False):
+        return
+    original = scheduler.step
+
+    def step(*args, **kwargs):
+        result = original(*args, **kwargs)
+        now = time.monotonic()
+        _progress["n"] += 1
+        logger.info(
+            "denoise step %s/%s done: %ss since last, %ss since denoise start",
+            _progress["n"],
+            STEPS,
+            int(now - _progress["last"]),
+            int(now - _progress["t0"]),
+        )
+        _progress["last"] = now
+        return result
+
+    scheduler.step = step
+    scheduler._progress_logged = True
+
+
+_progress = {"n": 0, "t0": 0.0, "last": 0.0}
+
+
+def _start_progress() -> None:
+    """Reset the step counter right before the pipeline runs."""
+    _progress.update(n=0, t0=time.monotonic(), last=time.monotonic())
+
+
 def _read(upload: UploadFile) -> Image.Image:
     data = upload.file.read(MAX_BYTES + 1)
     if not data or len(data) > MAX_BYTES:
@@ -165,6 +203,7 @@ def tryon(
     person_img = resize_and_crop(_read(person), (WIDTH, HEIGHT))
     garment_img = resize_and_padding(_read(garment), (WIDTH, HEIGHT))
     with _lock, torch.inference_mode():
+        started = time.monotonic()
         try:
             mask = _state["masker"](person_img, cloth_type)["mask"]
         except Exception as error:
@@ -173,6 +212,9 @@ def tryon(
         if mask.getbbox() is None:
             raise HTTPException(422, "no usable person detected")
         generator = torch.Generator(device=DEVICE).manual_seed(42)
+        logger.info("mask done in %ss", int(time.monotonic() - started))
+        _log_denoise_steps(_state["pipeline"])
+        _start_progress()
         result = _state["pipeline"](
             image=person_img,
             condition_image=garment_img,

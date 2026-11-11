@@ -1,6 +1,6 @@
 # Virtual try-on (CatVTON)
 
-Updated 2026-11-09. Pipeline is implemented and tested with a CPU **mock** engine. The real CatVTON service (`vton-service/`) is written but **has not been run here** (no GPU in CI/dev); treat quality, latency and VRAM needs as unverified until you benchmark it.
+Updated 2026-11-11. Pipeline is implemented and tested with a CPU **mock** engine. The real CatVTON service (`vton-service/`) has been run end to end on a CPU-only laptop (see "CPU-only demo" below); GPU latency and VRAM needs remain unmeasured.
 
 ## Flow
 
@@ -15,11 +15,37 @@ Updated 2026-11-09. Pipeline is implemented and tested with a CPU **mock** engin
 | Value | What it does |
 |---|---|
 | `mock` (default) | Overlays the garment on the photo and stamps "DEMO PREVIEW". No AI. For dev/CI. |
-| `catvton` | HTTP call to `vton-service` (CatVTON, `upper`/`lower`/`overall`). Needs an NVIDIA GPU; first start downloads ~10 GB into the `catvton_models` volume. |
+| `catvton` | HTTP call to `vton-service` (CatVTON, `upper`/`lower`/`overall`). Docker profile `gpu` needs an NVIDIA GPU; first start downloads ~10 GB into the `catvton_models` volume. Without a GPU run the service natively (see "CPU-only demo"). |
 
 Denoising steps default to 10 (`CATVTON_STEPS`, set in `.env`; upstream uses 50). Fewer steps are faster but blurrier; raise it if results look unfinished.
 
 Run real inference: set `VTON_ENGINE=catvton`, then `docker compose --profile gpu up -d --build catvton vton_worker`. Pin `CATVTON_REF` in `vton-service/Dockerfile` to a reviewed upstream commit.
+
+## CPU-only demo (no NVIDIA GPU, native service)
+
+Measured on an i7-8565U laptop (4 cores / 8 threads, 16 GB RAM, no GPU). The CatVTON service runs **natively on the host**, not in Docker; everything else stays in Compose.
+
+| Setting | Value | Result |
+|---|---|---|
+| Native, 768x1024, 10 steps, fp32 | about 240 s per step | about 40 min denoise, 45-50 min per image; worked |
+| Docker (WSL 12 GB), 512x704, 4 steps | about 540 s per step | about 48 min per image; output was wrong (patterned garment, blurry background) |
+
+Docker/WSL was slower per step than native even at a smaller size (cause not proven), and 4 steps is too few for usable quality. Use native with the full size and 10 steps.
+
+Setup (paths are examples; adjust to your folder):
+
+1. Clone CatVTON (pinned ref in `vton-service/Dockerfile`), create a Python venv with the CPU build of PyTorch, install the CatVTON requirements and detectron2, and let the first run download the weights (about 5 GB) into a models folder.
+2. Start the service with `vton-service/app.py`, from the CatVTON directory:
+
+```powershell
+$env:CATVTON_DEVICE='cpu'; $env:CATVTON_STEPS='10'; $env:MODELS_DIR='D:\vton-local\models'
+$env:HF_HOME="$env:MODELS_DIR\hf"; $env:PYTHONPATH='D:\vton-local\CatVTON'
+D:\vton-local\venv\Scripts\python.exe -m uvicorn app:app --app-dir D:\vton-local --host 0.0.0.0 --port 8080
+```
+
+3. In `.env` set `VTON_ENGINE=catvton` and `VTON_SERVICE_URL=http://host.docker.internal:8080`, then `docker compose up -d --no-deps vton_worker`.
+
+Keep the timeouts in mind: one image takes 45-50 min, the worker waits at most 1 h and the recovery cron fails a task after 75 min. The service handles one image at a time, so a second task waits. It stops when the machine shuts down and must be started by hand. Results are purged after 24 h.
 
 ## Catalog mapping
 
