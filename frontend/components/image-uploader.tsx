@@ -17,13 +17,38 @@ interface ImageUploaderProps {
   kind?: ProductImageKind;
   colorName?: string | null;
   isPrimary?: boolean;
+  label?: string;
+  hint?: string;
 }
 
-export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onImageUploaded, onFileSelected, onBusyChange, kind = "model_photo", colorName = null, isPrimary = true }: ImageUploaderProps) {
+const MAX_SIDE = 8192;
+const VTON_MIN_SIDE = 256;
+
+/** Decodes the file in the browser so obviously bad images fail before upload. */
+async function checkImage(file: File, kind: ProductImageKind): Promise<string | null> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return "This file is corrupt or cannot be read as an image.";
+  }
+  const { width, height } = bitmap;
+  bitmap.close?.();
+  if (width > MAX_SIDE || height > MAX_SIDE || width * height > 16_000_000) {
+    return "Image is too large: at most 8192 px per side and 16 megapixels.";
+  }
+  if (kind === "vton_garment" && Math.min(width, height) < VTON_MIN_SIDE) {
+    return `Try-on garment images must be at least ${VTON_MIN_SIDE} px on each side (this one is ${width}×${height}).`;
+  }
+  return null;
+}
+
+export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onImageUploaded, onFileSelected, onBusyChange, kind = "model_photo", colorName = null, isPrimary = true, label = "Product Image", hint = "PNG, JPG, WEBP up to 5MB" }: ImageUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
   const [error, setError] = useState<string | null>(null);
+  const [pickedName, setPickedName] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const localPreview = useRef<string | null>(null);
   const busyRef = useRef(false);
@@ -55,6 +80,15 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
     setUploading(true);
     busyRef.current = true;
     onBusyChange?.(true);
+    const problem = typeof createImageBitmap === "function" ? await checkImage(file, kind) : null;
+    if (problem) {
+      setError(problem);
+      setUploading(false);
+      busyRef.current = false;
+      onBusyChange?.(false);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
     onFileSelected?.(file);
 
     try {
@@ -75,9 +109,10 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
         if (localPreview.current) URL.revokeObjectURL(localPreview.current);
         uploadedUrl = URL.createObjectURL(file);
         localPreview.current = uploadedUrl;
+        setPickedName(file.name);
       }
 
-      setPreviewUrl(uploadedUrl);
+      if (isPrimary) setPreviewUrl(uploadedUrl);
       if (uploadedImage) onImageUploaded?.(uploadedImage);
       onUploadSuccess(uploadedUrl);
     } catch (err: any) {
@@ -111,6 +146,7 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
   const handleRemove = () => {
     if (localPreview.current) { URL.revokeObjectURL(localPreview.current); localPreview.current = null; }
     setPreviewUrl(null);
+    setPickedName(null);
     onFileSelected?.(null);
     onUploadSuccess("");
     if (inputRef.current) inputRef.current.value = "";
@@ -128,7 +164,7 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
           />
 
 
-      <label className="text-xs font-semibold text-foreground block">Product Image</label>
+      <label className="text-xs font-semibold text-foreground block">{label}</label>
 
       {previewUrl ? (
         <div className="relative rounded border border-border overflow-hidden group bg-background aspect-video flex items-center justify-center">
@@ -190,13 +226,19 @@ export function ImageUploader({ productId, currentImageUrl, onUploadSuccess, onI
                 <p className="text-xs font-bold text-foreground">
                   Click to upload or drag & drop
                 </p>
-                <p className="text-[11px] text-muted-foreground">PNG, JPG, WEBP up to 5MB</p>
+                <p className="text-[11px] text-muted-foreground">{hint}</p>
               </div>
             </>
           )}
         </div>
       )}
 
+      {pickedName && !previewUrl && (
+        <p className="flex items-center justify-between gap-2 rounded border border-border bg-background px-3 py-1.5 text-xs text-foreground">
+          <span className="truncate">Selected: {pickedName}</span>
+          <button type="button" onClick={handleRemove} aria-label={`Remove ${pickedName}`} className="font-semibold text-rose-600">Remove</button>
+        </p>
+      )}
       {error && <p role="alert" className="text-xs text-rose-500 font-medium">{error}</p>}
       {uploading && previewUrl && <p role="status" className="text-xs text-primary">Uploading image...</p>}
     </div>

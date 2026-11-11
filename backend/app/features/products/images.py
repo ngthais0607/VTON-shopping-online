@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ResourceNotFoundError
 from app.features.products import service
-from app.features.products.model import ProductImage
+from app.features.products.model import Product, ProductImage
+from app.features.products.schemas import ProductImageUpdate
 from app.integrations.storage import ProductStorage
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_DIMENSION = 8192
 MAX_IMAGE_PIXELS = 16_000_000
+VTON_GARMENT_MIN_SIDE = 256
 
 SUPPORTED_IMAGE_FORMATS = {
     "jpeg": {
@@ -61,7 +63,9 @@ def sniff_image_type(data: bytes) -> str | None:
     return None
 
 
-def validate_image_content(payload: bytes, label: str = "Product image") -> None:
+def validate_image_content(
+    payload: bytes, label: str = "Product image", min_side: int = 0
+) -> None:
     """Verify file structure and decode a bounded, static image."""
     try:
         with Image.open(BytesIO(payload), formats=("PNG", "JPEG", "WEBP")) as image:
@@ -74,6 +78,11 @@ def validate_image_content(payload: bytes, label: str = "Product image") -> None
                 raise BusinessRuleError(
                     f"{label} must be at most 8192 pixels per side and 16 megapixels",
                     code="image_dimensions_exceeded",
+                )
+            if min_side and min(width, height) < min_side:
+                raise BusinessRuleError(
+                    f"{label} must be at least {min_side} pixels on each side",
+                    code="image_too_small",
                 )
             if getattr(image, "n_frames", 1) != 1:
                 raise BusinessRuleError(
@@ -163,7 +172,10 @@ def store_product_image(
             code="invalid_product_image",
         )
 
-    validate_image_content(payload)
+    validate_image_content(
+        payload,
+        min_side=VTON_GARMENT_MIN_SIDE if kind == "vton_garment" else 0,
+    )
 
     canonical_ext = spec["canonical_ext"]
     image_id = str(uuid4())
@@ -233,6 +245,46 @@ def upload_product_image(
         is_primary=is_primary,
         sort_order=sort_order,
     )
+
+
+def update_product_image(
+    db: Session,
+    product_id: int,
+    image_id: str,
+    command: ProductImageUpdate,
+) -> ProductImage:
+    """Change an image's colour tag and/or make it the cover."""
+    service.get_product(db, product_id, is_admin=True)
+    # Serialise cover changes per product so two requests cannot leave two covers.
+    db.query(Product.id).filter(Product.id == product_id).with_for_update().first()
+    image = (
+        db.query(ProductImage)
+        .filter(ProductImage.id == image_id, ProductImage.product_id == product_id)
+        .with_for_update()
+        .first()
+    )
+    if image is None:
+        raise ResourceNotFoundError(
+            f"Image {image_id} was not found",
+            code="image_not_found",
+        )
+    sent = command.model_fields_set
+    if "color_name" in sent:
+        image.color_name = command.color_name
+    if "is_primary" in sent and command.is_primary is not None:
+        if command.is_primary:
+            db.query(ProductImage).filter(
+                ProductImage.product_id == product_id, ProductImage.id != image_id
+            ).update({ProductImage.is_primary: False})
+            image.is_primary = True
+        elif image.is_primary:
+            raise BusinessRuleError(
+                "Choose another image as the cover instead of unsetting this one",
+                code="cover_required",
+            )
+    db.commit()
+    db.refresh(image)
+    return image
 
 
 def delete_product_image(

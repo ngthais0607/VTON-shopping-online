@@ -47,6 +47,7 @@ export interface Product {
   sold_quantity: number;
   currency: string;
   is_active: boolean;
+  vton_enabled?: boolean;
   category: { id: number; name: string; slug?: string } | null;
   images: ProductImage[];
   image_url?: string;
@@ -71,6 +72,7 @@ export interface ProductFormData {
   sold_quantity?: number;
   currency: string;
   is_active: boolean;
+  vton_enabled?: boolean;
   brand?: string | null;
   gender?: string;
   material?: string | null;

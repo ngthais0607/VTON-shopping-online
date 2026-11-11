@@ -140,17 +140,18 @@ export default function ProductDetailPage() {
     setQuantity(current => Math.min(current, Math.max(1, selectedVariant ? getAvailableStock(selectedVariant) : 1)));
   }, [selectedVariant]);
 
-  // Virtual try-on availability depends on category and a raster garment image per colour.
+  // Try-on uses the gallery photo the shopper has selected; colour does not matter.
   const productId = product?.id;
+  const tryOnImageId = (product?.images ?? []).filter((img) => img.kind !== "vton_garment")[activeImageIndex]?.id;
   useEffect(() => {
     if (!productId) return;
     let ignore = false;
-    const query = selectedColor ? `?color=${encodeURIComponent(selectedColor)}` : "";
+    const query = tryOnImageId ? `?image_id=${encodeURIComponent(tryOnImageId)}` : "";
     apiGet<VtonEligibility>(`/vton/products/${productId}/eligibility${query}`)
       .then((result) => { if (!ignore) setTryOn(result); })
       .catch(() => { if (!ignore) setTryOn(null); });
     return () => { ignore = true; };
-  }, [productId, selectedColor]);
+  }, [productId, tryOnImageId]);
 
   // Switch image when color changes
   useEffect(() => {
@@ -502,6 +503,9 @@ export default function ProductDetailPage() {
               {tryOn?.eligible === true && (
                 <button type="button" onClick={() => setIsTryOnOpen(true)} className="flex min-h-12 w-full items-center justify-center gap-2 border border-foreground text-[11px] uppercase tracking-[0.1em] hover:bg-secondary"><Sparkles className="h-4 w-4" />Virtual try-on</button>
               )}
+              {tryOn?.eligible === true && images.length > 1 && (
+                <p className="-mt-1 text-[11px] text-muted-foreground">Tip: choose a photo below, then try on that look.</p>
+              )}
 
               <button type="button" onClick={toggleWishlist} aria-label="Save product" aria-pressed={wishlisted} className="flex min-h-12 w-full items-center justify-center gap-2 border border-border text-[11px] uppercase tracking-[0.1em] hover:bg-secondary"><Heart className={"h-4 w-4 " + (wishlisted ? "fill-foreground" : "")} />{wishlisted ? "Saved to favorites" : "Save to favorites"}</button>
               <p className="pt-2 text-xs leading-6 text-muted-foreground">{product.description}</p>
@@ -734,7 +738,8 @@ export default function ProductDetailPage() {
           productId={product.id}
           productName={product.name}
           variantId={selectedVariant?.id}
-          colorName={selectedColor ?? undefined}
+          imageId={tryOnImageId}
+          imageUrl={(product.images ?? []).filter((img) => img.kind !== "vton_garment")[activeImageIndex]?.url}
           eligibility={tryOn}
         />
       )}

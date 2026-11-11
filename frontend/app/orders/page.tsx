@@ -3,7 +3,7 @@
 import { displayDate,formatCurrency } from '@/lib/utils';
 
 
-import { Edit2,Eye,MoreVertical } from "lucide-react";
+import { Edit2,Eye } from "lucide-react";
 import { useEffect,useState } from "react";
 
 import { Header } from "@/components/header";
@@ -19,12 +19,6 @@ DialogHeader,
 DialogTitle,
 } from "@/components/ui/dialog";
 import {
-DropdownMenu,
-DropdownMenuContent,
-DropdownMenuItem,
-DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
 Table,
 TableBody,
 TableCell,
@@ -36,7 +30,7 @@ import { useOrders } from "@/hooks/use-orders";
 import { Order } from "@/lib/types";
 
 import { ExportCSVButton } from "./components/export-csv-button";
-import { QuickStatusModal } from "./components/quick-status-modal";
+import { getNextStatuses,QuickStatusModal } from "./components/quick-status-modal";
 
 function getStatusColor(status: string) {
   switch (status?.toLowerCase()) {
@@ -107,31 +101,36 @@ export default function OrdersPage() {
             <Table>
               <TableHeader>
                 <TableRow className="border-border bg-background">
-                  <TableHead className="text-muted-foreground">Order ID</TableHead>
+                  <TableHead className="text-muted-foreground">Order</TableHead>
+                  <TableHead className="text-muted-foreground">Customer</TableHead>
                   <TableHead className="text-muted-foreground">Product</TableHead>
-                  <TableHead className="text-muted-foreground">Quantity</TableHead>
-                  <TableHead className="text-muted-foreground">Total Amount</TableHead>
+                  <TableHead className="text-right text-muted-foreground">Total</TableHead>
                   <TableHead className="text-muted-foreground">Status</TableHead>
-                  <TableHead className="text-muted-foreground">Payment Status</TableHead>
-                  <TableHead className="text-right text-muted-foreground">Date</TableHead>
-                  <TableHead className="w-10"></TableHead>
+                  <TableHead className="text-right text-muted-foreground">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {orders.map((order) => {
                   const orderTotal = order.total ?? order.total_amount ?? 0;
+                  const quantity = order.quantity ?? (order.items ? order.items.reduce((acc, it) => acc + it.quantity, 0) : 1);
+                  const productName = order.product_name || (order.items && order.items.length > 0 ? (order.items.length === 1 ? order.items[0].product_name : `${order.items[0].product_name} (+${order.items.length - 1})`) : "N/A");
+                  const canUpdate = getNextStatuses(order).length > 0;
                   return (
                     <TableRow key={order.id} className="border-border hover:bg-background/50">
-                      <TableCell className="font-semibold text-foreground">
-                        #{order.id}
+                      <TableCell>
+                        <div className="font-semibold text-foreground">#{order.id}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {order.created_at ? displayDate(order.created_at, "MMM dd, yyyy") : "N/A"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-foreground">
+                        <div className="max-w-[10rem] truncate">{order.customer_name || "Guest"}</div>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {order.product_name || (order.items && order.items.length > 0 ? (order.items.length === 1 ? order.items[0].product_name : `${order.items[0].product_name} (+${order.items.length - 1})`) : "N/A")}
+                        <div className="max-w-[16rem] truncate" title={productName}>{productName}</div>
+                        <div className="text-xs">Qty {quantity}</div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {order.quantity ?? (order.items ? order.items.reduce((acc, it) => acc + it.quantity, 0) : 1)}
-                      </TableCell>
-                      <TableCell className="font-semibold text-foreground">
+                      <TableCell className="text-right font-semibold text-foreground whitespace-nowrap">
                         {formatCurrency(orderTotal, order.currency)}
                       </TableCell>
                       <TableCell>
@@ -141,45 +140,34 @@ export default function OrdersPage() {
                         >
                           {order.status}
                         </Badge>
+                        <div className="mt-1 text-xs text-muted-foreground whitespace-nowrap">
+                          {order.payment_method === "cod" ? "COD" : "VietQR"} · <span className="capitalize">{order.payment_status}</span>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${getPaymentStatusColor(
-                            order.payment_status,
-                          )}`}
-                        >
-                          {order.payment_status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right text-muted-foreground text-sm">
-                        {order.created_at ? displayDate(order.created_at, "MMM dd, yyyy") : "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedOrder(order);
-                                setViewDialogOpen(true);
-                              }}
-                            >
-                              <Eye className="w-4 h-4 mr-2" /> View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSelectedOrder(order);
-                                setStatusDialogOpen(true);
-                              }}
-                            >
-                              <Edit2 className="w-4 h-4 mr-2" /> Update Status
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedOrder(order);
+                              setViewDialogOpen(true);
+                            }}
+                          >
+                            <Eye className="w-4 h-4 mr-1.5" /> View
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={!canUpdate}
+                            title={canUpdate ? undefined : "This order can no longer be changed"}
+                            onClick={() => {
+                              setSelectedOrder(order);
+                              setStatusDialogOpen(true);
+                            }}
+                          >
+                            <Edit2 className="w-4 h-4 mr-1.5" /> Update
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

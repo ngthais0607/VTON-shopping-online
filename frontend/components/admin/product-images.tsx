@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Trash2 } from "lucide-react";
-import { apiDelete } from "@/lib/api";
+import { Star, Trash2 } from "lucide-react";
+import { apiDelete, apiPatch } from "@/lib/api";
 import { PRODUCT_IMAGE_KINDS, type ProductImage, type ProductImageKind } from "@/lib/types";
 import { ImageUploader } from "@/components/image-uploader";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,25 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
   const [error, setError] = useState<string | null>(null);
   const cover = images.find(image => image.is_primary) || images[0];
 
+  async function updateImage(image: ProductImage, patch: { is_primary?: boolean; color_name?: string | null }) {
+    if (!productId || uploading) return;
+    setError(null);
+    setUploading(true);
+    onBusyChange?.(true);
+    try {
+      const saved = await apiPatch<ProductImage, typeof patch>(`/products/${productId}/images/${image.id}`, patch);
+      const next = images.map(item => item.id === saved.id
+        ? saved
+        : saved.is_primary ? { ...item, is_primary: false } : item);
+      onImagesChange(saved.is_primary ? [saved, ...next.filter(item => item.id !== saved.id)] : next);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to update image");
+    } finally {
+      setUploading(false);
+      onBusyChange?.(false);
+    }
+  }
+
   async function deleteImage() {
     if (!productId || !selected || deleting) return;
     setDeleting(true);
@@ -65,7 +84,7 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
       {productId && (
         <div className="grid grid-cols-2 gap-3">
           <label className="text-xs font-semibold text-foreground">
-            Image type
+            Upload next image as
             <select
               value={kind}
               disabled={uploading}
@@ -89,11 +108,20 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
           </label>
         </div>
       )}
+      {productId && kind === "vton_garment" ? (
+        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Hidden from the gallery. Garment only (no mannequin or person), front view, plain background, at least 256 px.
+        </p>
+      ) : productId ? (
+        <p className="text-xs text-muted-foreground">
+          Any PNG, JPG or WebP photo can be tried on. Shoppers pick which photo to use on the product page.
+        </p>
+      ) : null}
       <ImageUploader
         productId={productId}
         kind={kind}
         colorName={colorName || null}
-        isPrimary={kind === "model_photo"}
+        isPrimary={!productId || (kind !== "vton_garment" && !images.some(image => image.kind !== "vton_garment"))}
         currentImageUrl={cover?.url}
         onFileSelected={onFileSelected}
         onBusyChange={busy => { setUploading(busy); onBusyChange?.(busy); }}
@@ -105,20 +133,37 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
         }}
         onUploadSuccess={onUploadSuccess}
       />
+      {error && !selected && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
       {productId && images.length > 0 && (
         <div>
-          <p className="mb-2 text-xs text-muted-foreground">Uploading a model photo saves a new cover immediately. Other image types are added to the gallery. Previous images stay until you delete them.</p>
+          <p className="mb-2 text-xs text-muted-foreground">The first image becomes the cover. To change it, use the star on any image. Tag each image with its colour so shoppers see the right photos when they pick a colour.</p>
           <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {images.map((image, index) => (
               <li key={image.id} className="overflow-hidden rounded-md border border-border bg-white">
                 <div className="relative aspect-square bg-background">
                   <Image src={image.url} alt={`Product image ${index + 1}`} fill sizes="160px" className="object-contain" />
                 </div>
-                <div className="flex items-center justify-between gap-2 p-2">
-                  <span className="text-xs text-muted-foreground">{image.id === cover?.id ? "Cover image" : `Image ${index + 1}`}{image.kind && image.kind !== "model_photo" ? ` · ${KIND_LABELS[image.kind] ?? image.kind}` : ""}{image.color_name ? ` · ${image.color_name}` : ""}</span>
-                  <Button type="button" variant="ghost" size="sm" aria-label={`Delete image ${index + 1}`} disabled={deleting || uploading} onClick={() => { setError(null); setSelected(image); }}>
-                    <Trash2 className="h-4 w-4 text-rose-600" />
-                  </Button>
+                <div className="space-y-2 p-2">
+                  <span className="block text-xs text-muted-foreground">{image.id === cover?.id ? "Cover image" : `Image ${index + 1}`}{image.kind && image.kind !== "model_photo" ? ` · ${KIND_LABELS[image.kind] ?? image.kind}` : ""}</span>
+                  <div className="flex items-center gap-1">
+                    <select
+                      aria-label={`Colour for image ${index + 1}`}
+                      value={image.color_name ?? ""}
+                      disabled={uploading || deleting}
+                      onChange={event => updateImage(image, { color_name: event.target.value || null })}
+                      className="min-w-0 flex-1 rounded-md border border-border bg-white px-1.5 py-1 text-xs"
+                    >
+                      <option value="">All colours</option>
+                      {image.color_name && !colors.includes(image.color_name) && <option value={image.color_name}>{image.color_name}</option>}
+                      {colors.map(color => <option key={color} value={color}>{color}</option>)}
+                    </select>
+                    <Button type="button" variant="ghost" size="sm" aria-label={`Set image ${index + 1} as cover`} title="Set as cover" disabled={uploading || deleting || image.id === cover?.id} onClick={() => updateImage(image, { is_primary: true })}>
+                      <Star className={`h-4 w-4 ${image.id === cover?.id ? "fill-amber-400 text-amber-500" : "text-muted-foreground"}`} />
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" aria-label={`Delete image ${index + 1}`} disabled={deleting || uploading} onClick={() => { setError(null); setSelected(image); }}>
+                      <Trash2 className="h-4 w-4 text-rose-600" />
+                    </Button>
+                  </div>
                 </div>
               </li>
             ))}

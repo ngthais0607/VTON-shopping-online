@@ -23,7 +23,11 @@ from app.features.products import images as product_images
 from app.features.products import service as product_service
 from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
-from app.features.vton.mapping import cloth_type_for_category, pick_garment_image
+from app.features.vton.mapping import (
+    cloth_type_for_category,
+    pick_garment_image,
+    pick_image_by_id,
+)
 from app.features.vton.model import VtonTask
 from app.features.vton.schemas import VtonEligibilityResponse, VtonQuotaResponse
 from app.integrations.queue import TaskQueue
@@ -60,9 +64,15 @@ def _require_enabled(settings: Settings) -> None:
 
 
 def _eligibility_for(
-    db: Session, settings: Settings, product_id: int, color: str | None
+    db: Session,
+    settings: Settings,
+    product_id: int,
+    color: str | None,
+    image_id: str | None = None,
 ):
     product = product_service.get_product(db, product_id)
+    if product.vton_enabled is False:
+        return product, None, None, "disabled_by_admin"
     cloth_type = cloth_type_for_category(product.category)
     name = (product.name or "").lower()
     if cloth_type == "overall" and "skirt" in name and "dress" not in name:
@@ -72,14 +82,22 @@ def _eligibility_for(
     enabled = {part.strip() for part in settings.vton_cloth_types.split(",")}
     if cloth_type not in enabled:
         return product, cloth_type, None, "cloth_type_disabled"
-    garment = pick_garment_image(product.images, color)
+    if image_id is not None:
+        # The shopper picked a specific photo: it is the garment, colour is irrelevant.
+        garment = pick_image_by_id(product.images, image_id)
+    else:
+        garment = pick_garment_image(product.images, color)
     if garment is None:
         return product, cloth_type, None, "garment_image_missing"
     return product, cloth_type, garment, None
 
 
 def get_eligibility(
-    db: Session, settings: Settings, product_id: int, color: str | None = None
+    db: Session,
+    settings: Settings,
+    product_id: int,
+    color: str | None = None,
+    image_id: str | None = None,
 ) -> VtonEligibilityResponse:
     if not settings.vton_enabled:
         return VtonEligibilityResponse(
@@ -88,7 +106,9 @@ def get_eligibility(
             engine=settings.vton_engine,
             daily_quota=settings.vton_daily_quota,
         )
-    _, cloth_type, garment, reason = _eligibility_for(db, settings, product_id, color)
+    _, cloth_type, garment, reason = _eligibility_for(
+        db, settings, product_id, color, image_id
+    )
     return VtonEligibilityResponse(
         eligible=garment is not None,
         cloth_type=cloth_type,
@@ -178,6 +198,7 @@ async def create_task(
     *,
     product_id: int,
     variant_id: int | None,
+    image_id: str | None = None,
     stream: BinaryIO,
     filename: str,
     content_type: str,
@@ -212,7 +233,7 @@ async def create_task(
         color_name = variant.color_name
 
     _, cloth_type, garment, reason = _eligibility_for(
-        db, settings, product_id, color_name
+        db, settings, product_id, color_name, image_id
     )
     if garment is None or cloth_type is None:
         raise BusinessRuleError(

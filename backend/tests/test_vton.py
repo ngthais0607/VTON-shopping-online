@@ -172,6 +172,32 @@ def test_eligibility_reports_support_and_reasons(client, db_session, tee):
     assert unsupported.json()["reason"] == "category_unsupported"
 
 
+def test_selected_photo_is_the_garment_regardless_of_colour(client, db_session, tee):
+    photo = ProductImage(
+        id="img-gallery",
+        product_id=tee.product.id,
+        object_name="products/demo/gallery.jpg",
+        kind="model_photo",
+        color_name="Xanh",
+    )
+    db_session.add(photo)
+    db_session.commit()
+    base = f"/api/v1/vton/products/{tee.product.id}/eligibility"
+    chosen = client.get(f"{base}?image_id=img-gallery&color=Đỏ")
+    assert chosen.json()["eligible"] is True
+    missing = client.get(f"{base}?image_id=nope")
+    assert missing.json()["eligible"] is False
+    assert missing.json()["reason"] == "garment_image_missing"
+
+
+def test_admin_switch_hides_try_on_for_a_product(client, db_session, tee):
+    tee.product.vton_enabled = False
+    db_session.commit()
+    off = client.get(f"/api/v1/vton/products/{tee.product.id}/eligibility?color=Đỏ")
+    assert off.json()["eligible"] is False
+    assert off.json()["reason"] == "disabled_by_admin"
+
+
 def test_cloth_types_setting_limits_try_on(client, db_session, monkeypatch, tee):
     jeans = make_product(
         db_session,

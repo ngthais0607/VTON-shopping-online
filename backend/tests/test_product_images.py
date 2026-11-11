@@ -77,6 +77,33 @@ def test_rejects_excessive_image_dimensions(db_session, product_storage, size):
     assert product_storage.put_objects == []
 
 
+def test_try_on_garment_image_must_be_large_enough(db_session, product_storage):
+    product = make_product(db_session)
+    with pytest.raises(BusinessRuleError) as error:
+        store_product_image(
+            db_session,
+            product_storage,
+            product.id,
+            BytesIO(image_bytes("PNG", (255, 400))),
+            "tiny.png",
+            "image/png",
+            kind="vton_garment",
+        )
+    assert error.value.code == "image_too_small"
+    assert product_storage.put_objects == []
+
+    store_product_image(
+        db_session,
+        product_storage,
+        product.id,
+        BytesIO(image_bytes("PNG", (256, 256))),
+        "ok.png",
+        "image/png",
+        kind="vton_garment",
+    )
+    assert len(product_storage.put_objects) == 1
+
+
 def test_primary_image_is_returned_first_after_replacement(db_session):
     product = make_product(db_session)
     db_session.add_all(
@@ -654,3 +681,78 @@ def test_upload_image_rejects_invalid_kind(client, db_session, mock_admin_auth):
     )
     assert response.status_code == 400
     assert response.json()["code"] == "invalid_image_kind"
+
+
+def _two_images(db_session):
+    product = make_product(db_session)
+    db_session.add_all(
+        [
+            ProductImage(
+                id="img-a",
+                product_id=product.id,
+                object_name="a.png",
+                is_primary=True,
+            ),
+            ProductImage(
+                id="img-b",
+                product_id=product.id,
+                object_name="b.png",
+                is_primary=False,
+            ),
+        ]
+    )
+    db_session.commit()
+    return product
+
+
+def test_update_image_sets_new_cover_and_demotes_old(db_session):
+    from app.features.products.images import update_product_image
+    from app.features.products.schemas import ProductImageUpdate
+
+    product = _two_images(db_session)
+    updated = update_product_image(
+        db_session, product.id, "img-b", ProductImageUpdate(is_primary=True)
+    )
+    assert updated.is_primary is True
+    db_session.expire_all()
+    assert db_session.get(ProductImage, "img-a").is_primary is False
+    assert db_session.get(Product, product.id).images[0].id == "img-b"
+
+
+def test_update_image_sets_and_clears_colour(db_session):
+    from app.features.products.images import update_product_image
+    from app.features.products.schemas import ProductImageUpdate
+
+    product = _two_images(db_session)
+    updated = update_product_image(
+        db_session, product.id, "img-b", ProductImageUpdate(color_name="Black")
+    )
+    assert updated.color_name == "Black"
+    assert updated.is_primary is False
+    cleared = update_product_image(
+        db_session, product.id, "img-b", ProductImageUpdate(color_name=None)
+    )
+    assert cleared.color_name is None
+
+
+def test_update_image_cannot_unset_only_cover(db_session):
+    from app.features.products.images import update_product_image
+    from app.features.products.schemas import ProductImageUpdate
+
+    product = _two_images(db_session)
+    with pytest.raises(BusinessRuleError) as error:
+        update_product_image(
+            db_session, product.id, "img-a", ProductImageUpdate(is_primary=False)
+        )
+    assert error.value.code == "cover_required"
+
+
+def test_update_image_unknown_image_404(db_session):
+    from app.features.products.images import update_product_image
+    from app.features.products.schemas import ProductImageUpdate
+
+    product = _two_images(db_session)
+    with pytest.raises(ResourceNotFoundError):
+        update_product_image(
+            db_session, product.id, "missing", ProductImageUpdate(is_primary=True)
+        )

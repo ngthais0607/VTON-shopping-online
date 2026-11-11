@@ -26,5 +26,5 @@ it('returns to the first product page when another URL facet changes', () => {
   fireEvent.click(screen.getByText('Page two'));
   expect(state.products).toHaveBeenLastCalledWith(expect.objectContaining({page:2,category_id:2}));
   state.query='category_id=2&gender=female';rerender(<Storefront listing />);
-  expect(state.products).toHaveBeenLastCalledWith(expect.objectContaining({page:1,gender:'female'}));
+  expect(state.products).toHaveBeenLastCalledWith(expect.objectContaining({page:1,gender:'female,unisex'}));
 });

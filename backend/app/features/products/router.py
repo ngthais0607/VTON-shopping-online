@@ -20,6 +20,7 @@ from app.features.products.schemas import (
     ProductFacetsResponse,
     ProductFilters,
     ProductImageResponse,
+    ProductImageUpdate,
     ProductPatch,
     ProductPublicResponse,
     ProductResponse,
@@ -251,6 +252,21 @@ def upload_image(
         is_primary=is_primary,
         sort_order=sort_order,
     )
+
+
+@router.patch(
+    "/{product_id}/images/{image_id}",
+    response_model=ProductImageResponse,
+    summary="Update product image (cover / colour)",
+)
+def update_image(
+    product_id: int,
+    image_id: str,
+    command: ProductImageUpdate,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(get_current_admin),
+):
+    return images.update_product_image(db, product_id, image_id, command)
 
 
 @router.delete(

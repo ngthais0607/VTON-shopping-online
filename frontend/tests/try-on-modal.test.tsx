@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TryOnModal } from "../components/store/try-on-modal";
 import { vtonErrorMessage } from "../lib/vton";
@@ -31,7 +31,7 @@ const baseProps = {
   productId: 5,
   productName: "Basic Tee",
   variantId: 9,
-  colorName: "Red",
+  imageId: "img-77",
   eligibility,
 };
 const doneTask = {
@@ -53,6 +53,35 @@ function pickPhoto() {
   const file = new File([new Uint8Array(10)], "me.png", { type: "image/png" });
   fireEvent.change(input, { target: { files: [file] } });
 }
+
+describe("TryOnModal guidance", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shows the selected photo being tried on", () => {
+    render(<TryOnModal {...baseProps} imageUrl="/img/look.jpg" />);
+    expect(screen.getByAltText("Photo you are trying on")).toHaveAttribute("src", "/img/look.jpg");
+  });
+
+  it("rejects a photo that is too small before upload", async () => {
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 100, height: 120, close: vi.fn() })));
+    render(<TryOnModal {...baseProps} />);
+    pickPhoto();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/too small/);
+  });
+
+  it("warns, without blocking, about a landscape photo", async () => {
+    vi.stubGlobal("createImageBitmap", vi.fn(async () => ({ width: 1200, height: 800, close: vi.fn() })));
+    render(<TryOnModal {...baseProps} />);
+    pickPhoto();
+    expect(await screen.findByText(/landscape/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("sets expectations for the real engine", () => {
+    render(<TryOnModal {...baseProps} eligibility={{ ...eligibility, engine: "catvton" as never }} />);
+    expect(screen.getByText(/can take several minutes/)).toBeInTheDocument();
+  });
+});
 
 describe("TryOnModal", () => {
   it("asks anonymous visitors to sign in", () => {
@@ -106,6 +135,7 @@ describe("TryOnModal", () => {
     expect((form as FormData).get("consent")).toBe("true");
     expect((form as FormData).get("product_id")).toBe("5");
     expect((form as FormData).get("variant_id")).toBe("9");
+    expect((form as FormData).get("image_id")).toBe("img-77");
     expect(headers["Idempotency-Key"]).toBeTruthy();
     expect(api.apiGetBlob).toHaveBeenCalledWith("/vton/tasks/t1/result");
   });

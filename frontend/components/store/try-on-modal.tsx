@@ -25,7 +25,9 @@ interface TryOnModalProps {
   productId: number;
   productName: string;
   variantId?: number;
-  colorName?: string;
+  imageId?: string;
+  /** Photo being tried on, shown so shoppers can see which look they picked. */
+  imageUrl?: string;
   eligibility: VtonEligibility;
 }
 
@@ -37,7 +39,8 @@ export function TryOnModal({
   productId,
   productName,
   variantId,
-  colorName,
+  imageId,
+  imageUrl,
   eligibility,
 }: TryOnModalProps) {
   const { user, isLoading: sessionLoading } = useSession();
@@ -210,11 +213,40 @@ export function TryOnModal({
     pollRef.current = poll;
   }, [poll]);
 
-  const onPickFile = (picked: File | null) => {
+  const [photoWarning, setPhotoWarning] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (phase !== "working") return;
+    const started = Date.now();
+    setElapsed(0);
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [phase]);
+
+  const onPickFile = async (picked: File | null) => {
     setError(null);
+    setPhotoWarning(null);
     if (picked && picked.size > VTON_MAX_PHOTO_BYTES) {
       setError(vtonErrorMessage("image_too_large"));
       return;
+    }
+    if (picked && typeof createImageBitmap === "function") {
+      try {
+        const bitmap = await createImageBitmap(picked);
+        const { width, height } = bitmap;
+        bitmap.close?.();
+        if (Math.min(width, height) < 256) {
+          setError(`This photo is too small (${width}×${height}). Use one at least 256 px on each side.`);
+          return;
+        }
+        if (width > height * 1.1) {
+          setPhotoWarning("This photo is landscape. A portrait photo showing your body from head to hips works best.");
+        }
+      } catch {
+        setError("This file cannot be read as an image. Try a different photo.");
+        return;
+      }
     }
     setFile(picked);
   };
@@ -227,6 +259,7 @@ export function TryOnModal({
     form.append("person_image", file);
     form.append("product_id", String(productId));
     if (variantId) form.append("variant_id", String(variantId));
+    if (imageId) form.append("image_id", imageId);
     form.append("consent", "true");
     try {
       const created = await apiUpload<VtonTask>("/vton/tasks", form, {
@@ -296,10 +329,16 @@ export function TryOnModal({
           <Sparkles className="h-5 w-5 text-sky-600" />
           <h2 className="text-lg font-extrabold text-slate-900">Virtual try-on</h2>
         </div>
-        <p className="mb-4 text-sm text-slate-600">
-          {productName}
-          {colorName ? <span className="text-slate-400"> · {colorName}</span> : null}
-        </p>
+        <div className="mb-4 flex items-center gap-3">
+          {imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageUrl} alt="Photo you are trying on" className="h-16 w-12 rounded-lg border border-slate-200 object-cover" />
+          )}
+          <p className="text-sm text-slate-600">
+            {productName}
+            {imageUrl && <span className="block text-xs text-slate-400">Trying on the photo you selected</span>}
+          </p>
+        </div>
 
         {isDemo && (
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
@@ -372,7 +411,13 @@ export function TryOnModal({
               </span>
             </label>
 
+            {photoWarning && !error && <p className="text-xs font-medium text-amber-700">{photoWarning}</p>}
             {error && <p role="alert" className="text-sm font-medium text-rose-600">{error}</p>}
+            {!isDemo && (
+              <p className="text-xs text-slate-500">
+                Real AI try-on can take several minutes. You can close this window and come back; your result will be waiting here.
+              </p>
+            )}
 
             {history.length > 0 && (
               <div>
@@ -417,9 +462,13 @@ export function TryOnModal({
             <p className="text-sm font-semibold text-slate-800">
               {task?.status === "processing" ? "Creating your try-on…" : "Waiting in queue…"}
             </p>
+            <p className="text-xs tabular-nums text-slate-500">
+              Elapsed {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
+            </p>
             <p className="text-xs text-slate-500">
-              This can take anywhere from a few seconds to several minutes. You can keep this window open - your
-              result will appear here automatically.
+              {isDemo
+                ? "This usually takes a few seconds."
+                : "This can take several minutes. You can close this window and reopen Virtual try-on later; your result will be waiting."}
             </p>
           </div>
         ) : phase === "done" ? (

@@ -61,7 +61,8 @@ function StorefrontContent({ listing = false }: { listing?: boolean }) {
         max_price: effectiveMaxPrice,
         stock_status: effectiveStockStatus,
         sort_by: effectiveSortBy,
-        gender: urlGender,
+        // Men / Women pages also list unisex items.
+        gender: urlGender === "male" || urlGender === "female" ? `${urlGender},unisex` : urlGender,
         brand: urlBrand,
         size: urlSize,
         color: urlColor,

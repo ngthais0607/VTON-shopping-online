@@ -16,7 +16,7 @@ interface RevenueChartProps {
 }
 
 export function RevenueChart({ data }: RevenueChartProps) {
-  if (data.length === 0) return <div className="min-h-64 rounded border border-border bg-white p-6"><h3 className="text-sm font-medium">Revenue history</h3><div className="flex min-h-44 flex-col items-center justify-center gap-4 text-center"><span aria-hidden="true" className="h-px w-10 bg-[#B89B6A]" /><p className="max-w-xs text-sm leading-6 text-muted-foreground">No revenue history data is available.</p></div></div>;
+  if (data.length === 0) return <div className="min-h-64 rounded border border-border bg-white p-6"><h3 className="text-base font-bold text-foreground">Revenue history</h3><div className="flex min-h-44 flex-col items-center justify-center gap-4 text-center"><span aria-hidden="true" className="h-px w-10 bg-[#B89B6A]" /><p className="max-w-xs text-sm leading-6 text-muted-foreground">No revenue history data is available.</p></div></div>;
   return (
     <div className="bg-white p-6 rounded border border-border shadow-none space-y-4">
       <div className="flex items-center justify-between">

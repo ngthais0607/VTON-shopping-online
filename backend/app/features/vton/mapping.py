@@ -74,3 +74,13 @@ def pick_garment_image(images, color_name: str | None):
         if best_score is None or score > best_score:
             best, best_score = image, score
     return best
+
+
+def pick_image_by_id(images, image_id: str):
+    """The shopper-selected gallery photo, when it is a usable raster image."""
+    for image in images:
+        if image.id == image_id:
+            if PurePosixPath(image.object_name).suffix.lower() in RASTER_EXTENSIONS:
+                return image
+            return None
+    return None

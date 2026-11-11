@@ -14,6 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
     select,
+    true,
 )
 from sqlalchemy.orm import column_property, relationship
 
@@ -62,6 +63,7 @@ class Product(Base):
 
     currency = Column(String(10), nullable=False, default="VND")
     is_active = Column(Boolean, default=True, index=True)
+    vton_enabled = Column(Boolean, nullable=False, default=True, server_default=true())
 
     @property
     def total_stock(self) -> int:

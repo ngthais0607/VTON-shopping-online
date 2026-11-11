@@ -95,6 +95,27 @@ it('retries an image failure without creating the product twice', async()=>{
   expect(post).toHaveBeenCalledTimes(1);
   expect(upload.mock.calls[1][0]).toBe('/products/7/upload-image');
 });
+it('keeps the garment for retry without re-uploading the cover, and sends the try-on switch', async()=>{
+  post.mockResolvedValue({id:7,name:'New product',price:10,currency:'USD',stock_quantity:0,reserved_quantity:0,sold_quantity:0,is_active:true,category:null,description:null,images:[],created_at:null,updated_at:null});
+  patch.mockResolvedValue({id:7});
+  upload.mockResolvedValueOnce({id:'cover',url:'https://images.example.test/c.png'}).mockRejectedValueOnce(new Error('Storage offline')).mockResolvedValueOnce({id:'g',url:'https://images.example.test/g.png'});
+  render(<ProductsPage/>);
+  fireEvent.click(screen.getByRole('button',{name:'Create Product'}));
+  fireEvent.change(screen.getByPlaceholderText('Enter product name'),{target:{value:'New product'}});
+  fireEvent.change(screen.getByPlaceholderText('0.00'),{target:{value:'10'}});
+  fireEvent.click(screen.getByLabelText('Offer virtual try-on'));
+  const inputs=document.querySelectorAll('input[type=file]');
+  fireEvent.change(inputs[0],{target:{files:[new File(['png'],'c.png',{type:'image/png'})]}});
+  fireEvent.change(inputs[1],{target:{files:[new File(['png'],'g.png',{type:'image/png'})]}});
+  expect(await screen.findByText('Selected: g.png')).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button',{name:'Create Product'}).at(-1)!);
+  await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('Storage offline'));
+  expect(post.mock.calls[0][1]).toMatchObject({vton_enabled:false});
+  fireEvent.click(screen.getByRole('button',{name:'Update Product'}));
+  await waitFor(()=>expect(upload).toHaveBeenCalledTimes(3));
+  expect(upload.mock.calls.map(call=>call[0])).toEqual(['/products/7/upload-image','/products/7/images','/products/7/images']);
+  expect(patch.mock.calls[0][1]).toMatchObject({vton_enabled:false});
+});
 it('retains a file input after preview and releases local previews', async()=>{
   const {container,unmount}=render(<ImageUploader onUploadSuccess={()=>{}}/>);
   fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[new File(['png'],'p.png',{type:'image/png'})]}});

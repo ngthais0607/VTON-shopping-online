@@ -42,10 +42,11 @@ def get_app_settings(request: Request) -> Settings:
 def get_eligibility(
     product_id: int,
     color: str | None = Query(default=None, max_length=50),
+    image_id: str | None = Query(default=None, max_length=100),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ):
-    return service.get_eligibility(db, settings, product_id, color)
+    return service.get_eligibility(db, settings, product_id, color, image_id)
 
 
 @router.get("/quota", response_model=VtonQuotaResponse, summary="Try-on quota")
@@ -69,6 +70,7 @@ async def create_task(
     person_image: UploadFile = File(...),
     product_id: int = Form(...),
     variant_id: int | None = Form(default=None),
+    image_id: str | None = Form(default=None, max_length=100),
     consent: bool = Form(default=False),
     idempotency_key: str | None = Header(default=None, max_length=64),
     db: Session = Depends(get_db),
@@ -85,6 +87,7 @@ async def create_task(
         current_user,
         product_id=product_id,
         variant_id=variant_id,
+        image_id=image_id,
         stream=person_image.file,
         filename=person_image.filename or "",
         content_type=person_image.content_type or "",

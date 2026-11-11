@@ -13,12 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle } from "@/components/ui/dialog";
 import {
-DropdownMenu,
-DropdownMenuContent,
-DropdownMenuItem,
-DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
 Table,
 TableBody,
 TableCell,
@@ -26,13 +20,14 @@ TableHead,
 TableHeader,
 TableRow,
 } from "@/components/ui/table";
-import { Calendar,Mail,MoreVertical,Search,ShieldAlert,ShoppingBag,UserCheck,Users } from "lucide-react";
+import { Calendar,Mail,Search,ShieldAlert,ShoppingBag,UserCheck,Users } from "lucide-react";
 
 export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const {users, total, isLoading: loading, error, mutate: loadUsers} = useUsers({page, search:searchQuery});
   const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // States cho các Dialogs
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -49,9 +44,10 @@ export default function CustomersPage() {
     if (confirm("Are you sure you want to deactivate this customer account?")) {
       try {
         await apiDelete(`/users/${userId}`);
-        alert("Customer deactivated successfully.");
+        setNotice("Customer deactivated.");
         loadUsers(); // Tải lại danh sách
       } catch (err) {
+        setNotice(null);
         alert("Failed to deactivate customer.");
       }
     }
@@ -101,9 +97,15 @@ export default function CustomersPage() {
       <Header title="Customers" subtitle="Manage and monitor your registered customer base" />
 
       <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto w-full">
-        {error && <p role="alert">{error.message}<button onClick={()=>loadUsers()}>Retry</button></p>}
-        <PaginationControls page={page} pageSize={20} total={total} onPageChange={setPage} disabled={loading}/>
-
+        {error && (
+          <p role="alert" className="flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+            {error.message}
+            <Button variant="outline" size="sm" onClick={() => loadUsers()}>Retry</Button>
+          </p>
+        )}
+        {notice && (
+          <p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{notice}</p>
+        )}
         {/* Thanh tìm kiếm & Stats nhanh */}
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
           <div className="relative w-full md:w-96">
@@ -148,7 +150,7 @@ export default function CustomersPage() {
                     <TableHead className="text-muted-foreground font-semibold py-4">Email Address</TableHead>
                     <TableHead className="text-muted-foreground font-semibold py-4">Username</TableHead>
                     <TableHead className="text-muted-foreground font-semibold py-4">Joined Date</TableHead>
-                    <TableHead className="w-14 py-4"></TableHead>
+                    <TableHead className="py-4 pr-6 text-right text-muted-foreground font-semibold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -165,8 +167,8 @@ export default function CustomersPage() {
                             <div className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
                               {user.first_name} {user.last_name}
                             </div>
-                            <span className="inline-flex items-center gap-1 mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
-                              <span className="w-1 h-1 rounded-full bg-emerald-500" /> Active
+                            <span className={`inline-flex items-center mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-medium border ${user.role === "admin" ? "bg-amber-50 text-amber-700 border-amber-100" : "bg-secondary text-muted-foreground border-border"}`}>
+                              {user.role === "admin" ? "Admin" : "Customer"}
                             </span>
                           </div>
                         </div>
@@ -181,46 +183,37 @@ export default function CustomersPage() {
                         {displayDate(user.created_at, "MMM dd, yyyy")}
                       </TableCell>
                       <TableCell className="py-4 pr-6">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-secondary rounded">
-                              <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40 p-1.5 rounded-md border border-border shadow-none bg-white">
-                            <DropdownMenuItem
-                              className="rounded text-foreground hover:bg-background text-sm"
-                              onClick={() => {
-                                setSelectedUser(user);
-                                setProfileOpen(true);
-                              }}
-                            >
-                              <UserCheck className="w-4 h-4 mr-2 text-muted-foreground" />
-                              View Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="rounded text-foreground hover:bg-background text-sm"
-                              onClick={() => handleViewOrders(user)}
-                            >
-                              <ShoppingBag className="w-4 h-4 mr-2 text-muted-foreground" />
-                              View Orders
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="rounded text-red-600 focus:text-red-700 focus:bg-red-50 text-sm"
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setSelectedUser(user); setProfileOpen(true); }}
+                          >
+                            <UserCheck className="w-4 h-4 mr-1.5" /> Profile
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleViewOrders(user)}>
+                            <ShoppingBag className="w-4 h-4 mr-1.5" /> Orders
+                          </Button>
+                          {user.role !== "admin" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Deactivate ${user.username}`}
+                              title="Deactivate account"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
                               onClick={() => handleDeactivate(user.id)}
                             >
-                              <ShieldAlert className="w-4 h-4 mr-2 text-red-400" />
-                              Deactivate
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              <ShieldAlert className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
                   {filteredUsers.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-12 text-muted-foreground font-medium">
-                        No customers found matching &quot;{searchQuery}&quot;
+                        {searchQuery ? <>No customers found matching &quot;{searchQuery}&quot;</> : "No customers yet."}
                       </TableCell>
                     </TableRow>
                   )}
@@ -228,6 +221,10 @@ export default function CustomersPage() {
               </Table>
             </div>
           </Card>
+        )}
+
+        {total > 20 && (
+          <PaginationControls page={page} pageSize={20} total={total} onPageChange={setPage} disabled={loading}/>
         )}
       </main>
 

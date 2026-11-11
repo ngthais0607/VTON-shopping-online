@@ -2,7 +2,9 @@
 import { displayDate,formatCurrency } from '@/lib/utils';
 
 
+import { ImageUploader } from "@/components/image-uploader";
 import { AdminProductImages } from "@/components/admin/product-images";
+import { TryOnStatus } from "@/components/admin/try-on-status";
 import { VariantMatrixGenerator } from "@/components/admin/variant-matrix-generator";
 import { VariantStockDialog } from "@/components/admin/variant-stock-dialog";
 import { Header } from "@/components/header";
@@ -123,6 +125,7 @@ export default function ProductsPage() {
   const [loadingProduct, setLoadingProduct] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [garmentImage, setGarmentImage] = useState<File | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [formData, setFormData] = useState<ProductFormData>({
     name: "",
@@ -134,6 +137,7 @@ export default function ProductsPage() {
     sold_quantity: 0,
     description: "",
     is_active: false,
+    vton_enabled: true,
     brand: "",
     gender: "unisex",
     material: "",
@@ -165,6 +169,7 @@ export default function ProductsPage() {
       sold_quantity: 0,
       description: "",
       is_active: false,
+      vton_enabled: true,
       brand: "",
       gender: "unisex",
       material: "",
@@ -172,6 +177,31 @@ export default function ProductsPage() {
       care_instructions: "",
     });
     setSelectedImage(null);
+    setGarmentImage(null);
+  };
+  /** Uploads files picked in the dialog. Each one is cleared once stored, so a retry never repeats it. */
+  const uploadPendingImages = async (productId: number) => {
+    if (selectedImage) {
+      const imageFormData = new FormData();
+      imageFormData.append("file", selectedImage);
+      imageFormData.append("is_primary", "true");
+      await apiUpload<{ id: string; url: string }>(
+        `/products/${productId}/upload-image`,
+        imageFormData,
+      );
+      setSelectedImage(null);
+    }
+    if (garmentImage) {
+      const garmentData = new FormData();
+      garmentData.append("file", garmentImage);
+      garmentData.append("is_primary", "false");
+      garmentData.append("kind", "vton_garment");
+      await apiUpload<{ id: string; url: string }>(
+        `/products/${productId}/images`,
+        garmentData,
+      );
+      setGarmentImage(null);
+    }
   };
   const handleCreateProduct = async () => {
     const { stock_quantity, reserved_quantity, sold_quantity, ...createPayload } = formData;
@@ -181,15 +211,7 @@ export default function ProductsPage() {
     );
     if (!createdProduct.id) return;
     setEditingProduct(createdProduct);
-    if (selectedImage) {
-      const imageFormData = new FormData();
-      imageFormData.append("file", selectedImage);
-      imageFormData.append("is_primary", "true");
-      await apiUpload<{ id: string; url: string }>(
-        `/products/${createdProduct.id}/upload-image`,
-        imageFormData,
-      );
-    }
+    await uploadPendingImages(createdProduct.id);
 
     await mutateProducts();
     resetFormData();
@@ -217,6 +239,7 @@ export default function ProductsPage() {
       sold_quantity: product.sold_quantity,
       description: product.description || "",
       is_active: product.is_active,
+      vton_enabled: product.vton_enabled ?? true,
       brand: product.brand || "",
       gender: product.gender || "unisex",
       material: product.material || "",
@@ -239,15 +262,7 @@ export default function ProductsPage() {
       `/products/${editingProduct.id}`,
       patchPayload,
     );
-    if (selectedImage) {
-      const imageFormData = new FormData();
-      imageFormData.append("file", selectedImage);
-      imageFormData.append("is_primary", "true");
-      await apiUpload<{ id: string; url: string }>(
-        `/products/${editingProduct.id}/upload-image`,
-        imageFormData,
-      );
-    }
+    await uploadPendingImages(editingProduct.id);
     await mutateProducts();
     resetFormData();
     setEditingProduct(null);
@@ -280,7 +295,14 @@ export default function ProductsPage() {
         {productsError && <p role="alert"><span>{productsError.message}</span> <button onClick={()=>mutateProducts()}>Retry products</button></p>}
         {categoriesError && <p role="alert"><span>{categoriesError.message}</span> <button onClick={()=>retryCategories()}>Retry categories</button></p>}
         {categoriesLoading && <p>Loading categories...</p>}
-        {saveError && !createDialogOpen && <p role="alert">{saveError}</p>}
+        {saveError && !createDialogOpen && (
+          <p
+            role="alert"
+            className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
+          >
+            {saveError}
+          </p>
+        )}
         {/* Filters and Controls */}
         <div className="space-y-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -451,6 +473,28 @@ export default function ProductsPage() {
                       )}
                     </div>
                   </div>
+                  <div className="grid gap-2 rounded border border-border p-3">
+                    <label htmlFor="vton_enabled" className="flex items-center gap-2 text-sm font-medium">
+                      <input
+                        id="vton_enabled"
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={formData.vton_enabled !== false}
+                        onChange={(e) => updateFormData("vton_enabled", e.target.checked)}
+                      />
+                      Offer virtual try-on
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Turn off if the model does not try this garment on well. For a good result: garment only on a plain
+                      background, front view, no mannequin or person, PNG/JPG/WEBP at least 256 px and up to 5MB, tagged
+                      with the right colour. Best for tops; the category must support try-on.
+                    </p>
+                    <TryOnStatus
+                      productId={editingProduct?.id}
+                      imageId={editingProduct?.images?.find(image => image.kind !== "vton_garment" && /\.(png|jpe?g|webp)$/i.test(image.url.split("?")[0]))?.id}
+                      refreshKey={`${editingProduct?.images?.length ?? 0}-${editingProduct?.category?.id ?? ""}`}
+                    />
+                  </div>
                   <div className="grid gap-2">
                     <label
                       htmlFor="description"
@@ -536,7 +580,14 @@ export default function ProductsPage() {
                       onChange={(e) => updateFormData("care_instructions", e.target.value)}
                     />
                   </div>
-                  {saveError && <p role="alert">{saveError}</p>}
+                  {saveError && (
+                    <p
+                      role="alert"
+                      className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
+                    >
+                      {saveError}
+                    </p>
+                  )}
                   <AdminProductImages
                     onFileSelected={setSelectedImage}
                     onBusyChange={setImageBusy}
@@ -553,13 +604,23 @@ export default function ProductsPage() {
                       }
                     }}
                   />
+                  {!editingProduct && (
+                    <ImageUploader
+                      kind="vton_garment"
+                      isPrimary={false}
+                      label="Try-on garment image (optional)"
+                      hint="Garment only, plain background, at least 256 px. Enables virtual try-on."
+                      onFileSelected={setGarmentImage}
+                      onUploadSuccess={() => {}}
+                    />
+                  )}
                 </div>
 
                 <div className="flex gap-2 justify-end">
                   <Button
                     variant="outline"
                     disabled={saving || imageBusy}
-                    onClick={() => { setCreateDialogOpen(false); setSelectedImage(null); }}
+                    onClick={() => { setCreateDialogOpen(false); setSelectedImage(null); setGarmentImage(null); }}
                   >
                     Cancel
                   </Button>
@@ -706,6 +767,11 @@ export default function ProductsPage() {
                               className="text-[11px] bg-amber-50 text-amber-700 border-amber-200"
                             >
                               Hidden from the store until variants are added
+                            </Badge>
+                          )}
+                          {product.vton_enabled === false && (
+                            <Badge variant="outline" className="text-[11px] text-muted-foreground">
+                              Try-on off
                             </Badge>
                           )}
                         </div>

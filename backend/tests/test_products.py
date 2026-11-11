@@ -99,6 +99,7 @@ def test_create_product_returns_typed_response(client, mock_admin_auth):
         "in_stock",
         "currency",
         "is_active",
+        "vton_enabled",
         "brand",
         "gender",
         "material",

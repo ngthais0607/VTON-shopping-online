@@ -43,7 +43,9 @@ $env:HF_HOME="$env:MODELS_DIR\hf"; $env:PYTHONPATH='D:\vton-local\CatVTON'
 D:\vton-local\venv\Scripts\python.exe -m uvicorn app:app --app-dir D:\vton-local --host 0.0.0.0 --port 8080
 ```
 
-3. In `.env` set `VTON_ENGINE=catvton` and `VTON_SERVICE_URL=http://host.docker.internal:8080`, then `docker compose up -d --no-deps vton_worker`.
+3. Keep the VTON worker in Compose (`restart: always`, survives reboots): set `VTON_ENGINE=catvton` and `VTON_SERVICE_URL=http://host.docker.internal:8080` in `.env`, then `docker compose up -d --no-deps vton_worker`. Start the native service first. Never run a second worker (e.g. a native `arq app.vton_worker.WorkerSettings`) at the same time: both would compete for the `vton` queue.
+4. A helper like `start-service.ps1` (sets the env vars above, skips if `/health` already answers, starts uvicorn hidden, waits for "Ready") avoids retyping step 2 after every reboot. `/health` is `loading` until the weights are in memory (1-3 min).
+5. Never restart the service or worker while a task is `processing`: the in-flight request is lost and ARQ will not retry it (`max retries exceeded`), so the task stays stuck until you mark it failed. The service log prints `denoise step n/N done` for progress.
 
 Keep the timeouts in mind: one image takes 45-50 min, the worker waits at most 1 h and the recovery cron fails a task after 75 min. The service handles one image at a time, so a second task waits. It stops when the machine shuts down and must be started by hand. Results are purged after 24 h.
 
@@ -56,6 +58,10 @@ Garment images: `ProductImage.kind = vton_garment` (or `flat_lay`/`catalog`), ra
 ## Garment images (no seed data)
 
 The project ships no seed data, so a product only offers try-on once an administrator uploads a raster garment image for it. In the admin product page choose the image type "Try-on garment" and, for multi-colour products, the matching colour (API: `kind=vton_garment`, `color_name`).
+
+Requirements for a successful try-on: garment only (no mannequin or person), front view, plain background, PNG/JPG/WEBP, at most 5MB, matching colour tag. `vton_garment` uploads must be at least 256 px on each side (`image_too_small`); the admin uploader also rejects corrupt or oversized files before upload. The Create Product dialog accepts an optional garment image so new products can offer try-on immediately.
+
+Per-product switch: `products.vton_enabled` (default true; migration `b9c8d7e6f5a4`). Admins can untick "Offer virtual try-on" in the product form when the model handles a garment poorly; eligibility then returns `disabled_by_admin`.
 
 `frontend/public/garments/` keeps 24 ready-made studio photos (flat-lay garment on a white background, 768×1024), named `<product-slug>__<colour-slug>.png`, that can be uploaded this way.
 
