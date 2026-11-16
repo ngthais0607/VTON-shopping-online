@@ -22,9 +22,10 @@ pipeline {
             dir('backend') {
               sh '''
                 set -e
-                uv venv --python 3.12 .venv-ci
+                uv venv --seed --python 3.12 .venv-ci
                 . .venv-ci/bin/activate
-                uv pip install --require-hashes -r requirements-dev-lock.txt
+                pip install --require-hashes -r requirements-dev-lock.txt
+                pip check
                 ruff check app tests
                 ruff format --check app tests
                 python -m pytest tests --ignore=tests/integration -q
