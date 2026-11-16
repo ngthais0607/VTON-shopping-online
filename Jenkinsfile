@@ -22,8 +22,9 @@ pipeline {
             dir('backend') {
               sh '''
                 set -e
-                uv venv --seed --python 3.12 .venv-ci
-                . .venv-ci/bin/activate
+                # Must be named .venv: tests/test_architecture.py skips only that name.
+                uv venv --seed --python 3.12 .venv
+                . .venv/bin/activate
                 pip install --require-hashes -r requirements-dev-lock.txt
                 pip check
                 ruff check app tests
