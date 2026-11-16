@@ -15,8 +15,13 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 RUN uv python install 3.12 && chmod -R a+rX /opt/uv-python
 
-# Docker CLI only (talks to the host daemon through the mounted socket);
+# Docker CLI + compose plugin (tests/test_compose_contract.py runs `docker compose config`);
 # used by the MariaDB integration stage to start a disposable database.
 COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker:27-cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
+
+# The controller runs as root (to reach the Docker socket) on a jenkins_home whose
+# files belong to uid 1000; without this git rejects those workspaces.
+RUN git config --system --add safe.directory '*'
 
 USER jenkins
