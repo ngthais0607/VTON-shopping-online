@@ -15,4 +15,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv-python
 RUN uv python install 3.12 && chmod -R a+rX /opt/uv-python
 
+# Docker CLI only (talks to the host daemon through the mounted socket);
+# used by the MariaDB integration stage to start a disposable database.
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+
 USER jenkins
