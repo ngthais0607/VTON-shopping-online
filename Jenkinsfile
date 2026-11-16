@@ -73,8 +73,10 @@ pipeline {
             docker run -d --name "$NAME" --network "$NET" --network-alias db               -e MARIADB_ROOT_PASSWORD=password123               -e MARIADB_DATABASE=fastapi_founder_test               mariadb:11.2
             docker network connect "$NET" "$(hostname)"
 
+            # Ping over TCP (127.0.0.1): the image's temporary init server answers on the
+            # unix socket but has networking disabled, so a socket ping succeeds too early.
             for i in $(seq 1 30); do
-              if docker exec "$NAME" mariadb-admin ping -h localhost -uroot -ppassword123 >/dev/null 2>&1; then
+              if docker exec "$NAME" mariadb-admin ping -h 127.0.0.1 --protocol=tcp -uroot -ppassword123 >/dev/null 2>&1; then
                 break
               fi
               if [ "$i" = 30 ]; then echo "MariaDB did not become ready"; exit 1; fi
