@@ -56,3 +56,6 @@ docs/superpowers/
 output/
 .codex/
 venv_install.log
+
+# Assistant-generated documents kept outside version control
+Claude outputs/

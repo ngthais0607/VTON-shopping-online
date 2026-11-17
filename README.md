@@ -1,215 +1,178 @@
-# TrueLook — E-Commerce Platform & Admin Dashboard
+<h1 align="center">TrueLook</h1>
 
-A full-stack clothing shop with a customer storefront, an admin dashboard, a versioned FastAPI API, variant-based inventory, COD and VietQR checkout, MinIO product images, and ARQ background jobs, and an optional virtual try-on (mock engine by default, CatVTON on GPU or, slowly, on CPU).
+<p align="center">
+  A fashion storefront with virtual try-on, checkout, and an admin dashboard.
+</p>
 
-Virtual try-on is implemented; see the [virtual try-on guide](docs/VTON.md). The default `VTON_ENGINE=mock` never runs AI and stamps "DEMO PREVIEW" on results. VietQR supports QR generation and an application-specific payment webhook; automatic bank/provider integration is a separate step.
+<p align="center">
+  <strong>Next.js</strong> · <strong>FastAPI</strong> · <strong>MariaDB</strong> · <strong>Docker Compose</strong>
+</p>
 
-## 📑 Table of Contents
+<p align="center">
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#tech-stack">Tech Stack</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#project-structure">Project Structure</a> ·
+  <a href="#virtual-try-on">Virtual Try-On</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#development">Development</a> ·
+  <a href="#documentation">Documentation</a>
+</p>
 
-- [Architecture Overview](#architecture-overview)
-- [Tech Stack](#tech-stack)
-- [Key Features](#key-features)
-- [Directory Structure](#directory-structure)
-- [Prerequisites](#prerequisites)
-- [Getting Started & Installation](#getting-started--installation)
-- [Configuration](#configuration)
-- [First Admin Account](#first-admin-account)
-- [API Documentation](#api-documentation)
-- [Frontend & Session Behavior](#frontend--session-behavior)
-- [Testing](#testing)
-- [Operations & Backups](#operations--backups)
-- [Current Limits & New Modules](#current-limits--new-modules)
-- [License](#license)
+---
 
-<a id="architecture-overview"></a>
-## 🏛 Architecture Overview
+## Features
 
-![TrueLook architecture: Next.js storefront and admin, FastAPI, MariaDB, Redis, MinIO, ARQ worker, and optional SMTP delivery](docs/assets/architecture.svg)
+| Area | What you can do |
+| --- | --- |
+| **Storefront** | Search and filter the catalog, read reviews, choose a size and color, and save items to a browser-local wishlist. |
+| **Virtual try-on** | Upload a portrait and preview an eligible garment. The default `mock` engine returns a stamped "DEMO PREVIEW" image without running AI; the optional `catvton` engine runs real CatVTON inference. |
+| **Checkout** | Place a multi-item order with cash on delivery (COD) or VietQR, track its status, and cancel eligible orders. The API recalculates prices and checks stock for each variant. |
+| **Administration** | Manage products and images, adjust variant inventory, review recent orders and low stock, and reconcile payments. |
 
-HTTP routers validate requests, enforce authorization, and delegate to feature services. Services own SQLAlchemy queries and explicit transactions. Order policy lives in a database-independent domain module. Storage, queue, email, and VietQR are integration boundaries; worker jobs call the relevant services.
+VietQR generates VND payment codes and processes confirmations through the application webhook. Automatic bank notifications require a separate provider integration. The example receiving account `0000000000` is fake: do not transfer real money to demo QR codes. [Payment setup](docs/PAYMENT_SETUP.md) · [Demo payments](docs/DEMO_PAYMENTS.md)
 
-The backend uses synchronous SQLAlchemy/PyMySQL and MinIO clients. It is not a fully asynchronous I/O stack. Email enqueue after a committed write is best effort; an enqueue failure does not roll back the order. SQL and object storage are not one atomic transaction: failed image metadata writes trigger best-effort object cleanup.
+## Tech Stack
 
-<a id="tech-stack"></a>
-## 💻 Tech Stack
+| **Layer** | **Technology** |
+| :--- | :--- |
+| **Architecture** | Next.js web app, FastAPI organized by feature, and separate ARQ workers |
+| **Runtime** | Python 3.12 and Node.js 22 in Docker |
+| **Frontend** | Next.js 16 App Router, React 19, TypeScript, Tailwind CSS, and Radix UI |
+| **Client Data** | Axios for API requests and SWR for caching and revalidation |
+| **API** | FastAPI on Uvicorn with versioned REST routes under `/api/v1` |
+| **Validation** | Pydantic schemas for API payloads and Zod schemas for forms |
+| **Error Handling** | FastAPI exception handlers with JSON fields `code`, `message`, and `details` for application errors |
+| **Database** | MariaDB 11.2, SQLAlchemy, and PyMySQL |
+| **Migrations** | Alembic with a dedicated migration service in Docker Compose |
+| **Caching and Rate Limits** | Redis 7 and SlowAPI |
+| **Authentication** | PyJWT access tokens, HttpOnly refresh cookies, and persistent device sessions |
+| **CORS** | FastAPI CORS middleware configured through `CORS_ORIGINS` |
+| **Background Jobs** | ARQ queues for order expiration, email, and virtual try-on |
+| **Media** | MinIO object storage and Pillow image validation |
+| **Virtual Try-On** | Mock engine by default; optional CatVTON inference service called over HTTP by the Dockerized ARQ worker |
+| **Payments** | Cash on delivery and VietQR with an application webhook and admin reconciliation |
+| **Email** | Jinja2 templates with console output or SMTP via aiosmtplib |
+| **API Docs** | OpenAPI and Swagger UI at `/docs` |
+| **Containerization** | Multi-stage backend and frontend Dockerfiles with Docker Compose orchestration |
+| **Testing and CI** | pytest, Hypothesis, Ruff, Vitest, Playwright, and GitHub Actions |
 
-| Layer | Technologies |
-|---|---|
-| Backend | Python, FastAPI, Pydantic, SQLAlchemy, Alembic |
-| Database | MariaDB 11.2; SQLite for unit tests |
-| Frontend | Next.js 16 App Router, React 19, TypeScript, Tailwind CSS, Radix UI |
-| Client data | Axios and SWR |
-| Authentication | JWT access tokens, HttpOnly refresh cookies, persistent device sessions |
-| Jobs and cache | Redis 7 and ARQ; scheduled order expiration and email jobs; separate ARQ worker for try-on |
-| Virtual try-on | Mock engine (default) or CatVTON inference in `vton-service/` (NVIDIA GPU, or a native CPU service, slow; see `docs/VTON.md`) |
-| Images | MinIO object storage, Pillow validation, Next.js image optimization |
-| Email | aiosmtplib and Jinja2; SMTP or console mode |
-| Verification | Pytest, Hypothesis, Ruff, Vitest, Testing Library, Playwright, GitHub Actions |
+## Architecture
 
-Dependencies are pinned in backend hash-locked requirements and the frontend pnpm lockfile. Docker builds use Python 3.12 and Node.js 22; pnpm is pinned to 10.33.4. The native Windows Python lockfiles target Python 3.13.
+### System overview
 
-MinIO is built from the official `RELEASE.2024-01-18T22-51-28Z` source, pinned to commit `19387cafab76133c2e7642de4aac8c81b9f4f8c7` in `docker/minio/Dockerfile`. This avoids relying on a Docker Hub release image that clean runners cannot pull. The first build downloads the upstream source and Go modules; the server release, ports, and `/data` volume stay the same. The image includes the upstream license and uses the HTTP readiness endpoint for its health check.
+![System architecture showing Next.js, FastAPI, MariaDB, MinIO, Redis, and the two ARQ workers](docs/assets/truelook-system.png)
 
-<a id="key-features"></a>
-## ✨ Key Features
+The storefront and admin dashboard share the FastAPI backend under `/api/v1`. Redis backs separate queues so try-on processing can run independently of order expiration and email delivery.
 
-### Customer storefront
+### Virtual try-on pipeline
 
-- Browse, search, filter, and paginate clothing by category, gender, brand, size, color, price, and availability.
-- View product galleries, descriptions, size charts, variant prices, and customer reviews.
-- Choose a color/size before adding a variant to the browser-backed cart. **Quick Buy opens the product detail page for variant selection.**
-- Check out multiple items as one order using COD or VietQR; server-side pricing and stock checks remain authoritative.
-- View order history, order details, and public tracking with masked personal information.
-- Cancel eligible orders: pending VietQR or confirmed COD before shipment, subject to server policy.
-- Register, sign in with an email or username, edit a profile, change a password, and sign out.
+![Virtual try-on pipeline from portrait upload and task creation through worker processing and private result delivery](docs/assets/truelook-virtual-try-on.png)
 
-### Admin dashboard
+The ARQ worker runs in Docker. With the default `VTON_ENGINE=mock` it calls no inference service. With `VTON_ENGINE=catvton` it calls CatVTON over HTTP at `VTON_SERVICE_URL`: `http://catvton:8080` for the GPU Compose profile, or `http://host.docker.internal:8080` for a service running natively on the host.
 
-- Manage products, drafts, active variants, categories, customer accounts, and orders.
-- Manage a product gallery and primary cover image, including upload, replacement, and deletion.
-- Maintain size/color/SKU variants, optional price overrides, and inventory adjustments with audit reasons.
-- View dashboard metrics, recent orders, and low-stock summaries.
-- Update fulfillment/payment states and review exceptional payments for reconciliation.
-
-### Commerce integrity
-
-- Inventory belongs to variants; checkout uses `variant_id` and preserves order-item snapshots.
-- Database constraints and row locking protect inventory and order transitions.
-- VietQR webhook handling checks its secret and payment details, avoids duplicate transaction recording, and records exceptional payments for review.
-- API image upload accepts static PNG/JPEG/WebP up to **5 MiB**, **8192 pixels per side**, and **16,000,000 total pixels**. Extension, MIME type, header, file structure, and decoded pixels are checked before storage. Corrupt, truncated, animated, or oversized images are rejected.
-
-<a id="directory-structure"></a>
-## 📂 Directory Structure
+## Project Structure
 
 ```text
-backend/
-  alembic/versions/        schema migrations
-  app/
-    core/                 settings, database, auth, errors, rate limiting, cache
-    features/             users, categories, products, orders, dashboard, health, vton
-    integrations/         MinIO, Redis queue, SMTP, VietQR
-    jobs/                 email and order-expiration tasks
-    templates/emails/     HTML notification templates
-    main.py               app factory, middleware, routes, startup
-    worker.py             ARQ tasks and cron configuration
-    vton_worker.py        separate ARQ worker for try-on tasks
-  scripts/                demo helpers (seed_users, simulate_vietqr_payment)
-  tests/                  unit/regression and MariaDB integration tests
-frontend/
-  app/                    storefront, auth, and admin routes
-  components/             shared UI components
-  hooks/                  data access and selection state
-  lib/                    API, sessions, types, and utilities
-  tests/                  Vitest component and client tests
-  e2e/                    Playwright acceptance scenarios
-vton-service/             CatVTON inference service (GPU, not part of normal CI)
-.github/
-  workflows/              CI checks
-  scripts/                disposable Compose tests, demo checks, and backup tools
-docs/                     environment, migration, payment, backup, and design guides
+.
+├── backend/
+│   ├── app/
+│   │   ├── core/             # Settings, database, authentication, and shared errors
+│   │   ├── features/         # Routes, schemas, models, and business logic
+│   │   ├── integrations/     # MinIO, Redis, VietQR, SMTP, and CatVTON clients
+│   │   ├── jobs/             # Order, email, and try-on tasks
+│   │   ├── main.py           # FastAPI app and middleware
+│   │   ├── worker.py         # Order and email worker
+│   │   └── vton_worker.py    # Dedicated virtual try-on worker
+│   ├── alembic/versions/     # Database migrations
+│   └── tests/               # Backend unit and integration tests
+├── frontend/
+│   ├── app/                 # Storefront, account, and admin routes
+│   ├── components/          # Shared UI and feature components
+│   ├── hooks/               # Client data and UI hooks
+│   ├── lib/                 # API client, sessions, types, and validation
+│   ├── tests/               # Vitest tests
+│   └── e2e/                 # Playwright scenarios
+├── vton-service/            # Optional CatVTON inference service
+├── docker/                  # Supporting container build files
+├── docs/
+│   └── assets/              # System and try-on diagrams
+├── .github/
+│   ├── workflows/           # GitHub Actions workflows
+│   └── scripts/             # Integration, smoke test, and backup scripts
+├── .env.example             # Sample local configuration
+└── docker-compose.yml       # Local stack and optional GPU profile
 ```
 
-<a id="prerequisites"></a>
-## 📋 Prerequisites
+[Backend guide](backend/README.md) · [Frontend guide](frontend/README.md) · [Documentation index](docs/README.md)
 
-- Docker Desktop with Linux containers and Docker Compose v2 for the full local stack.
-- Internet access for the first image/dependency build.
-- Python to run the smoke/backup scripts; use the backend virtual environment for integration tests.
-- Node.js 22 and pnpm 10.33.4 when running frontend development or browser tests outside Docker.
-- For native backend development: Python 3.13 on Windows or Python 3.12 on Linux to match the supplied lockfiles.
+## Quickstart
 
-Use an isolated local database. Do not run integration tests against production or shared data.
+### Prerequisites
 
-<a id="getting-started--installation"></a>
-## 🚀 Getting Started & Installation
+Use Docker with Linux containers and Docker Compose v2 or later. The first build needs an internet connection to fetch base images and dependencies.
 
-### 1. Run the complete Docker stack
+### Start the stack
 
-From the repository root in PowerShell:
+From the repository root, create a local configuration if you do not already have one. The examples below use PowerShell.
 
 ```powershell
-# Only copy the example if .env does not already exist.
-Copy-Item .env.example .env
-# Review/edit .env before starting the stack.
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+In `.env`, replace the example passwords, set `SECRET_KEY` to at least 32 characters, and make sure the application credentials match the MinIO credentials. Then start the stack and create the first administrator.
+
+```powershell
+docker compose config --quiet
 docker compose up --build -d --wait
 docker compose exec api python -m app.cli create-admin --email admin@your-domain.test --username shopadmin
 ```
 
-The root `.env.example` is the canonical Compose/backend example. Keep existing local configuration when updating the source. Replace example credentials before using the stack outside disposable local development.
+Compose applies database migrations before starting the API and workers. The admin command prompts for a password. With a fresh database, sign in to the admin dashboard, create a category, and add a product with an image and an in-stock variant. Register a customer account in the storefront to try checkout.
+
+### Local URLs
 
 | Service | Default address |
-|---|---|
-| Storefront | http://localhost:3000/store |
-| Admin sign-in | http://localhost:3000/login |
-| Admin dashboard | http://localhost:3000/dashboard |
-| API Swagger UI | http://localhost:8000/docs |
-| API health | http://localhost:8000/api/v1/health |
-| MinIO console | http://localhost:9001 |
-| MinIO API | localhost:9000 |
-| MariaDB | localhost:3307 |
-| Redis | localhost:6381 (container port 6379) |
+| --- | --- |
+| Storefront | [localhost:3000/store](http://localhost:3000/store) |
+| Admin sign-in | [localhost:3000/login](http://localhost:3000/login) |
+| Admin dashboard | [localhost:3000/dashboard](http://localhost:3000/dashboard) |
+| Swagger UI | [localhost:8000/docs](http://localhost:8000/docs) |
+| API health | [localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) |
+| MinIO console | [localhost:9001](http://localhost:9001) |
 
-Compose runs migrations before starting the API and worker. Confirm the schema version:
+## Virtual Try-On
 
-```powershell
-docker compose exec api alembic current
+Try-on works out of the box with the default `VTON_ENGINE=mock`, which `.env.example`, development, and CI use. The mock engine never runs AI and stamps "DEMO PREVIEW" on every result.
+
+To run real CatVTON natively on the host CPU (slow), start the host service first, then set these values in the repository root `.env`.
+
+```dotenv
+VTON_ENGINE=catvton
+VTON_SERVICE_URL=http://host.docker.internal:8080
 ```
 
-The current head is `a7d3e1f9c2b4`. See the [migration guide](docs/MIGRATION_NOTES.md) for revision history and destructive rollback limits.
-
-The main local Compose project is `truelook`, using the default ports above. Start and manage it from this repository with `docker compose`. For an additional isolated stack, use a different project name (for example, `docker compose -p truelook-test ...`) and distinct host ports. Do not start the retired `fastapi-founder` or `truelook-demo` stacks on this machine.
-
-### 2. Develop the frontend locally
-
-Keep the backend and infrastructure in Docker:
+Recreate the API and the try-on worker so they pick up the change.
 
 ```powershell
-docker compose up --build -d --wait mariadb redis minio migrate api arq_worker
-cd frontend
-Copy-Item .env.example .env.local
-pnpm install --frozen-lockfile
-pnpm dev
+docker compose up -d api vton_worker
 ```
 
-If Docker's frontend is already using port 3000, stop that service or use `pnpm dev --port 3001` and add the new origin to backend `CORS_ORIGINS`.
+`host.docker.internal` resolves on Docker Desktop. On Linux Docker Engine, add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `vton_worker` service or use an address of the host that containers can reach, and make the host service listen on `0.0.0.0`. To set up CatVTON on the host or use the optional NVIDIA GPU profile, follow the [virtual try-on guide](docs/VTON.md).
 
-### 3. Run the backend outside Docker
+1. In the admin dashboard, add a **Try-on garment** image to a product in a supported category. Tag the matching color if the product has multiple colors.
+2. Sign in as a customer, open the product page, and select **Virtual try-on**. Upload a portrait and give consent to process it.
+3. Wait for the dedicated worker to process the request. The result appears in the storefront when it is ready.
 
-From `backend/` on Windows:
+Portraits and results are private to the customer who submitted the task and expire after 24 hours by default. For supported categories, image requirements, and engine setup, see the [virtual try-on guide](docs/VTON.md).
 
-```powershell
-python -m venv .venv
-.venv/Scripts/python.exe -m pip install --require-hashes -r requirements-dev-windows-lock.txt
-.venv/Scripts/python.exe -m pip check
-Copy-Item ../.env.example .env
-```
+## Configuration
 
-On Linux/Python 3.12, install `requirements-dev-lock.txt` using `.venv/bin/python` instead.
-
-Edit `backend/.env`: set `DATABASE_URL` and `REDIS_URL` to the host-exposed MariaDB/Redis ports, and `MINIO_ENDPOINT` to the host-exposed MinIO endpoint. Container names such as `mariadb:3306` only resolve inside the Compose network. Credentials must match the root configuration; URL-encode special characters in connection-string credentials. Match the API port and CORS origin to your frontend.
-
-```powershell
-.venv/Scripts/python.exe -m alembic upgrade head
-.venv/Scripts/python.exe -m uvicorn app.main:app --reload --port 8000
-```
-
-### 4. Start the ARQ background worker
-
-In a second configured `backend/` terminal:
-
-```powershell
-.venv/Scripts/python.exe -m arq app.worker.WorkerSettings
-```
-
-A real Redis connection is required for queued notifications and scheduled order expiration. `REDIS_URL=memory://` is a test/fallback mode, not a durable in-memory queue. The Compose worker is available when native worker behavior is unsuitable for your platform.
-
-<a id="configuration"></a>
-## ⚙️ Configuration
-
-Environment variables override `.env`. The frontend has its own `.env.local` for native development. Do not commit real secrets or local `.env` files.
+Environment variables override `.env`. The frontend has its own `.env.local` for native development. Do not commit real secrets or local `.env` files. Variables that are not in `.env.example` fall back to the defaults in `docker-compose.yml` and `backend/app/core/config.py`.
 
 | Settings | Purpose |
-|---|---|
+| --- | --- |
 | `MARIADB_ROOT_PASSWORD`, `MARIADB_DATABASE`, `MARIADB_USER`, `MARIADB_PASSWORD` | Database setup; application connections use the app user |
 | `REDIS_PASSWORD` | Redis authentication |
 | `SECRET_KEY` | JWT signing key; minimum 32 characters |
@@ -228,138 +191,52 @@ Environment variables override `.env`. The frontend has its own `.env.local` for
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAILS_FROM_EMAIL`, `EMAILS_FROM_NAME` | SMTP sender configuration |
 | `MARIADB_PORT`, `REDIS_PORT`, `MINIO_PORT`, `MINIO_CONSOLE_PORT`, `API_PORT`, `FRONTEND_PORT` | Host-port overrides |
 
-Compose derives `DATABASE_URL` and `REDIS_URL` from its credentials unless explicitly overridden. After changing host ports, update the corresponding public URLs and `CORS_ORIGINS`. **Rebuild the frontend when changing `NEXT_PUBLIC_*` values** because they are embedded at build time.
+Compose derives `DATABASE_URL` and `REDIS_URL` from its credentials unless they are set explicitly. After changing host ports, update the matching public URLs and `CORS_ORIGINS`. To send real email, set `EMAILS_ENABLED=true`, `EMAILS_CONSOLE_LOG=false`, and valid SMTP credentials; console mode logs a rendered notification and does not deliver it.
 
-Compose configures the frontend's internal MinIO rewrite through `MINIO_INTERNAL_URL`; browsers use `/storage/<bucket>/...`. Vercel Analytics renders only when `NODE_ENV=production` and `VERCEL=1`; the self-hosted Docker build does not load its script by default.
+## Development
 
-To send real email, set `EMAILS_ENABLED=true`, `EMAILS_CONSOLE_LOG=false`, and valid SMTP credentials. Console mode logs a rendered notification; it does not deliver it.
+Use Node.js 22 and pnpm 10.33.4 for frontend development. The backend lockfiles target Python 3.13 on Windows and Python 3.12 on Linux. The component guides cover hot reload, dependency installation, and test setup. [Frontend guide](frontend/README.md) · [Backend guide](backend/README.md)
 
-<a id="first-admin-account"></a>
-## First Admin Account
+### Tests
 
-The project ships **no seed catalog**: a new database starts with no users, categories, products or orders. Existing database contents are preserved. Create the first administrator with the CLI (it prompts for the password; public registration cannot assign an admin role):
+| Check | Run from | Command |
+| --- | --- | --- |
+| Backend unit and regression tests | `backend/` | `.venv/Scripts/python.exe -m pytest tests --ignore=tests/integration -q` |
+| Backend lint and format | `backend/` | `.venv/Scripts/python.exe -m ruff check app tests` and `.venv/Scripts/python.exe -m ruff format --check app tests` |
+| Frontend unit tests and type check | `frontend/` | `pnpm test` and `pnpm exec tsc --noEmit` |
+| Frontend lint and build | `frontend/` | `pnpm exec eslint . --max-warnings=0` and `pnpm build` |
+| MariaDB integration tests | Repository root | `backend/.venv/Scripts/python.exe .github/scripts/run_integration.py` |
+| Full-stack smoke test | Repository root | `backend/.venv/Scripts/python.exe .github/scripts/compose_smoke.py` |
 
-```powershell
-docker compose exec api python -m app.cli create-admin --email admin@your-domain.test --username shopadmin
-```
+The commands use Python from the backend virtual environment, not the system Python; on Linux the interpreter is `.venv/bin/python`. Set `REDIS_URL=memory://` and `EMAILS_ENABLED=false` in the backend unit test shell. Keep `test.db` dedicated to tests. The integration and smoke scripts create and remove their own disposable Docker resources; do not point `TEST_DATABASE_URL` at the main database or any data you need to keep. To include browser scenarios in the smoke test, run `pnpm install --frozen-lockfile` and then `pnpm exec playwright install chromium` from `frontend/`, and set `SMOKE_BROWSER_TESTS=1` before running the script.
 
-For local demos only, `backend/scripts/seed_users.py` creates an admin and a customer account (idempotent; refuses to run when `APP_ENV=production`). From `backend/`: `python -m scripts.seed_users`, add `--reset-password` to reset existing passwords. Override credentials with `SEED_ADMIN_*` / `SEED_USER_*` environment variables.
+## Documentation
 
-Then sign in at `/login`, create categories, products, variants and images from the admin area, and register customer accounts through the storefront.
+| Topic | Reference |
+| --- | --- |
+| Compose project, host ports, and local services | [Local environment](docs/LOCAL_ENVIRONMENT.md) |
+| Environment variables | [Configuration](#configuration) · [Environment example](.env.example) |
+| COD, VietQR, and payment reconciliation | [Demo payments](docs/DEMO_PAYMENTS.md) · [Payment setup](docs/PAYMENT_SETUP.md) |
+| CatVTON, garment images, and retention | [Virtual try-on](docs/VTON.md) |
+| Schema changes and data recovery | [Migration notes](docs/MIGRATION_NOTES.md) · [Backup and restore](docs/DEMO_BACKUP.md) |
+| Storefront and admin design | [Design references](docs/design-review/README.md) |
 
-<a id="api-documentation"></a>
-## 📚 API Documentation
-
-Swagger UI is available at `/docs`, ReDoc at `/redoc`, and the OpenAPI document at `/openapi.json`. Application endpoints use `/api/v1`.
-
-| Group | Main operations |
-|---|---|
-| `/users` | Register, login, refresh, logout, current profile/password; admin customer management |
-| `/categories` | Public reads and admin CRUD; hierarchy limited to two levels |
-| `/products` | Public catalog/detail, filters, reviews, admin CRUD and image management |
-| `/variants` | Admin variant management and audited stock adjustment |
-| `/orders` | Cart checkout, owner/admin reads, cancellation, status changes, payment webhook, reconciliation and public tracking |
-| `/dashboard` | Admin metrics, recent orders and low-stock summaries |
-| `/health` | Database/Redis status |
-
-Paged collections use `{ "items": [], "total": 0, "limit": 20, "offset": 0 }`; individual endpoints define their own default limits. Application errors use `{ "code": "...", "message": "...", "details": null }`. FastAPI request-validation errors retain their 422 format. See OpenAPI for exact payloads and access requirements.
-
-### Checkout and payment behavior
-
-- `POST /api/v1/orders/checkout-cart` requires authenticated checkout and `variant_id` for every line. Prices, totals, and stock are recalculated by the server. A cart must use one currency; VietQR accepts VND only.
-- COD is the storefront default and starts as `confirmed`. A typical admin flow is `confirmed → shipped → delivered → paid`; fulfillment and payment are separate concerns.
-- VietQR starts as `pending`. Valid webhook confirmation or admin reconciliation marks payment; expired/cancelled order handling follows the server's transition policy.
-- `POST /api/v1/orders/vietqr-webhook` implements this application's callback contract. **SePay/Casso adapters and automatic bank connectivity are not implemented.** Bank settings and a secret alone do not enable bank notifications.
-- Public order tracking uses `GET /api/v1/orders/track/{public_code}` and masks personal data. Closing a QR modal does not confirm payment.
-
-Use the fake example receiving account `0000000000` for demos; do not transfer real money to demo QR codes. See [demo payment instructions](docs/DEMO_PAYMENTS.md) and [payment setup](docs/PAYMENT_SETUP.md).
-
-<a id="frontend--session-behavior"></a>
-## 🔐 Frontend & Session Behavior
-
-The API client normalizes `NEXT_PUBLIC_API_BASE_URL` so `/api/v1` appears once. Use `localhost` or `127.0.0.1` consistently and configure CORS/cookies for the same frontend origin.
-
-Access tokens stay in frontend memory. Refresh tokens use HttpOnly cookies and persistent device sessions. Tabs coordinate refresh/session changes, while separate devices have independent refresh sessions. Logout revokes the current device's refresh session; changing a password revokes all refresh sessions. Already-issued access tokens retain their expiration semantics.
-
-The cart persists variant IDs and quantities in the browser; the server remains authoritative at checkout. Wishlist data is browser-only and is not synchronized between accounts or devices. Duplicate client submissions are blocked during a pending checkout, but this is not a guarantee of server-side idempotency after a lost response.
-
-<a id="testing"></a>
-## 🧪 Testing
-
-### Backend unit and regression tests
-
-From `backend/` with development dependencies installed:
-
-```powershell
-$env:REDIS_URL='memory://'
-$env:EMAILS_ENABLED='false'
-.venv/Scripts/python.exe -m pytest tests --ignore=tests/integration -q
-.venv/Scripts/python.exe -m ruff check app tests
-.venv/Scripts/python.exe -m ruff format --check app tests
-```
-
-Fixtures create/drop SQLite tables in `./test.db` in the process working directory. Keep that file dedicated to tests. Open a fresh terminal or remove test environment overrides before running the application again.
-
-### Disposable MariaDB integration tests
-
-From the repository root with Docker running:
-
-```powershell
-backend/.venv/Scripts/python.exe .github/scripts/run_integration.py
-```
-
-The script creates an owned disposable database/container, exercises migration/concurrency cases, and removes its resources. Do not point `TEST_DATABASE_URL` at data you need to keep.
-
-### Frontend checks
-
-From `frontend/`:
-
-```powershell
-pnpm test
-pnpm exec tsc --noEmit
-pnpm exec eslint . --max-warnings=0
-pnpm build
-```
-
-### Full-stack build and browser smoke
-
-Install frontend dependencies and Chromium first (`pnpm exec playwright install chromium` from `frontend/`). Then, from the repository root:
-
-```powershell
-$env:SMOKE_BROWSER_TESTS='1'
-backend/.venv/Scripts/python.exe .github/scripts/compose_smoke.py
-```
-
-This builds source in a separate Compose project, verifies the API/worker/Redis/MinIO and browser flows, then removes that project's containers and volumes.
-
-<a id="operations--backups"></a>
-## 🛠 Operations & Backups
+Use the same hostname across frontend and API configuration so that CORS and cookies work as expected. Rebuild the frontend after changing `NEXT_PUBLIC_*` variables. These commands show stack status, recent logs, and the current database revision.
 
 ```powershell
 docker compose ps
-docker compose logs --tail 100 api arq_worker frontend
-docker compose exec arq_worker arq --check app.worker.WorkerSettings
+docker compose logs --tail 100 migrate api arq_worker vton_worker frontend
+docker compose exec api alembic current
 ```
 
-- Startup failures: inspect `.env`, migration logs, database credentials, and `alembic current`.
-- Authentication failures: check hostname consistency, `CORS_ORIGINS`, and the HTTP/HTTPS refresh-cookie settings.
-- Missing images: check MinIO, bucket/public URLs, the internal image rewrite, and build-time frontend settings.
-- Stalled expiration or notifications: check the ARQ worker, Redis authentication, and email mode. Successful enqueue does not prove SMTP delivery.
-- Health reports database/Redis status; `storage=configured` is not a live MinIO availability check. Verify the worker and storage separately.
-- `docker compose down` retains volumes. Adding `--volumes` deletes that project's database and image data.
+- The health endpoint reports database and Redis status only. `storage=configured` is not a live MinIO check, so verify MinIO and the workers separately.
+- The main Compose project is `truelook`. For an extra isolated stack, use another project name and different host ports. Do not start the retired `fastapi-founder` or `truelook-demo` stacks on this machine.
+- `docker compose down` preserves volumes. Adding `--volumes` deletes the project's database and image data. SQL dumps do not include MinIO objects, so back up MariaDB and MinIO separately.
 
-See [backup and restore](docs/DEMO_BACKUP.md). SQL dumps do not include MinIO objects: back up product images separately, especially admin uploads. The [documentation index](docs/README.md) links the retained operational and design guides; [local environment](docs/LOCAL_ENVIRONMENT.md) records canonical ports and recovery volumes. Use the testing commands above to verify current source.
+## Current Limits
 
-<a id="current-limits--new-modules"></a>
-## 🧩 Current Limits & New Modules
+Contact does not submit messages, the wishlist is browser-only, and the blog, careers, and press pages are informational. Dynamic shipping rates, carrier integrations, coupons, automatic refunds, and SePay/Casso bank adapters are not implemented. Real CatVTON output is not verified in CI, and load, GPU inference, and real SMTP delivery have not been benchmarked. Green unit tests alone are not production certification.
 
-Contact does not submit messages, wishlist is browser-only, and blog/careers/press pages are informational. Dynamic shipping rates, carrier integrations, coupons, and automatic refunds are not implemented. VTON is implemented (see below) but real CatVTON output is unverified on this repository's CI. Load/p95 latency, GPU inference, and real SMTP delivery have not been benchmarked or certified.
+## License
 
-A new module should start as a feature slice with its own router, schemas, service, models, and Alembic revisions. Preserve `variant_id` contracts, order-item snapshots, and inventory invariants. Long-running work needs its own durable task states, retries/idempotency, recovery behavior, and worker/queue boundaries rather than sharing order-expiration work. User photos require private storage, ownership checks, and a retention/deletion policy; the public product-image path is not suitable.
-
-See the [virtual try-on guide](docs/VTON.md) (architecture, mock vs. CatVTON engine, GPU setup, privacy, limits). A stable release still requires environment-specific acceptance and recovery checks; green unit tests alone are not production certification.
-
-<a id="license"></a>
-## 📄 License
-
-Proprietary project. No public license is granted by this repository.
+TrueLook is proprietary. This repository does not grant a public license.
