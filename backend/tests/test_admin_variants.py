@@ -507,3 +507,48 @@ def test_bulk_create_variants_supports_explicit_and_mixed_complete_payloads(
     assert len(all_vars) == 4
     sizes = {v["size"] for v in all_vars}
     assert {"S", "M", "L", "XL"} == sizes
+
+
+def test_delete_variant_soft_deactivates_if_try_on_tasks_exist(
+    client, db_session, mock_admin_auth
+):
+    from datetime import datetime
+
+    from app.features.vton.model import VtonTask
+
+    product = Product(name="Tee", slug="tee-vton", price=90000, is_active=True)
+    db_session.add(product)
+    db_session.flush()
+    variant = ProductVariant(
+        product_id=product.id,
+        sku="tee-vton-WHT-M",
+        size="M",
+        color_name="White",
+        stock_quantity=5,
+        is_active=True,
+    )
+    db_session.add(variant)
+    db_session.flush()
+    db_session.add(
+        VtonTask(
+            id="11111111-1111-1111-1111-111111111111",
+            user_id=mock_admin_auth.id,
+            product_id=product.id,
+            variant_id=variant.id,
+            cloth_type="upper",
+            status="succeeded",
+            engine="mock",
+            garment_object="products/garment.png",
+            consent_at=datetime(2026, 1, 1),
+        )
+    )
+    db_session.commit()
+    variant_id = variant.id
+
+    res = client.delete(f"/api/v1/variants/{variant_id}")
+    assert res.status_code in (200, 204)
+
+    db_session.expire_all()
+    kept = db_session.get(ProductVariant, variant_id)
+    assert kept is not None  # the try-on history still references it
+    assert kept.is_active is False

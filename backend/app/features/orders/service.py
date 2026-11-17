@@ -439,7 +439,13 @@ def reorder_order(
         notes=order.notes,
         payment_method=OrderPaymentMethod.VIETQR,
     )
-    return checkout_cart(db, user, command, queue, background_tasks=background_tasks)
+    # The new order belongs to the original customer even when an admin reorders.
+    owner = user if order.user_id == user.id else db.get(User, order.user_id)
+    if owner is None or owner.is_deleted:
+        raise BusinessRuleError(
+            "This order cannot be reordered", code="order_not_reorderable"
+        )
+    return checkout_cart(db, owner, command, queue, background_tasks=background_tasks)
 
 
 def list_orders(db: Session, limit: int, offset: int) -> Page[OrderResponse]:

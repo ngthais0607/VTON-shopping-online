@@ -91,3 +91,28 @@ def test_reorder_is_forbidden_for_another_customer(client, db_session, mock_user
 def test_reorder_unknown_code_is_404(client, db_session, mock_user_auth):
     response = client.post("/api/v1/orders/track/nope/reorder")
     assert response.status_code == 404
+
+
+def test_admin_reorder_keeps_the_order_with_its_customer(
+    client, db_session, mock_user_auth
+):
+    from app.core.security import get_current_user
+    from app.features.users.model import User
+
+    order, _ = _expired_order(client, db_session)
+    admin = User(
+        id=999,
+        username="admin_test",
+        email="admin@test.com",
+        password_hash="mock_hash",
+        role="admin",
+    )
+    db_session.add(admin)
+    db_session.commit()
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    response = _reorder(client, order)
+
+    assert response.status_code == 201
+    new = db_session.get(Order, response.json()["orders"][0]["id"])
+    assert new.user_id == mock_user_auth.id
