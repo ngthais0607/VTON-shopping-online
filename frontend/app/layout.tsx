@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
-import { Sidebar } from '@/components/sidebar'
 import './globals.css'
+import './admin-theme.css'
 import { LayoutClientWrapper } from '@/components/layout-client-wrapper'
 
 export const metadata: Metadata = {

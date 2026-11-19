@@ -1,12 +1,16 @@
-import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
-import Dashboard from '../app/dashboard/page';
+import { render,screen,waitFor } from '@testing-library/react';
 import { SWRConfig } from 'swr';
+import { afterEach,beforeEach,expect,it,vi } from 'vitest';
+import Dashboard from '../app/dashboard/page';
 const {get}=vi.hoisted(()=>({get:vi.fn()}));
 vi.mock('@/lib/api',()=>({apiGet:get}));
 vi.mock('@/components/header',()=>({Header:()=>null}));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+beforeEach(() => {
+  // jsdom has no layout engine; give ResponsiveContainer a measurable viewport.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 640, 256));
+});
+afterEach(() => { vi.restoreAllMocks(); });
 it('shows real summary rows without unsupported revenue trends or growth claims',async()=>{
   get.mockImplementation((path:string)=>Promise.resolve(path.endsWith('/metrics')
     ? {total_products:2,active_products:2,low_stock:1,pending_orders:1,revenue:25}

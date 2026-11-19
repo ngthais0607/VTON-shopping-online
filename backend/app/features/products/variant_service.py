@@ -23,6 +23,7 @@ from app.features.products.variant_schemas import (
     VariantPatch,
     VariantStockAdjustment,
 )
+from app.features.vton.model import VtonTask
 
 
 def bulk_create_variants(
@@ -259,7 +260,12 @@ def delete_variant(db: Session, variant_id: int) -> None:
             code="variant_not_found",
         )
 
-    if variant.order_items and len(variant.order_items) > 0:
+    # Order items and try-on history both reference the row: keep it, deactivated.
+    has_try_on = (
+        db.query(VtonTask.id).filter(VtonTask.variant_id == variant_id).first()
+        is not None
+    )
+    if variant.order_items or has_try_on:
         variant.is_active = False
         variant.updated_at = datetime.now(timezone.utc)
         db.commit()

@@ -1,16 +1,12 @@
-import hmac
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import BackgroundTasks
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
 from app.core.errors import (
-    AuthenticationError,
     BusinessRuleError,
     ConflictError,
     ForbiddenError,
@@ -24,29 +20,40 @@ from app.features.orders.domain import (
     CUSTOMER_CANCELLABLE,
     apply_order_transition,
     available_stock,
-    is_order_paid,
 )
-from app.features.orders.model import Order, OrderItem, Payment
+from app.features.orders.model import Order, OrderItem
+from app.features.orders.presenters import (  # noqa: F401  (re-exported)
+    _build_public_tracking_response,
+    _vietqr_response,
+    order_to_response,
+)
 from app.features.orders.schemas import (
+    CartItemRequest,
     CheckoutCommand,
     CheckoutResponse,
-    LatePaymentResponse,
-    OrderItemResponse,
     OrderResponse,
-    PublicTrackingItem,
     PublicTrackingResponse,
-    TrackingStep,
-    VietQRResponse,
-    VietQRWebhookPayload,
-    VietQRWebhookResponse,
-    mask_customer_name,
-    mask_customer_phone,
+)
+from app.features.orders.transitions import (  # noqa: F401  (re-exported)
+    _lock_transition_variants,
+    _record_paid,
+    _resolve_and_lock_order_inventory,
+)
+from app.features.orders.vietqr_memo import (  # noqa: F401  (re-exported)
+    _ANY_PREFIX_REGEX,
+    _MEMO_TOKEN_REGEX,
+    generate_order_payment_memo,
+    parse_order_ids_from_memo,
+)
+from app.features.orders.webhook import (  # noqa: F401  (re-exported)
+    _is_payment_transaction_uniqueness_error,
+    list_late_payments,
+    process_vietqr_webhook,
 )
 from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 from app.features.users.model import User
 from app.integrations.queue import TaskQueue
-from app.integrations.vietqr import build_vietqr_instructions, to_vnd_amount
 
 logger = logging.getLogger(__name__)
 
@@ -61,128 +68,6 @@ class OrderNotFoundError(ResourceNotFoundError):
 
 class InsufficientStockError(ConflictError):
     code = "insufficient_stock"
-
-
-def order_to_response(order: Order) -> OrderResponse:
-    payments = getattr(order, "payments", []) or []
-    payment = payments[-1] if payments else None
-    if payment and payment.status == "paid":
-        payment_status = "paid"
-    elif order.status == OrderStatus.PAID.value or (
-        hasattr(order, "paid_at") and order.paid_at is not None
-    ):
-        payment_status = "paid"
-    elif order.status == OrderStatus.CANCELLED.value:
-        payment_status = "cancelled"
-    elif order.status == OrderStatus.EXPIRED.value:
-        payment_status = "expired"
-    elif payment:
-        payment_status = payment.status
-    else:
-        payment_status = "pending"
-
-    order_items = getattr(order, "items", []) or []
-    items_res = [
-        OrderItemResponse(
-            id=item.id,
-            order_id=item.order_id,
-            product_id=item.product_id,
-            product_name=item.product_name,
-            unit_price=item.unit_price,
-            quantity=item.quantity,
-            subtotal=item.subtotal,
-            variant_id=item.variant_id,
-            sku=item.sku,
-            size=item.size,
-            color_name=item.color_name,
-        )
-        for item in order_items
-    ]
-
-    if order_items:
-        first_item = order_items[0]
-        product_id = first_item.product_id
-        if len(order_items) == 1:
-            product_name = first_item.product_name
-        else:
-            product_name = (
-                f"{first_item.product_name} và {len(order_items) - 1} sản phẩm khác"
-            )
-        unit_price = first_item.unit_price
-        quantity = sum(i.quantity for i in order_items)
-    else:
-        product_id = order.product_id if order.product_id is not None else 0
-        product_name = order.product_name or ""
-        unit_price = order.unit_price if order.unit_price is not None else Decimal(0)
-        quantity = order.quantity if order.quantity is not None else 0
-
-    public_code = getattr(order, "public_code", None)
-    if not public_code:
-        raise BusinessRuleError(
-            f"Order {order.id} is missing a required public_code",
-            code="order_missing_public_code",
-        )
-
-    return OrderResponse(
-        id=order.id,
-        public_code=public_code,
-        user_id=order.user_id,
-        product_id=product_id,
-        product_name=product_name,
-        unit_price=unit_price,
-        quantity=quantity,
-        total_amount=order.total_amount,
-        total=order.total_amount,
-        currency=order.currency,
-        status=OrderStatus(order.status),
-        customer_name=order.customer_name,
-        customer_phone=order.customer_phone,
-        shipping_address=order.shipping_address,
-        notes=order.notes,
-        payment_method=OrderPaymentMethod(order.payment_method),
-        payment_status=payment_status,
-        expires_at=order.expires_at,
-        paid_at=order.paid_at,
-        created_at=order.created_at,
-        items=items_res,
-    )
-
-
-def generate_order_payment_memo(order_id: int) -> str:
-    if order_id <= 0:
-        raise ValueError("order_id must be a positive integer")
-    return f"TL{order_id}"
-
-
-_MEMO_TOKEN_REGEX = re.compile(
-    r"(?i)(?<![A-Za-z0-9])(?:TL|TRUELOOK|LUXESTORE)[\s_-]*([1-9]\d*(?:(?:[xX]|_)[1-9]\d*)*)(?![A-Za-z0-9])"
-)
-
-_ANY_PREFIX_REGEX = re.compile(
-    r"(?i)(?<![A-Za-z0-9])(?:TL|TRUELOOK|LUXESTORE)[\s_-]*([A-Za-z0-9_-]+)"
-)
-
-
-def parse_order_ids_from_memo(content: str) -> list[int]:
-    if not content or not content.strip():
-        return []
-
-    all_prefix_matches = _ANY_PREFIX_REGEX.findall(content)
-    valid_matches = _MEMO_TOKEN_REGEX.findall(content)
-
-    if len(all_prefix_matches) != len(valid_matches) or len(valid_matches) != 1:
-        return []
-
-    token_body = valid_matches[0]
-    raw_ids = re.split(r"[xX_]", token_body)
-    ids = sorted(list({int(i) for i in raw_ids if i and int(i) > 0}))
-    return ids
-
-
-def _vietqr_response(order: Order) -> VietQRResponse:
-    memo = generate_order_payment_memo(order.id)
-    instructions = build_vietqr_instructions(order.total_amount, memo)
-    return VietQRResponse(**vars(instructions))
 
 
 async def _enqueue_best_effort(queue: TaskQueue, task_name: str, order_id: int) -> None:
@@ -201,6 +86,21 @@ async def _enqueue_best_effort(queue: TaskQueue, task_name: str, order_id: int) 
             },
             exc_info=True,
         )
+
+
+def demo_auto_pay_delay() -> int | None:
+    """Seconds before a demo order is auto-paid, or None when disabled."""
+    settings = get_settings()
+    if settings.app_env == "production" or settings.demo_auto_pay_seconds <= 0:
+        return None
+    return settings.demo_auto_pay_seconds
+
+
+async def _enqueue_demo_auto_pay(queue: TaskQueue, order_id: int, delay: int) -> None:
+    try:
+        await queue.enqueue("demo_auto_pay_order_task", order_id, defer_seconds=delay)
+    except Exception:
+        logger.exception("Failed to schedule demo auto-pay for order %s", order_id)
 
 
 def _dispatch_email(
@@ -368,6 +268,9 @@ def checkout_cart(
         background_tasks=background_tasks,
     )
 
+    if is_vietqr and (delay := demo_auto_pay_delay()) is not None:
+        background_tasks.add_task(_enqueue_demo_auto_pay, queue, order.id, delay)
+
     order_resp = order_to_response(order)
     response = CheckoutResponse(
         message="Checkout created successfully",
@@ -382,6 +285,51 @@ def checkout_cart(
 
 # Alias for centralized interface
 create_checkout = checkout_cart
+
+
+def reorder_order(
+    db: Session,
+    public_code: str,
+    user: User,
+    queue: TaskQueue,
+    background_tasks: BackgroundTasks,
+) -> CheckoutResponse:
+    """Place a brand-new VietQR order from an expired or cancelled one.
+
+    Goes through checkout_cart, so price, stock and locking are re-checked.
+    """
+    order = db.query(Order).filter(Order.public_code == public_code).first()
+    if order is None:
+        raise OrderNotFoundError("Order not found")
+    if user.role != "admin" and order.user_id != user.id:
+        raise ForbiddenError("You do not have permission to reorder this order")
+    if order.status not in (OrderStatus.EXPIRED.value, OrderStatus.CANCELLED.value):
+        raise BusinessRuleError(
+            "Only expired or cancelled orders can be ordered again",
+            code="order_not_reorderable",
+        )
+    if not order.items or any(item.variant_id is None for item in order.items):
+        raise BusinessRuleError(
+            "This order cannot be reordered", code="order_not_reorderable"
+        )
+    command = CheckoutCommand(
+        items=[
+            CartItemRequest(variant_id=item.variant_id, quantity=item.quantity)
+            for item in order.items
+        ],
+        customer_name=order.customer_name,
+        customer_phone=order.customer_phone,
+        shipping_address=order.shipping_address,
+        notes=order.notes,
+        payment_method=OrderPaymentMethod.VIETQR,
+    )
+    # The new order belongs to the original customer even when an admin reorders.
+    owner = user if order.user_id == user.id else db.get(User, order.user_id)
+    if owner is None or owner.is_deleted:
+        raise BusinessRuleError(
+            "This order cannot be reordered", code="order_not_reorderable"
+        )
+    return checkout_cart(db, owner, command, queue, background_tasks=background_tasks)
 
 
 def list_orders(db: Session, limit: int, offset: int) -> Page[OrderResponse]:
@@ -407,58 +355,6 @@ def get_order_for_user(db: Session, order_id: int, user: User) -> OrderResponse:
     if order is None or (user.role != "admin" and order.user_id != user.id):
         raise OrderNotFoundError("Order not found")
     return order_to_response(order)
-
-
-def _lock_transition_variants(
-    db: Session, variant_ids: set[int]
-) -> dict[int, ProductVariant]:
-    locked: dict[int, ProductVariant] = {}
-    for vid in sorted(variant_ids):
-        locked[vid] = (
-            db.query(ProductVariant)
-            .filter(ProductVariant.id == vid)
-            .populate_existing()
-            .with_for_update()
-            .one()
-        )
-    return locked
-
-
-def _resolve_and_lock_order_inventory(
-    db: Session, order_ids: list[int] | set[int]
-) -> dict[int, ProductVariant]:
-    items = db.query(OrderItem).filter(OrderItem.order_id.in_(order_ids)).all()
-    variant_ids: set[int] = set()
-
-    for item in items:
-        if item.variant_id is None:
-            raise RuntimeError(f"Order item {item.id} has no variant_id")
-        variant_ids.add(item.variant_id)
-
-    return _lock_transition_variants(db, variant_ids)
-
-
-def _record_paid(
-    db: Session,
-    order: Order,
-    provider: str,
-    transaction_id: str | None,
-    now: datetime,
-) -> None:
-    """Transition and record a receipt in the caller's locked transaction."""
-    apply_order_transition(order, OrderStatus.PAID, now)
-    if not any(payment.status == "paid" for payment in order.payments):
-        db.add(
-            Payment(
-                order=order,
-                provider=provider,
-                provider_transaction_id=transaction_id,
-                amount=order.total_amount,
-                currency=order.currency,
-                status="paid",
-                paid_at=order.paid_at,
-            )
-        )
 
 
 def change_order_status(
@@ -614,124 +510,6 @@ def list_user_orders(
     )
 
 
-def _build_public_tracking_response(order: Order) -> PublicTrackingResponse:
-    paid = (
-        order.status == OrderStatus.PAID.value
-        or (hasattr(order, "status") and order.status == OrderStatus.PAID)
-        or (getattr(order, "paid_at", None) is not None)
-    )
-    is_confirmed = order.status == OrderStatus.CONFIRMED.value
-    is_shipped = order.status in {
-        OrderStatus.SHIPPED.value,
-        OrderStatus.DELIVERED.value,
-    }
-    is_delivered = order.status == OrderStatus.DELIVERED.value
-
-    timeline = [
-        TrackingStep(
-            step=1,
-            title="Order Placed",
-            description="Order submitted and awaiting payment confirmation.",
-            completed=True,
-            timestamp=order.created_at,
-        ),
-        TrackingStep(
-            step=2,
-            title=(
-                "Payment Verified"
-                if order.payment_method != OrderPaymentMethod.COD.value
-                else "Order Confirmed"
-            ),
-            description=(
-                "VietQR bank transfer verified by an administrator."
-                if order.payment_method != OrderPaymentMethod.COD.value
-                else "Cash on delivery order confirmed for fulfillment."
-            ),
-            completed=paid or is_confirmed or is_shipped or is_delivered,
-            timestamp=order.paid_at
-            if paid
-            else (
-                order.created_at
-                if (is_confirmed or is_shipped or is_delivered)
-                else None
-            ),
-        ),
-        TrackingStep(
-            step=3,
-            title="Processing & Packing",
-            description="Item certified and packed for express dispatch.",
-            completed=is_shipped or is_delivered,
-            timestamp=None,
-        ),
-        TrackingStep(
-            step=4,
-            title="Delivered",
-            description="Order fulfilled and delivered to recipient.",
-            completed=is_delivered,
-            timestamp=None,
-        ),
-    ]
-
-    items = []
-    order_items = getattr(order, "items", []) or []
-    for item in order_items:
-        items.append(
-            PublicTrackingItem(
-                product_name=item.product_name,
-                size=item.size,
-                color_name=item.color_name,
-                quantity=item.quantity,
-            )
-        )
-    if not items and getattr(order, "product_name", None):
-        items.append(
-            PublicTrackingItem(
-                product_name=order.product_name,
-                size=None,
-                color_name=None,
-                quantity=getattr(order, "quantity", 1) or 1,
-            )
-        )
-
-    payments = getattr(order, "payments", []) or []
-    payment = payments[-1] if payments else None
-    if payment:
-        payment_status = payment.status
-    elif order.status == OrderStatus.PAID.value:
-        payment_status = "paid"
-    elif order.status == OrderStatus.EXPIRED.value:
-        payment_status = "failed"
-    else:
-        payment_status = "pending"
-
-    vietqr_data = None
-    if (
-        order.payment_method == OrderPaymentMethod.VIETQR.value
-        and order.status == OrderStatus.PENDING.value
-    ):
-        vietqr_data = _vietqr_response(order)
-
-    payload = {
-        "public_code": order.public_code,
-        "status": order.status,
-        "payment_status": payment_status,
-        "payment_method": order.payment_method,
-        "total_amount": order.total_amount,
-        "currency": order.currency,
-        "created_at": order.created_at,
-        "expires_at": order.expires_at,
-        "paid_at": order.paid_at,
-        "timeline": timeline,
-        "items": items,
-        "customer_name": mask_customer_name(order.customer_name),
-        "customer_phone": mask_customer_phone(order.customer_phone),
-    }
-    if vietqr_data is not None:
-        payload["vietqr"] = vietqr_data
-
-    return PublicTrackingResponse(**payload)
-
-
 def track_order_by_public_code(db: Session, public_code: str) -> PublicTrackingResponse:
     order = db.query(Order).filter(Order.public_code == public_code).first()
     if order is None:
@@ -802,318 +580,3 @@ def expire_pending_orders(
     if expired_count > 0:
         invalidate_dashboard_cache()
     return expired_count
-
-
-def _is_payment_transaction_uniqueness_error(exc: IntegrityError) -> bool:
-    msg = str(exc).lower()
-    return (
-        "uq_payments_provider_trans_id" in msg
-        or "payments.provider" in msg
-        or ("duplicate entry" in msg and "provider" in msg)
-        or ("unique constraint failed" in msg and "provider" in msg)
-    )
-
-
-def process_vietqr_webhook(
-    db: Session,
-    payload: VietQRWebhookPayload,
-    secret_header: str | None,
-) -> VietQRWebhookResponse:
-    settings = get_settings()
-    configured_secret = settings.vietqr_webhook_secret
-    if (
-        not configured_secret
-        or not secret_header
-        or not hmac.compare_digest(secret_header, configured_secret)
-    ):
-        raise AuthenticationError(
-            "Invalid or missing webhook secret", code="unauthorized_webhook"
-        )
-
-    if (
-        payload.account_number is not None
-        and payload.account_number != settings.vietqr_account_no
-    ):
-        raise BusinessRuleError(
-            "Webhook recipient account does not match the configured account",
-            code="account_mismatch",
-        )
-
-    distinct_order_ids = parse_order_ids_from_memo(payload.content)
-    if not distinct_order_ids:
-        logger.warning(
-            "VietQR webhook memo does not match pattern: %s", payload.content
-        )
-        raise BusinessRuleError("Invalid memo content", code="invalid_webhook_memo")
-
-    if len(distinct_order_ids) > 1:
-        raise BusinessRuleError(
-            "Multi-order payments are not supported in this version",
-            code="unsupported_multi_order_payment",
-        )
-    order_ids = distinct_order_ids
-
-    existing_payment = (
-        db.query(Payment)
-        .filter(
-            Payment.provider == "vietqr",
-            Payment.provider_transaction_id == payload.transaction_id,
-        )
-        .first()
-    )
-    if existing_payment:
-        if existing_payment.order_id not in order_ids:
-            raise BusinessRuleError(
-                f"Transaction {payload.transaction_id} is already associated with order {existing_payment.order_id}",
-                code="transaction_order_mismatch",
-            )
-        logger.info(
-            "VietQR webhook transaction %s already processed for order %s",
-            payload.transaction_id,
-            existing_payment.order_id,
-        )
-        return VietQRWebhookResponse(
-            status="already_processed",
-            message="Transaction already processed",
-            order_ids=[existing_payment.order_id],
-        )
-
-    # 1. Lock variants in ascending order first to avoid deadlocks
-    locked_variants = _resolve_and_lock_order_inventory(db, order_ids)
-
-    # 2. Lock orders in ascending order with populate_existing and FOR UPDATE
-    orders = (
-        db.query(Order)
-        .filter(Order.id.in_(order_ids))
-        .order_by(Order.id.asc())
-        .populate_existing()
-        .with_for_update()
-        .all()
-    )
-    if len(orders) != len(order_ids):
-        raise ResourceNotFoundError(
-            "One or more orders in memo not found", code="orders_not_found"
-        )
-
-    # Check under lock whether this transaction was already processed
-    existing_payment = (
-        db.query(Payment)
-        .filter(
-            Payment.provider == "vietqr",
-            Payment.provider_transaction_id == payload.transaction_id,
-        )
-        .first()
-    )
-    if existing_payment:
-        if existing_payment.order_id not in order_ids:
-            raise BusinessRuleError(
-                f"Transaction {payload.transaction_id} is already associated with order {existing_payment.order_id}",
-                code="transaction_order_mismatch",
-            )
-        logger.info(
-            "VietQR webhook transaction %s already processed for order %s",
-            payload.transaction_id,
-            existing_payment.order_id,
-        )
-        return VietQRWebhookResponse(
-            status="already_processed",
-            message="Transaction already processed",
-            order_ids=[existing_payment.order_id],
-        )
-
-    current_time = datetime.now(timezone.utc)
-    total_expected = sum(order.total_amount for order in orders)
-    if to_vnd_amount(total_expected) != to_vnd_amount(payload.amount):
-        db.add(
-            Payment(
-                order_id=orders[0].id,
-                provider="vietqr",
-                provider_transaction_id=payload.transaction_id,
-                amount=payload.amount,
-                currency=orders[0].currency,
-                status="amount_mismatch",
-                paid_at=payload.transacted_at or current_time,
-            )
-        )
-        try:
-            db.commit()
-        except IntegrityError as exc:
-            db.rollback()
-            if not _is_payment_transaction_uniqueness_error(exc):
-                raise
-            recorded = (
-                db.query(Payment)
-                .filter_by(
-                    provider="vietqr", provider_transaction_id=payload.transaction_id
-                )
-                .first()
-            )
-            if recorded is None:
-                raise
-            if recorded.order_id not in order_ids:
-                raise BusinessRuleError(
-                    "Transaction is already associated with another order",
-                    code="transaction_order_mismatch",
-                ) from exc
-            return VietQRWebhookResponse(
-                status="already_processed",
-                message="Transaction already recorded",
-                order_ids=order_ids,
-            )
-        return VietQRWebhookResponse(
-            status="amount_mismatch",
-            message="Received amount recorded for manual reconciliation",
-            order_ids=order_ids,
-        )
-    has_pending = False
-    has_late = False
-    has_duplicate = False
-    all_paid = True
-
-    for order in orders:
-        if order.status == OrderStatus.PENDING.value:
-            has_pending = True
-            all_paid = False
-            for item in order.items:
-                if item.variant_id:
-                    item.variant = locked_variants.get(item.variant_id)
-            _record_paid(db, order, "vietqr", payload.transaction_id, current_time)
-        elif order.status not in (
-            OrderStatus.EXPIRED.value,
-            OrderStatus.CANCELLED.value,
-        ) and is_order_paid(order):
-            # Order is already paid. Record duplicate payment without re-decrementing stock.
-            all_paid = False
-            has_duplicate = True
-            logger.warning(
-                "VietQR webhook received transaction %s for already-paid order %s",
-                payload.transaction_id,
-                order.id,
-            )
-            payment = Payment(
-                order_id=order.id,
-                provider="vietqr",
-                provider_transaction_id=payload.transaction_id,
-                amount=order.total_amount,
-                currency=order.currency,
-                status="duplicate_payment",
-                paid_at=current_time,
-            )
-            db.add(payment)
-        elif order.status in (OrderStatus.EXPIRED.value, OrderStatus.CANCELLED.value):
-            all_paid = False
-            has_late = True
-            logger.warning(
-                "VietQR webhook received for %s order %s (amount=%s, transaction_id=%s)",
-                order.status,
-                order.id,
-                payload.amount,
-                payload.transaction_id,
-            )
-            payment = Payment(
-                order_id=order.id,
-                provider="vietqr",
-                provider_transaction_id=payload.transaction_id,
-                amount=order.total_amount,
-                currency=order.currency,
-                status="late_payment",
-                paid_at=current_time,
-            )
-            db.add(payment)
-        else:
-            raise BusinessRuleError(
-                f"Cannot process payment for order {order.id} in status '{order.status}'",
-                code="invalid_payment_order_status",
-            )
-
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        if _is_payment_transaction_uniqueness_error(exc):
-            fresh_payment = (
-                db.query(Payment)
-                .filter(
-                    Payment.provider == "vietqr",
-                    Payment.provider_transaction_id == payload.transaction_id,
-                )
-                .first()
-            )
-            if fresh_payment:
-                if fresh_payment.order_id in order_ids:
-                    logger.info(
-                        "Resolved uniqueness conflict on transaction %s for order %s",
-                        payload.transaction_id,
-                        fresh_payment.order_id,
-                    )
-                    return VietQRWebhookResponse(
-                        status="already_processed",
-                        message="Transaction already processed",
-                        order_ids=order_ids,
-                    )
-                raise BusinessRuleError(
-                    f"Transaction {payload.transaction_id} is already associated with order {fresh_payment.order_id}",
-                    code="transaction_order_mismatch",
-                )
-        logger.error("Unhandled IntegrityError during VietQR webhook: %s", exc)
-        raise
-
-    if has_duplicate and not has_pending:
-        return VietQRWebhookResponse(
-            status="duplicate_payment",
-            message="Order has already been paid; recorded as duplicate payment",
-            order_ids=order_ids,
-        )
-    if has_late and not has_pending:
-        return VietQRWebhookResponse(
-            status="late_payment",
-            message="Order is expired or cancelled; recorded as late payment",
-            order_ids=order_ids,
-        )
-    if all_paid:
-        return VietQRWebhookResponse(
-            status="already_processed",
-            message="Order has already been paid",
-            order_ids=order_ids,
-        )
-    return VietQRWebhookResponse(
-        status="success",
-        message="Payment processed successfully",
-        order_ids=order_ids,
-    )
-
-
-def list_late_payments(
-    db: Session,
-    limit: int = 10,
-    offset: int = 0,
-) -> Page[LatePaymentResponse]:
-    query = (
-        db.query(Payment, Order)
-        .join(Order, Payment.order_id == Order.id)
-        .filter(
-            Payment.status.in_(("late_payment", "duplicate_payment", "amount_mismatch"))
-        )
-        .order_by(Payment.id.desc())
-    )
-    total = query.count()
-    results = query.offset(offset).limit(limit).all()
-
-    items = [
-        LatePaymentResponse(
-            id=payment.id,
-            order_id=payment.order_id,
-            provider=payment.provider,
-            provider_transaction_id=payment.provider_transaction_id,
-            amount=float(payment.amount),
-            currency=payment.currency,
-            status=payment.status,
-            paid_at=payment.paid_at,
-            created_at=payment.created_at,
-            order_status=order.status,
-            customer_name=order.customer_name,
-            customer_phone=order.customer_phone,
-        )
-        for payment, order in results
-    ]
-    return Page(items=items, total=total, limit=limit, offset=offset)

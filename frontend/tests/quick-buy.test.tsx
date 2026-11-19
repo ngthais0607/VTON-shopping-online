@@ -1,9 +1,8 @@
-import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
 import { FeaturedProducts } from '@/app/store/components/FeaturedProducts';
 import { CartProvider } from '@/app/store/context/CartContext';
-import type { Product, User } from '@/lib/types';
+import type { Product } from '@/lib/types';
+import { fireEvent,render,screen } from '@testing-library/react';
+import { expect,it,vi } from 'vitest';
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }), useSearchParams: () => new URLSearchParams() }));
@@ -23,12 +22,12 @@ const catalogProduct: Omit<Product, 'stock_quantity' | 'reserved_quantity' | 'so
   description: null, created_at: null, updated_at: null, category: null,
 };
 
-it.each([null, { id: 123, role: 'customer' } as User])('opens variant selection from a catalog summary (user %j)', (user) => {
+it('opens variant selection from a public catalog summary', () => {
   push.mockClear();
   const noop = vi.fn();
   render(<CartProvider><FeaturedProducts
     products={[catalogProduct as Product]}
-    currentUser={user} loading={false} onOrderSuccess={noop}
+    loading={false}
     currentPage={1} pageSize={12} totalProducts={1} setCurrentPage={noop}
     selectedCategory="All" setSelectedCategory={noop} searchQuery="" setSearchQuery={noop}
     minPrice={null} setMinPrice={noop} maxPrice={null} setMaxPrice={noop}

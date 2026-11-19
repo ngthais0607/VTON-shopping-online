@@ -41,6 +41,7 @@ anyio==4.15.1 \
     # via
     #   -c requirements-windows-lock.txt
     #   httpx
+    #   httpx2
     #   starlette
     #   watchfiles
 argon2-cffi==25.1.0 \
@@ -732,6 +733,7 @@ h11==0.16.0 \
     # via
     #   -c requirements-windows-lock.txt
     #   httpcore
+    #   httpcore2
     #   uvicorn
 hiredis==3.5.0 \
     --hash=sha256:0037e3af5f457d47d29eb3dda70302758385670a3378be7daf8c5049403a172f \
@@ -870,6 +872,10 @@ httpcore==1.0.9 \
     # via
     #   -c requirements-windows-lock.txt
     #   httpx
+httpcore2==2.16.0 \
+    --hash=sha256:5c4358319f2602d984ad93182c9fee5160f22e9da7babdda870a5e7c4e2dc34f \
+    --hash=sha256:c72cd0413563b17e1cd8354677dff887466f8ec2551679759e93126534428643
+    # via httpx2
 httptools==0.9.0 \
     --hash=sha256:02bc5b3dcb6394b9d825fd62a7bfa0b2943063a3c89abc4492ad45e334a20eb5 \
     --hash=sha256:050f7ab098121873c8f13e35857f97ab60a76185c8302bde9a384939bb7c3b96 \
@@ -1000,6 +1006,10 @@ httpx==0.28.1 \
     #   -r requirements.in
     #   fastapi
     #   fastapi-cloud-cli
+httpx2==2.16.0 \
+    --hash=sha256:0d54c98128e8f2ff7fbbde0fca8c359e5f032edeaaaac443cdb7f31f685bcd7f \
+    --hash=sha256:fd2c5d7909e8d86fe92d53020c310ca0e4e431b838c207c5754b9bbf0308d49a
+    # via -r requirements-dev-windows.in
 hypothesis==6.169.4 \
     --hash=sha256:0265a58ba58bb28442ebb59c91e1f85bc985a5d846ea7777025f59ae15293f15 \
     --hash=sha256:07e004588c9f4e979027884bc67fdc00e99a8cbdda12d0475688f7c3ebccbb35 \
@@ -1088,6 +1098,7 @@ idna==3.20 \
     #   anyio
     #   email-validator
     #   httpx
+    #   httpx2
     #   requests
 iniconfig==2.3.1 \
     --hash=sha256:67f4b9c50da0dedf52af349e7749a80a9057a5031199791b906c3bb3ae878960 \
@@ -1440,7 +1451,9 @@ pillow==13.0.0 \
     --hash=sha256:fc481f742ccda20e9ed760b8f978dff50f2a4e9bc253ac167fb0a05b0783ef52 \
     --hash=sha256:ff3fe9eb621fbb9db4c4be33ab946f6bac5f98ab50ca8d3260503653656c961b \
     --hash=sha256:ffea6b2986a797c84b6d1d27d4f43e0b83c73fc16281a930891cd237cf0d08fe
-    # via -r requirements.in
+    # via
+    #   -c requirements-windows-lock.txt
+    #   -r requirements.in
 pip-tools==7.6.2 \
     --hash=sha256:04dbe0e25f3b60fbdeee17d0590dac7fe20039876aa410a946fc54dc926c09ba \
     --hash=sha256:f37eb4b736859c2c30230e50977312c61918b7ef931071ff7811fd067715c25f
@@ -2118,6 +2131,12 @@ starlette==1.9.0 \
     # via
     #   -c requirements-windows-lock.txt
     #   fastapi
+truststore==0.10.5 \
+    --hash=sha256:30d36967ccaded5cbb38d602c433f53600036c79d502f4533a49b60a03bbefcd \
+    --hash=sha256:9aaaedaefaf06d8b206278cf8b5012bc897f485a874503501e12d776df78951c
+    # via
+    #   httpcore2
+    #   httpx2
 typer==0.27.3 \
     --hash=sha256:d0396f770a560ab1b0a8504e13b5f254b728cedb05c61cf0359e944e50ce8901 \
     --hash=sha256:e50022f28b82a86313e54501317a1db64bf8f8d036ff8cfe5ca7e47675454aff

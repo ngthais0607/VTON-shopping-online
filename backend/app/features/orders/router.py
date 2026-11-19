@@ -34,10 +34,21 @@ router = APIRouter(prefix="/api/v1/orders", tags=["Orders"])
 def vietqr_webhook(
     request: Request,
     payload: VietQRWebhookPayload,
+    background_tasks: BackgroundTasks,
     x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
     db: Session = Depends(get_db),
+    queue: TaskQueue = Depends(get_task_queue),
 ):
-    return service.process_vietqr_webhook(db, payload, x_webhook_secret)
+    result = service.process_vietqr_webhook(db, payload, x_webhook_secret)
+    if result.status == "success":
+        for order_id in result.order_ids:
+            service._dispatch_email(
+                queue,
+                "send_payment_received_email_task",
+                order_id,
+                background_tasks=background_tasks,
+            )
+    return result
 
 
 @router.post(
@@ -56,6 +67,25 @@ def checkout_cart(
 ):
     return service.checkout_cart(
         db, current_user, command, queue, background_tasks=background_tasks
+    )
+
+
+@router.post(
+    "/track/{public_code}/reorder",
+    response_model=CheckoutResponse,
+    response_model_exclude_unset=True,
+    status_code=status.HTTP_201_CREATED,
+    summary="Order again from an expired or cancelled order",
+)
+def reorder(
+    public_code: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    queue: TaskQueue = Depends(get_task_queue),
+):
+    return service.reorder_order(
+        db, public_code, current_user, queue, background_tasks=background_tasks
     )
 
 

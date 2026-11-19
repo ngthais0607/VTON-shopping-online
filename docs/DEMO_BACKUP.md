@@ -16,7 +16,7 @@ python .github/scripts/demo_backup.py restore demo-backups/seeded.sql --database
 
 Để chạy lại từ bản restore, cấp quyền cho user app trên database mới và cấu hình `DATABASE_URL` trong `.env` trỏ tới database đó trên host `mariadb:3306`, rồi `docker compose up -d`. Giữ database ban đầu để có thể quay lại. Tên DB khôi phục đã tồn tại sẽ bị từ chối.
 
-Ảnh nằm trong MinIO, không nằm trong SQL dump. Giữ volume MinIO của project demo; ảnh seed có thể được upload lại bằng `docker compose exec api python -m app.seed` (giữ nguyên các đơn và tài khoản). Ảnh admin tự upload cần được sao lưu riêng nếu sử dụng.
+Ảnh nằm trong MinIO, không nằm trong SQL dump. Giữ volume MinIO của project demo; ảnh sản phẩm do admin upload cần được sao lưu riêng cùng volume MinIO.
 
 Video dự phòng và kết quả kiểm chứng thực tế được ghi ở [DEMO_VERIFICATION.md](DEMO_VERIFICATION.md). Video tự động là bản chạy trình duyệt thực, không thay thế lượt nghiệm thu thủ công của người thuyết trình.
 

@@ -5,11 +5,13 @@ from typing import BinaryIO
 from uuid import uuid4
 
 from PIL import Image, UnidentifiedImageError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.errors import BusinessRuleError, ResourceNotFoundError
 from app.features.products import service
-from app.features.products.model import ProductImage
+from app.features.products.model import Product, ProductImage
+from app.features.products.schemas import ProductImageUpdate
 from app.integrations.storage import ProductStorage
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,7 @@ logger = logging.getLogger(__name__)
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_DIMENSION = 8192
 MAX_IMAGE_PIXELS = 16_000_000
+VTON_GARMENT_MIN_SIDE = 256
 
 SUPPORTED_IMAGE_FORMATS = {
     "jpeg": {
@@ -43,6 +46,7 @@ VALID_IMAGE_KINDS = {
     "detail",
     "size_chart",
     "catalog",
+    "vton_garment",
 }
 
 
@@ -60,8 +64,10 @@ def sniff_image_type(data: bytes) -> str | None:
     return None
 
 
-def validate_image_content(payload: bytes) -> None:
-    """Verify file structure and decode a bounded, static catalog image."""
+def validate_image_content(
+    payload: bytes, label: str = "Product image", min_side: int = 0
+) -> None:
+    """Verify file structure and decode a bounded, static image."""
     try:
         with Image.open(BytesIO(payload), formats=("PNG", "JPEG", "WEBP")) as image:
             width, height = image.size
@@ -71,18 +77,23 @@ def validate_image_content(payload: bytes) -> None:
                 or width * height > MAX_IMAGE_PIXELS
             ):
                 raise BusinessRuleError(
-                    "Product image must be at most 8192 pixels per side and 16 megapixels",
+                    f"{label} must be at most 8192 pixels per side and 16 megapixels",
                     code="image_dimensions_exceeded",
+                )
+            if min_side and min(width, height) < min_side:
+                raise BusinessRuleError(
+                    f"{label} must be at least {min_side} pixels on each side",
+                    code="image_too_small",
                 )
             if getattr(image, "n_frames", 1) != 1:
                 raise BusinessRuleError(
-                    "Product image must be a static image",
+                    f"{label} must be a static image",
                     code="invalid_product_image",
                 )
             # libjpeg can decode a JPEG missing its mandatory end-of-image marker.
             if image.format == "JPEG" and not payload.endswith(b"\xff\xd9"):
                 raise BusinessRuleError(
-                    "Product JPEG is truncated",
+                    f"{label} JPEG is truncated",
                     code="invalid_product_image",
                 )
             image.verify()
@@ -91,12 +102,12 @@ def validate_image_content(payload: bytes) -> None:
             image.load()
     except Image.DecompressionBombError as error:
         raise BusinessRuleError(
-            "Product image dimensions exceed the allowed limit",
+            f"{label} dimensions exceed the allowed limit",
             code="image_dimensions_exceeded",
         ) from error
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as error:
         raise BusinessRuleError(
-            "Product image is corrupt or cannot be decoded",
+            f"{label} is corrupt or cannot be decoded",
             code="invalid_product_image",
         ) from error
 
@@ -112,7 +123,7 @@ def store_product_image(
     color_name: str | None = None,
     kind: str = "model_photo",
     is_primary: bool = False,
-    sort_order: int = 0,
+    sort_order: int | None = None,
 ) -> ProductImage:
     if kind and kind not in VALID_IMAGE_KINDS:
         raise BusinessRuleError(
@@ -162,7 +173,10 @@ def store_product_image(
             code="invalid_product_image",
         )
 
-    validate_image_content(payload)
+    validate_image_content(
+        payload,
+        min_side=VTON_GARMENT_MIN_SIDE if kind == "vton_garment" else 0,
+    )
 
     canonical_ext = spec["canonical_ext"]
     image_id = str(uuid4())
@@ -174,6 +188,14 @@ def store_product_image(
         db.query(ProductImage).filter(ProductImage.product_id == product.id).update(
             {ProductImage.is_primary: False}
         )
+    if sort_order is None:
+        # Keep upload order: a new image goes after the existing ones.
+        last = (
+            db.query(func.max(ProductImage.sort_order))
+            .filter(ProductImage.product_id == product.id)
+            .scalar()
+        )
+        sort_order = 0 if last is None else last + 1
 
     image = ProductImage(
         id=image_id,
@@ -218,7 +240,7 @@ def upload_product_image(
     color_name: str | None = None,
     kind: str = "model_photo",
     is_primary: bool = False,
-    sort_order: int = 0,
+    sort_order: int | None = None,
 ) -> ProductImage:
     return store_product_image(
         db,
@@ -231,6 +253,73 @@ def upload_product_image(
         kind=kind,
         is_primary=is_primary,
         sort_order=sort_order,
+    )
+
+
+def update_product_image(
+    db: Session,
+    product_id: int,
+    image_id: str,
+    command: ProductImageUpdate,
+) -> ProductImage:
+    """Change an image's colour tag and/or make it the cover."""
+    service.get_product(db, product_id, is_admin=True)
+    # Serialise cover changes per product so two requests cannot leave two covers.
+    db.query(Product.id).filter(Product.id == product_id).with_for_update().first()
+    image = (
+        db.query(ProductImage)
+        .filter(ProductImage.id == image_id, ProductImage.product_id == product_id)
+        .with_for_update()
+        .first()
+    )
+    if image is None:
+        raise ResourceNotFoundError(
+            f"Image {image_id} was not found",
+            code="image_not_found",
+        )
+    sent = command.model_fields_set
+    if "color_name" in sent:
+        image.color_name = command.color_name
+    if "is_primary" in sent and command.is_primary is not None:
+        if command.is_primary:
+            db.query(ProductImage).filter(
+                ProductImage.product_id == product_id, ProductImage.id != image_id
+            ).update({ProductImage.is_primary: False})
+            image.is_primary = True
+        elif image.is_primary:
+            raise BusinessRuleError(
+                "Choose another image as the cover instead of unsetting this one",
+                code="cover_required",
+            )
+    db.commit()
+    db.refresh(image)
+    return image
+
+
+def reorder_product_images(
+    db: Session, product_id: int, image_ids: list[str]
+) -> list[ProductImage]:
+    """Store the given order; the list must name every image of the product once."""
+    service.get_product(db, product_id, is_admin=True)
+    db.query(Product.id).filter(Product.id == product_id).with_for_update().first()
+    existing = {
+        image.id: image
+        for image in db.query(ProductImage)
+        .filter(ProductImage.product_id == product_id)
+        .with_for_update()
+        .all()
+    }
+    if len(image_ids) != len(set(image_ids)) or set(image_ids) != set(existing):
+        raise BusinessRuleError(
+            "The order must list every image of the product exactly once",
+            code="invalid_image_order",
+        )
+    for position, image_id in enumerate(image_ids):
+        existing[image_id].sort_order = position
+    db.commit()
+    return sorted(
+        existing.values(),
+        key=lambda image: (not image.is_primary, image.sort_order, image.id),
     )
 
 

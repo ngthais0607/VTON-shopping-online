@@ -19,7 +19,9 @@ from app.features.products.schemas import (
     ProductDetailPublicResponse,
     ProductFacetsResponse,
     ProductFilters,
+    ProductImageOrder,
     ProductImageResponse,
+    ProductImageUpdate,
     ProductPatch,
     ProductPublicResponse,
     ProductResponse,
@@ -234,7 +236,7 @@ def upload_image(
     color_name: str | None = Form(default=None),
     kind: str = Form(default="model_photo"),
     is_primary: bool = Form(default=False),
-    sort_order: int = Form(default=0),
+    sort_order: int | None = Form(default=None),
     db: Session = Depends(get_db),
     storage: ProductStorage = Depends(get_product_storage),
     _current_admin: User = Depends(get_current_admin),
@@ -251,6 +253,35 @@ def upload_image(
         is_primary=is_primary,
         sort_order=sort_order,
     )
+
+
+@router.put(
+    "/{product_id}/images/order",
+    response_model=list[ProductImageResponse],
+    summary="Reorder product images",
+)
+def reorder_images(
+    product_id: int,
+    command: ProductImageOrder,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(get_current_admin),
+):
+    return images.reorder_product_images(db, product_id, command.image_ids)
+
+
+@router.patch(
+    "/{product_id}/images/{image_id}",
+    response_model=ProductImageResponse,
+    summary="Update product image (cover / colour)",
+)
+def update_image(
+    product_id: int,
+    image_id: str,
+    command: ProductImageUpdate,
+    db: Session = Depends(get_db),
+    _current_admin: User = Depends(get_current_admin),
+):
+    return images.update_product_image(db, product_id, image_id, command)
 
 
 @router.delete(

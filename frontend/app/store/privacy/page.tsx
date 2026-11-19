@@ -1,48 +1,14 @@
-import { Header } from "../components/Header";
-import { Footer } from "../components/Footer";
+import Link from "next/link";
+import { ContentPage, ContentSection } from "../content-page";
 
-export const metadata = {
-  title: "Privacy Policy | TrueLook",
-  description: "Commitment to protecting your personal data and privacy at TrueLook.",
-};
+export const metadata = { title: "Privacy | TrueLook" };
 
-export default function PrivacyPage() {
+export default function Page() {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-      <Header currentUser={null} />
-
-      <main className="flex-1 pt-24 pb-16">
-        <div className="max-w-4xl mx-auto px-5 lg:px-8 py-10 space-y-8">
-          <div className="space-y-2">
-            <span className="px-3 py-1 rounded-full bg-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider">
-              Legal Document
-            </span>
-            <h1 className="text-3xl font-extrabold text-slate-900" style={{ fontFamily: "var(--font-display)" }}>
-              Privacy Policy
-            </h1>
-            <p className="text-slate-500 text-xs">Last updated: September 2026</p>
-          </div>
-
-          <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6 text-xs leading-relaxed text-slate-600">
-            <section className="space-y-2">
-              <h3 className="text-sm font-bold text-slate-900">1. Information Collection</h3>
-              <p>We collect personal information when you create an account, place an order, or subscribe to newsletters including: Full Name, Email, Phone Number, and Shipping Address.</p>
-            </section>
-
-            <section className="space-y-2">
-              <h3 className="text-sm font-bold text-slate-900">2. How We Use Information</h3>
-              <p>Your data is strictly utilized to process orders, confirm automated VietQR payments, send shipping updates, and improve customer service.</p>
-            </section>
-
-            <section className="space-y-2">
-              <h3 className="text-sm font-bold text-slate-900">3. Data Security Standards</h3>
-              <p>TrueLook employs industry-standard SSL/TLS encryption and Bcrypt password hashing to protect personal information against unauthorized access.</p>
-            </section>
-          </div>
-        </div>
-      </main>
-
-      <Footer />
-    </div>
+    <ContentPage eyebrow="Privacy" title="Your data, your experience." description="Information about data used for accounts, bags, and orders in this demo.">
+      <ContentSection number="01" title="Account & order information"><p>Information entered during registration, profile updates, and checkout is sent to the demo system. Order details include the recipient name, phone number, and delivery address.</p></ContentSection>
+      <ContentSection number="02" title="How information is used"><p>The app uses information to display profiles, create orders, and track processing status. An administrator must verify VietQR payments before updating their status.</p></ContentSection>
+      <ContentSection number="03" title="Browser data"><p>Your bag and saved items are stored in your browser. See <Link href="/store/cookie">cookies & storage</Link> for more about sign-in sessions and local data.</p><p>Contact the demo operator with questions about data in this environment.</p></ContentSection>
+    </ContentPage>
   );
 }

@@ -15,11 +15,15 @@ export interface ProductVariant {
   updated_at?: string | null;
 }
 
+/** Mirrors backend VALID_IMAGE_KINDS (features/products/images.py). */
+export const PRODUCT_IMAGE_KINDS = ["model_photo", "flat_lay", "detail", "size_chart", "catalog", "vton_garment"] as const;
+export type ProductImageKind = (typeof PRODUCT_IMAGE_KINDS)[number];
+
 export interface ProductImage {
   id: string;
   url: string;
   color_name?: string | null;
-  kind?: "front" | "back" | "detail" | "model" | "flatlay" | string;
+  kind?: ProductImageKind;
   is_primary?: boolean;
   sort_order?: number;
 }
@@ -43,6 +47,7 @@ export interface Product {
   sold_quantity: number;
   currency: string;
   is_active: boolean;
+  vton_enabled?: boolean;
   category: { id: number; name: string; slug?: string } | null;
   images: ProductImage[];
   image_url?: string;
@@ -67,6 +72,7 @@ export interface ProductFormData {
   sold_quantity?: number;
   currency: string;
   is_active: boolean;
+  vton_enabled?: boolean;
   brand?: string | null;
   gender?: string;
   material?: string | null;
@@ -325,10 +331,47 @@ export interface VariantLookupItem {
   color_name: string;
   color_hex: string | null;
   price: number;
+  currency?: string;
   stock_quantity: number;
   reserved_quantity: number;
   sold_quantity: number;
   available_stock: number;
   is_active: boolean;
   image_url?: string | null;
+}
+
+export type VtonStatus = "queued" | "processing" | "succeeded" | "failed";
+
+export interface VtonEligibility {
+  eligible: boolean;
+  cloth_type?: "upper" | "lower" | "overall" | null;
+  reason?: string | null;
+  engine: "mock" | "lab";
+  daily_quota: number;
+}
+
+export interface VtonQuota {
+  limit: number;
+  used: number;
+  remaining: number;
+  retention_hours: number;
+}
+
+export interface VtonTask {
+  id: string;
+  product_id: number;
+  variant_id: number | null;
+  cloth_type: string;
+  status: VtonStatus;
+  engine: "mock" | "lab";
+  error_code: string | null;
+  has_result: boolean;
+  has_person_image: boolean;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface VtonTaskPage {
+  items: VtonTask[];
+  total: number;
 }

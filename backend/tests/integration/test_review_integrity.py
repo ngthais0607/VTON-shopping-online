@@ -47,16 +47,26 @@ def test_review_migration_dedupe_and_unique_constraint():
         password_hash="pw",
         role="customer",
     )
-    p = Product(
-        name=f"Review Test Prod {suffix}",
-        slug=f"rev-prod-{suffix}",
-        price=100.0,
-        currency="VND",
-    )
-    session.add_all([u, p])
+    session.add(u)
     session.flush()
 
+    # The schema is downgraded here, so the current Product model (which has later
+    # columns such as vton_enabled) cannot be used: insert with raw SQL instead.
     now = datetime.now(timezone.utc)
+    product_result = session.connection().execute(
+        text(
+            "INSERT INTO products (name, slug, price, currency, gender, is_active, "
+            "is_deleted, created_at, updated_at) "
+            "VALUES (:name, :slug, 100, 'VND', 'unisex', 1, 0, :now, :now)"
+        ),
+        {
+            "name": f"Review Test Prod {suffix}",
+            "slug": f"rev-prod-{suffix}",
+            "now": now,
+        },
+    )
+    product_pk = product_result.lastrowid
+
     old_dt = now - timedelta(days=2)
     new_dt = now - timedelta(days=1)
 
@@ -67,23 +77,23 @@ def test_review_migration_dedupe_and_unique_constraint():
             "INSERT INTO product_reviews (user_id, product_id, rating, title, comment, is_verified_purchase, created_at) "
             "VALUES (:uid, :pid, 2, 'Old Review 1', 'Oldest', 1, :dt1)"
         ),
-        {"uid": u.id, "pid": p.id, "dt1": old_dt},
+        {"uid": u.id, "pid": product_pk, "dt1": old_dt},
     )
     conn.execute(
         text(
             "INSERT INTO product_reviews (user_id, product_id, rating, title, comment, is_verified_purchase, created_at) "
             "VALUES (:uid, :pid, 4, 'Newer Review 2', 'Newer', 1, :dt2)"
         ),
-        {"uid": u.id, "pid": p.id, "dt2": new_dt},
+        {"uid": u.id, "pid": product_pk, "dt2": new_dt},
     )
     conn.execute(
         text(
             "INSERT INTO product_reviews (user_id, product_id, rating, title, comment, is_verified_purchase, created_at) "
             "VALUES (:uid, :pid, 5, 'Tie-break Review 3', 'Same date higher ID', 1, :dt2)"
         ),
-        {"uid": u.id, "pid": p.id, "dt2": new_dt},
+        {"uid": u.id, "pid": product_pk, "dt2": new_dt},
     )
-    user_id, product_id = u.id, p.id
+    user_id, product_id = u.id, product_pk
     session.commit()
     session.close()
 

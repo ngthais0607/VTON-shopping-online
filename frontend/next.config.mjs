@@ -17,6 +17,12 @@ const remotePatterns = [
     hostname: 'images.unsplash.com',
     pathname: '/**',
   },
+  // VietQR payment code images (backend/app/integrations/vietqr.py builds these URLs).
+  {
+    protocol: 'https',
+    hostname: 'img.vietqr.io',
+    pathname: '/image/**',
+  },
 ];
 
 if (process.env.NEXT_PUBLIC_IMAGE_HOST) {
@@ -43,6 +49,9 @@ const nextConfig = {
   },
   images: {
     remotePatterns,
+    // Next 16 refuses to optimise images served from localhost/private IPs. Local
+    // development loads MinIO from http://localhost:9000, so allow it outside production.
+    dangerouslyAllowLocalIP: process.env.NODE_ENV !== 'production',
   },
 };
 

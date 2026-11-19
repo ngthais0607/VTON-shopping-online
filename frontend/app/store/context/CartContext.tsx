@@ -75,7 +75,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       if (typeof window !== "undefined" && localStorage.getItem("fastapi_store_cart")) {
         localStorage.removeItem("fastapi_store_cart");
-        toast.info("Giỏ hàng cũ đã được làm mới theo hệ thống phiên bản mới.");
+        toast.info("Your saved cart has been refreshed for the new shopping experience.");
       }
       const savedV2 = localStorage.getItem(CART_STORAGE_KEY_V2);
       if (savedV2) {
@@ -129,7 +129,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const cached = productCache.get(raw.productId);
 
       const price = v ? v.price : cached ? cached.price : 0;
-      const name = v ? v.product_name : cached ? cached.name : "Sản phẩm";
+      const name = v ? v.product_name : cached ? cached.name : "Product";
       let maxStock = 999;
       if (v) {
         maxStock = v.available_stock;
@@ -145,12 +145,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const effectiveQty = Math.min(raw.quantity, Math.max(1, maxStock));
 
       const synthesizedProduct: Product = cached
-        ? { ...cached, price }
+        ? { ...cached, price, currency: v?.currency ?? cached.currency }
         : {
             id: raw.productId,
             name,
             price,
-            currency: "USD",
+            currency: v?.currency ?? "VND",
             description: "",
             is_active: v ? v.is_active : true,
             stock_quantity: v ? v.stock_quantity : maxStock,

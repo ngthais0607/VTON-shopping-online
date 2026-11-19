@@ -1,9 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
-import React, {useEffect} from 'react';
-import {render, screen} from '@testing-library/react';
-import {expect,it,vi} from 'vitest';
-import {CartProvider,useCart} from '../app/store/context/CartContext';
-import {CartDrawer} from '../app/store/components/CartDrawer';
+import { render,screen } from '@testing-library/react';
+import { useEffect } from 'react';
+import { expect,it,vi } from 'vitest';
+import { CartDrawer } from '../app/store/components/CartDrawer';
+import { CartProvider,useCart } from '../app/store/context/CartContext';
 vi.mock('next/image',()=>({default:({src,alt}:{src:string;alt:string})=><img src={src} alt={alt}/>}));
 function OpenCart(){const {setIsCartOpen}=useCart();useEffect(()=>{setIsCartOpen(true);},[setIsCartOpen]);return <CartDrawer/>;}
 it('renders safely after restoring malformed nested product fields',()=>{

@@ -15,8 +15,15 @@ os.environ["MINIO_ENDPOINT"] = "localhost:9000"
 os.environ["MINIO_ACCESS_KEY"] = "test-minio-access-key"
 os.environ["MINIO_SECRET_KEY"] = "test-minio-secret-key"
 os.environ["MINIO_EXTERNAL_URL"] = ""
+# A developer's real try-on engine setup (backend/.env) must not leak into tests.
+os.environ["VTON_ENGINE"] = "mock"
+os.environ["VTON_LAB_ENGINES_FILE"] = ""
+os.environ["VTON_LAB_DEFAULT_ENGINE"] = "mock"
 os.environ["VIETQR_BANK_ID"] = "MB"
 os.environ["VIETQR_BANK_NAME"] = "MB Bank (Ngan hang Quan doi)"
+os.environ["DEMO_AUTO_PAY_SECONDS"] = (
+    "0"  # a local .env must not leak demo behaviour into tests
+)
 os.environ["VIETQR_ACCOUNT_NO"] = "0000000000"
 os.environ["VIETQR_ACCOUNT_NAME"] = "TRUELOOK"
 os.environ["VIETQR_WEBHOOK_SECRET"] = "test-webhook-secret-32-chars-long-abc"
@@ -104,6 +111,13 @@ def product_storage():
             self.put_objects.append(object_name)
             self.put_payloads.append(stream.read())
             self.content_types.append(content_type)
+
+        def get(self, object_name):
+            if object_name not in self.put_objects:
+                raise KeyError(object_name)
+            return self.put_payloads[
+                len(self.put_objects) - 1 - self.put_objects[::-1].index(object_name)
+            ]
 
         def delete(self, object_name):
             self.deleted.append(object_name)

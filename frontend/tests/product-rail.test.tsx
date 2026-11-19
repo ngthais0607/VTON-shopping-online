@@ -1,0 +1,23 @@
+import { act,fireEvent,render,screen } from '@testing-library/react';
+import { afterEach,expect,it,vi } from 'vitest';
+import { ProductRail } from '../app/store/components/ProductRail';
+import type { Product } from '../lib/types';
+vi.mock('next/image', () => ({default: ({alt}: {alt:string}) => <span>{alt}</span>}));
+afterEach(() => vi.useRealTimers());
+it('automatically advances overflowed products and respects Pause', () => {
+  vi.useFakeTimers();
+  window.matchMedia=vi.fn().mockReturnValue({matches:false});
+  const products=[1,2].map(id=>({id,name:'Shirt '+id,price:100,currency:'VND',images:[]} as unknown as Product));
+  render(<ProductRail products={products} />);
+  const rail=screen.getByRole('region',{name:'Product carousel'});
+  Object.defineProperties(rail,{clientWidth:{value:300},scrollWidth:{value:900}});
+  const scroll=vi.fn();rail.scrollTo=scroll;
+  act(()=>vi.advanceTimersByTime(4000));expect(scroll).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button',{name:'Pause product carousel'}));
+  act(()=>vi.advanceTimersByTime(8000));expect(scroll).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button',{name:'Play product carousel'}));
+  fireEvent.mouseEnter(rail);act(()=>vi.advanceTimersByTime(4000));expect(scroll).toHaveBeenCalledTimes(1);
+  fireEvent.mouseLeave(rail);act(()=>vi.advanceTimersByTime(4000));expect(scroll).toHaveBeenCalledTimes(2);
+  window.matchMedia=vi.fn().mockReturnValue({matches:true});
+  act(()=>vi.advanceTimersByTime(4000));expect(scroll).toHaveBeenCalledTimes(2);
+});

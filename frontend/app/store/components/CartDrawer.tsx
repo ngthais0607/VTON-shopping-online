@@ -1,198 +1,25 @@
 "use client";
-
-import React from "react";
 import { useCart } from "../context/CartContext";
-import { X, Trash2, Plus, Minus, ShoppingBag, ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Trash2, Plus, Minus, ShoppingBag, ArrowRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { motion, AnimatePresence } from "motion/react";
+import { StoreDialog } from "@/components/store/store-dialog";
 import { formatCurrency } from "@/lib/utils";
-
+import { getProductImageUrl } from "@/lib/placeholder-images";
 export function CartDrawer() {
   const { cartItems, isCartOpen, setIsCartOpen, updateQuantity, removeFromCart, totalAmount, totalCount } = useCart();
-
-  const shippingFee = 0;
-  const finalTotal = totalAmount + shippingFee;
-
-  return (
-    <AnimatePresence>
-      {isCartOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 0.5 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setIsCartOpen(false)}
-            className="fixed inset-0 bg-black z-50 backdrop-blur-xs"
-          />
-
-          {/* Drawer Panel */}
-          <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-2xl z-50 flex flex-col border-l border-slate-200"
-          >
-            {/* Header */}
-            <div className="p-5 border-b border-sky-100 flex items-center justify-between bg-sky-50/50">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center font-bold">
-                  <ShoppingBag className="w-4 h-4 text-sky-600" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-slate-900 text-lg leading-none">Your Cart</h2>
-                  <p className="text-xs text-slate-500 mt-1">{totalCount} item{totalCount !== 1 ? "s" : ""}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsCartOpen(false)}
-                className="p-2 rounded-full hover:bg-slate-200/60 text-slate-500 hover:text-slate-900 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Cart Items List */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {cartItems.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
-                  <div className="w-16 h-16 rounded-full bg-sky-50 flex items-center justify-center mb-4 text-sky-500">
-                    <ShoppingBag className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-base font-semibold text-slate-700">Your cart is empty</h3>
-                  <p className="text-xs text-slate-500 mt-1 max-w-xs">
-                    Explore our collection and add your favorite items to your cart.
-                  </p>
-                  <Button
-                    onClick={() => setIsCartOpen(false)}
-                    className="mt-6 bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white font-medium text-sm rounded-xl px-6 shadow-md shadow-sky-500/20"
-                  >
-                    Start Shopping
-                  </Button>
-                </div>
-              ) : (
-                cartItems.map(({ product, quantity, variant, variantId }) => (
-                  <div
-                    key={variantId}
-                    className="flex gap-4 p-3 rounded-2xl border border-sky-100 hover:border-sky-200 transition-all bg-white shadow-xs"
-                  >
-                    {/* Image */}
-                    <div className="w-20 h-20 rounded-xl bg-slate-100 relative overflow-hidden flex-shrink-0 border border-slate-100">
-                      {variant?.image_url || product.images?.[0]?.url || product.image_url ? (
-                        <Image
-                          src={variant?.image_url || product.images?.[0]?.url || product.image_url || ""}
-                          alt={product.name}
-                          fill
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs font-semibold">
-                          No Pic
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 flex flex-col justify-between">
-                      <div>
-                        <div className="flex justify-between items-start gap-2">
-                          <h4 className="font-semibold text-slate-900 text-sm line-clamp-1">{product.name}</h4>
-                          <button
-                            onClick={() => removeFromCart(variantId)}
-                            className="text-slate-400 hover:text-rose-500 transition-colors p-0.5 cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                        {/* Variant Attributes (Size & Color) */}
-                        {(variant?.size || variant?.color_name) && (
-                          <div className="flex items-center gap-1.5 mt-1">
-                            {variant.color_name && (
-                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
-                                {variant.color_hex && (
-                                  <span
-                                    className="w-2 h-2 rounded-full border border-black/10 inline-block"
-                                    style={{ backgroundColor: variant.color_hex }}
-                                  />
-                                )}
-                                {variant.color_name}
-                              </span>
-                            )}
-                            {variant.size && (
-                              <span className="text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md font-bold">
-                                Size {variant.size}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {variant?.sku && (
-                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">SKU: {variant.sku}</p>
-                        )}
-                        <p className="text-xs text-slate-500 mt-0.5">{product.category?.name || "Product"}</p>
-                      </div>
-
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="font-bold text-slate-900 text-sm">
-                          {formatCurrency((variant?.price ?? product.price) * quantity, product.currency)}
-                        </span>
-
-                        {/* Quantity Controls */}
-                        <div className="flex items-center gap-1 bg-sky-50/80 rounded-lg p-1 border border-sky-100">
-                          <button
-                            onClick={() => updateQuantity(variantId, quantity - 1)}
-                            className="w-5 h-5 rounded-md bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 shadow-xs cursor-pointer"
-                          >
-                            <Minus className="w-3 h-3" />
-                          </button>
-                          <span className="w-6 text-center text-xs font-bold text-slate-800">{quantity}</span>
-                          <button
-                            onClick={() => updateQuantity(variantId, quantity + 1)}
-                            className="w-5 h-5 rounded-md bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 shadow-xs cursor-pointer"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer Summary & Checkout */}
-            {cartItems.length > 0 && (
-              <div className="p-5 border-t border-sky-100 bg-sky-50/30 space-y-3">
-                <div className="space-y-1.5 text-xs text-slate-600">
-                  <div className="flex justify-between">
-                    <span>Subtotal</span>
-                    <span className="font-semibold text-slate-900">{formatCurrency(totalAmount)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Estimated Shipping</span>
-                    <span className="font-semibold text-slate-900">
-                      {shippingFee === 0 ? <span className="text-emerald-600 font-bold">Miễn phí</span> : formatCurrency(shippingFee)}
-                    </span>
-                  </div>
-                  <div className="border-t border-sky-100 pt-2 flex justify-between text-sm font-bold text-slate-900">
-                    <span>Total</span>
-                    <span className="text-sky-600 text-base">{formatCurrency(finalTotal)}</span>
-                  </div>
-                </div>
-
-                <Link href="/store/checkout" onClick={() => setIsCartOpen(false)} className="block w-full">
-                  <Button className="w-full h-11 bg-gradient-to-r from-sky-500 via-sky-600 to-cyan-600 hover:from-sky-600 hover:to-cyan-700 text-white font-semibold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-sky-500/25 active:scale-[0.98] transition-all cursor-pointer">
-                    <span>Checkout</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  );
+  return <StoreDialog open={isCartOpen} onClose={() => setIsCartOpen(false)} title="Your bag" description={(totalCount || 0) + " items · Your everyday edit"} drawer>
+    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-6">
+      {cartItems.length === 0 ? <div className="flex h-full min-h-60 flex-col items-center justify-center px-5 py-12 text-center"><ShoppingBag className="mb-6 h-9 w-9 text-primary" /><h3 className="text-xl font-semibold" style={{ fontFamily: "var(--font-display)" }}>A fresh start for your wardrobe.</h3><p className="mt-3 max-w-xs text-sm leading-6 text-muted-foreground">Your bag is empty. Explore the collection and find something you love.</p><button onClick={() => setIsCartOpen(false)} className="mt-7 min-h-12 bg-primary px-6 text-sm text-primary-foreground">Keep exploring</button></div> : <div className="divide-y divide-border">{cartItems.map(({ product, quantity, variant, variantId }) => <div key={variantId} className="flex gap-4 py-5 first:pt-0">
+        <Link href={"/store/products/" + (product.slug || product.id)} onClick={() => setIsCartOpen(false)} className="relative h-32 w-24 shrink-0 overflow-hidden bg-secondary"><Image src={variant?.image_url || getProductImageUrl(product)} alt={product.name} fill sizes="96px" className="object-cover" /></Link>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-1"><Link href={"/store/products/" + (product.slug || product.id)} onClick={() => setIsCartOpen(false)} className="text-sm font-medium leading-6">{product.name}</Link><button aria-label={"Remove " + product.name} onClick={() => removeFromCart(variantId)} className="flex h-10 w-10 shrink-0 items-center justify-center text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button></div>
+          <p className="mt-1 text-xs text-muted-foreground">{[variant?.color_name, variant?.size && "Size " + variant.size].filter(Boolean).join(" / ")}</p>
+          <p className="mt-2 text-sm font-semibold">{formatCurrency((variant?.price ?? product.price) * quantity, product.currency)}</p>
+          <div className="mt-3 inline-flex items-center border border-border"><button aria-label={"Decrease quantity " + product.name} onClick={() => updateQuantity(variantId, quantity - 1)} className="flex h-9 w-9 items-center justify-center hover:bg-secondary"><Minus className="h-3 w-3" /></button><span className="w-8 text-center text-xs" aria-live="polite">{quantity}</span><button aria-label={"Increase quantity " + product.name} disabled={variant?.available_stock != null && quantity >= variant.available_stock} onClick={() => updateQuantity(variantId, quantity + 1)} className="flex h-9 w-9 items-center justify-center hover:bg-secondary disabled:opacity-30"><Plus className="h-3 w-3" /></button></div>
+        </div>
+      </div>)}</div>}
+    </div>
+    {cartItems.length > 0 && <div className="shrink-0 space-y-4 border-t border-border bg-secondary/50 p-5 sm:p-6"><div className="flex items-baseline justify-between gap-3"><span className="text-sm">Subtotal</span><span className="text-xl font-semibold">{formatCurrency(totalAmount)}</span></div><p className="text-xs leading-5 text-muted-foreground">Review delivery details and payment methods in the next step.</p><Link href="/store/checkout" onClick={() => setIsCartOpen(false)} className="flex min-h-12 items-center justify-between bg-primary px-5 text-sm font-medium text-primary-foreground hover:bg-foreground">Checkout <ArrowRight className="h-4 w-4" /></Link><button onClick={() => setIsCartOpen(false)} className="min-h-10 w-full text-xs underline underline-offset-4">Continue shopping</button></div>}
+  </StoreDialog>;
 }

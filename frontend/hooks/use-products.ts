@@ -46,7 +46,7 @@ export function useProducts(params?: UseProductsParams) {
     query.append("sort", params.sort_by);
   }
   if (params?.gender && params.gender !== "all") {
-    query.append("gender", params.gender);
+    for (const gender of params.gender.split(",")) query.append("gender", gender);
   }
   if (params?.brand && params.brand !== "all") {
     query.append("brand", params.brand);

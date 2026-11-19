@@ -1,6 +1,5 @@
-import React from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { act,fireEvent,render,screen,within } from '@testing-library/react';
+import { beforeEach,expect,it,vi } from 'vitest';
 import CategoriesPage from '../app/categories/page';
 
 const { post, patch, remove, state, mutate, refreshOptions } = vi.hoisted(() => ({

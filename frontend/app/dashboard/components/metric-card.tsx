@@ -20,13 +20,16 @@ export function MetricCard({
   description,
 }: MetricCardProps) {
   return (
-    <Card className="p-6">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-sm font-medium text-slate-600">{title}</p>
-          <p className="text-3xl font-bold text-slate-900 mt-2">{value}</p>
+    <Card className="admin-metric min-w-0 p-5 sm:p-6">
+      <div className="flex flex-col gap-5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground">{title}</p>
+          {Icon && <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-[#B89B6A]" />}
+        </div>
+        <div className="min-w-0">
+          <p className="break-words font-sans text-[28px] font-medium tabular-nums tracking-tight text-foreground">{value}</p>
           {description && (
-            <p className="text-xs text-slate-500 mt-1">{description}</p>
+            <p className="text-xs text-muted-foreground mt-1">{description}</p>
           )}
           {change && (
             <p
@@ -39,11 +42,6 @@ export function MetricCard({
             </p>
           )}
         </div>
-        {Icon && (
-          <div className="p-3 bg-slate-100 rounded-lg text-slate-600">
-            <Icon className="w-6 h-6" />
-          </div>
-        )}
       </div>
     </Card>
   );

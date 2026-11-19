@@ -46,6 +46,11 @@ next-env.d.ts
 docs/superpowers/
 *superpowers*
 
+# Local artefacts (generated images, Figma state, thesis drafts)
+output/
+.codex/
+Claude outputs/
+
 # IDE / Editor
 .vscode/
 .idea/

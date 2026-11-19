@@ -7,7 +7,7 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 # Nạp mã nguồn dự án vào sys.path để import app module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Import cấu hình và metadata từ dự án FastAPI
 from app.core.database import DATABASE_URL, Base
@@ -19,6 +19,7 @@ from app.features.products.model import Product, ProductImage, ProductReview  # 
 from app.features.products.variant_model import ProductVariant  # noqa: F401  # Alembic autogenerate registration
 from app.features.users.model import User  # noqa: F401  # Alembic autogenerate registration
 from app.features.users.session_model import UserSession  # noqa: F401
+from app.features.vton.model import VtonTask  # noqa: F401
 
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
@@ -28,7 +29,11 @@ config_url = config.get_main_option("sqlalchemy.url")
 if config_url and config_url != "sqlite:///./app.db":
     target_url = config_url
 else:
-    target_url = os.environ.get("DATABASE_URL") or os.environ.get("TEST_DATABASE_URL") or DATABASE_URL
+    target_url = (
+        os.environ.get("DATABASE_URL")
+        or os.environ.get("TEST_DATABASE_URL")
+        or DATABASE_URL
+    )
 # ConfigParser interpolates percent signs; SQLAlchemy must receive the original URL.
 config.set_main_option("sqlalchemy.url", target_url.replace("%", "%%"))
 
@@ -39,6 +44,7 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 target_metadata = Base.metadata
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
@@ -74,6 +80,7 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()

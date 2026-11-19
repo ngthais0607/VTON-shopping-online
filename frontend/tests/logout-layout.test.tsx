@@ -1,8 +1,7 @@
-import React from 'react';
-import axios,{AxiosError,AxiosResponse} from 'axios';
-import {fireEvent,render,screen,waitFor} from '@testing-library/react';
-import {SWRConfig} from 'swr';
-import {expect,it,vi} from 'vitest';
+import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
+import axios,{ AxiosError,AxiosResponse } from 'axios';
+import { SWRConfig } from 'swr';
+import { expect,it,vi } from 'vitest';
 const {replace}=vi.hoisted(()=>({replace:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/dashboard',useRouter:()=>({replace})}));
 vi.mock('@/components/sidebar',()=>({Sidebar:()=>null}));
@@ -23,7 +22,7 @@ it('retains logout failure after the protected header unmounts',async()=>{
     fireEvent.click(await screen.findByText('Logout'));
     await waitFor(()=>expect(screen.queryByText('Logout')).not.toBeInTheDocument());
     await waitFor(()=>expect(rejectLogout).toBeTypeOf('function'));
-    rejectLogout();
+    await act(async () => { rejectLogout(); });
     expect(await screen.findByText(/Server logout unavailable/)).toBeInTheDocument();
-  }finally{axios.defaults.adapter=original;clearAccessToken();}
+  }finally{act(() => { clearAccessToken(); });axios.defaults.adapter=original;}
 });

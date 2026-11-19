@@ -13,7 +13,7 @@ from app.jobs.emails import (
     send_payment_received_email,
     send_welcome_email,
 )
-from app.jobs.orders import expire_pending_orders
+from app.jobs.orders import demo_auto_pay_order, expire_pending_orders
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,20 @@ async def send_welcome_email_task(ctx: dict, user_id: int) -> None:
         db.close()
 
 
+async def demo_auto_pay_order_task(ctx: dict, order_id: int) -> None:
+    db = SessionLocal()
+    try:
+        if demo_auto_pay_order(db, order_id):
+            # Same notification a real bank confirmation or an admin would trigger.
+            await send_payment_received_email(db, order_id, SmtpEmailSender())
+    except Exception:
+        db.rollback()
+        logger.exception("Demo auto-pay task failed order_id=%s", order_id)
+        raise
+    finally:
+        db.close()
+
+
 async def cron_expire_pending_orders(ctx: dict) -> None:
     db = SessionLocal()
     try:
@@ -79,6 +93,7 @@ class WorkerSettings:
         send_order_confirmation_email_task,
         send_payment_received_email_task,
         send_welcome_email_task,
+        demo_auto_pay_order_task,
     ]
     cron_jobs = [cron(cron_expire_pending_orders, minute={*range(0, 60)})]
     redis_settings = get_redis_settings()

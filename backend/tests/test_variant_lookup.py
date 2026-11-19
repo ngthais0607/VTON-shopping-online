@@ -1,13 +1,16 @@
+import pytest
+
 from app.features.products.model import Product
 from app.features.products.variant_model import ProductVariant
 
 
-def test_lookup_variants_success(client, db_session):
+@pytest.mark.parametrize("currency", ["VND", "USD"])
+def test_lookup_variants_success(client, db_session, currency):
     product = Product(
         name="Linen Shirt",
         slug="linen-shirt",
         price=150000,
-        currency="VND",
+        currency=currency,
         is_active=True,
     )
     db_session.add(product)
@@ -53,6 +56,7 @@ def test_lookup_variants_success(client, db_session):
     assert item1["color_name"] == "White"
     assert item1["color_hex"] == "#FFFFFF"
     assert item1["price"] == 160000.0
+    assert item1["currency"] == currency
     assert "stock_quantity" not in item1
     assert "reserved_quantity" not in item1
     assert "sold_quantity" not in item1
@@ -157,6 +161,7 @@ def test_lookup_variants_admin_sees_stock_metrics(client, db_session, mock_admin
     data = response.json()
     assert len(data) == 1
     assert data[0]["stock_quantity"] == 15
+    assert data[0]["currency"] == "VND"
     assert data[0]["reserved_quantity"] == 3
     assert data[0]["sold_quantity"] == 2
     assert data[0]["available_stock"] == 10

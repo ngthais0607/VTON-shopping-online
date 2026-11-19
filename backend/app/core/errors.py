@@ -62,6 +62,16 @@ class AuthenticationError(ApplicationError):
     code = "authentication_failed"
 
 
+class TooManyRequestsError(ApplicationError):
+    status_code = 429
+    code = "too_many_requests"
+
+
+class ServiceUnavailableError(ApplicationError):
+    status_code = 503
+    code = "service_unavailable"
+
+
 class BusinessRuleError(ApplicationError):
     status_code = 400
     code = "business_rule_violation"

@@ -89,9 +89,8 @@ backend/
     integrations/         MinIO, Redis queue, SMTP, VietQR
     jobs/                 email and order-expiration tasks
     templates/emails/     HTML notification templates
-    seed_assets/          bundled demo catalog illustrations
     main.py               app factory, middleware, routes, startup
-    seed.py               demo accounts, clothing catalog, and sample orders
+    vton_worker.py        ARQ worker for virtual try-on tasks
     worker.py             ARQ tasks and cron configuration
   tests/                  unit/regression and MariaDB integration tests
 frontend/
@@ -130,7 +129,7 @@ From the repository root in PowerShell:
 Copy-Item .env.example .env
 # Review/edit .env before starting the stack.
 docker compose up --build -d --wait
-docker compose exec api python -m app.seed
+docker compose exec api python -m scripts.seed_users
 ```
 
 The root `.env.example` is the canonical Compose/backend example. Keep existing local configuration when updating the source. Replace example credentials before using the stack outside disposable local development.
@@ -153,7 +152,7 @@ Compose runs migrations before starting the API and worker. Confirm the schema v
 docker compose exec api alembic current
 ```
 
-The current head is `f8a1b2c3d4e5`. See the [migration guide](docs/MIGRATION_NOTES.md) for revision history and destructive rollback limits.
+The current head is `b9c8d7e6f5a4`. See the [migration guide](docs/MIGRATION_NOTES.md) for revision history and destructive rollback limits.
 
 For multiple stacks, consistently use a separate project name, such as `docker compose -p truelook-demo ...`, and distinct host ports. The existing developer demo may use storefront/API ports 13000/18000 and MinIO ports 19000/19001; these are not the defaults above.
 
@@ -239,9 +238,9 @@ To send real email, set `EMAILS_ENABLED=true`, `EMAILS_CONSOLE_LOG=false`, and v
 | Admin | admin@example.com | `DemoAdmin!482` |
 | Customer | user@example.com | `DemoCustomer!482` |
 
-Seed creates 12 clothing products across tops, trousers, skirts/dresses, and outerwear, with size/color variants and three sample orders. It uploads bundled SVG illustrations to MinIO. These are demo images, not product photography or evidence of VTON quality; SVG is not accepted by the admin upload API.
+`scripts/seed_users.py` creates only the two demo accounts above; products and images are managed through the admin UI.
 
-Passwords come from `SEED_ADMIN_PASSWORD` and `SEED_CUSTOMER_PASSWORD`. If omitted, seed generates and prints passwords when creating accounts. Existing account passwords are preserved. Seed is for development/demo environments, not production.
+Passwords come from `SEED_ADMIN_PASSWORD` and `SEED_USER_PASSWORD`. Existing account passwords are preserved unless `--reset-password` is passed. The seed is for development/demo environments, not production.
 
 To create a separate admin account interactively:
 
@@ -335,18 +334,6 @@ backend/.venv/Scripts/python.exe .github/scripts/compose_smoke.py
 ```
 
 This builds source in a separate Compose project, verifies the API/worker/Redis/MinIO and browser flows, then removes that project's containers and volumes.
-
-For the two opt-in walkthroughs against a seeded clothing demo, run from `frontend/`:
-
-```powershell
-$env:E2E_BASE_URL='http://localhost:13000'
-$env:E2E_API_URL='http://localhost:18000/api/v1'
-$env:RUN_ADMIN_CRUD_E2E='1'
-$env:RUN_DEMO_WALKTHROUGH='1'
-pnpm exec playwright test e2e/admin-catalog.spec.ts e2e/demo-walkthrough.spec.ts
-```
-
-Adjust the ports to your stack. These demo specs expect `/api/v1` in `E2E_API_URL`; the session/image smoke suite receives an API origin and adds the suffix itself. Admin CRUD cleans up its own test records; the walkthrough creates a COD order and cancels it. Use a disposable or backed-up demo.
 
 <a id="operations--backups"></a>
 ## 🛠 Operations & Backups

@@ -3,6 +3,7 @@
 Revision ID: c91f8a4e2b10
 Revises: 6ea70e2e94f1
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -19,7 +20,9 @@ def upgrade() -> None:
     with op.batch_alter_table("orders") as batch_op:
         batch_op.add_column(sa.Column("customer_name", sa.String(255), nullable=True))
         batch_op.add_column(sa.Column("customer_phone", sa.String(50), nullable=True))
-        batch_op.add_column(sa.Column("shipping_address", sa.String(1000), nullable=True))
+        batch_op.add_column(
+            sa.Column("shipping_address", sa.String(1000), nullable=True)
+        )
         batch_op.add_column(sa.Column("notes", sa.String(2000), nullable=True))
         batch_op.add_column(sa.Column("payment_method", sa.String(20), nullable=True))
 
@@ -40,10 +43,18 @@ def upgrade() -> None:
     )
 
     with op.batch_alter_table("orders") as batch_op:
-        batch_op.alter_column("customer_name", existing_type=sa.String(255), nullable=False)
-        batch_op.alter_column("customer_phone", existing_type=sa.String(50), nullable=False)
-        batch_op.alter_column("shipping_address", existing_type=sa.String(1000), nullable=False)
-        batch_op.alter_column("payment_method", existing_type=sa.String(20), nullable=False)
+        batch_op.alter_column(
+            "customer_name", existing_type=sa.String(255), nullable=False
+        )
+        batch_op.alter_column(
+            "customer_phone", existing_type=sa.String(50), nullable=False
+        )
+        batch_op.alter_column(
+            "shipping_address", existing_type=sa.String(1000), nullable=False
+        )
+        batch_op.alter_column(
+            "payment_method", existing_type=sa.String(20), nullable=False
+        )
 
 
 def downgrade() -> None:

@@ -80,6 +80,7 @@ class ProductCreate(BaseModel):
     category_id: int | None = None
     currency: str = Field(default="VND", min_length=1, max_length=10)
     is_active: bool = False
+    vton_enabled: bool = True
     brand: str | None = Field(default=None, max_length=100)
     gender: str = Field(default="unisex", max_length=20)
     material: str | None = Field(default=None, max_length=255)
@@ -99,6 +100,7 @@ class ProductPatch(BaseModel):
     category_id: int | None = None
     currency: str | None = Field(default=None, min_length=1, max_length=10)
     is_active: bool | None = None
+    vton_enabled: bool | None = None
     brand: str | None = Field(default=None, max_length=100)
     gender: str | None = Field(default=None, max_length=20)
     material: str | None = Field(default=None, max_length=255)
@@ -151,6 +153,26 @@ class ProductImageResponse(BaseModel):
         settings = get_settings()
         base_url = settings.minio_external_url.rstrip("/")
         return f"{base_url}/{settings.minio_bucket}/{value}"
+
+
+class ProductImageOrder(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    image_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class ProductImageUpdate(BaseModel):
+    """Partial update; only fields that are sent are changed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    color_name: str | None = Field(default=None, max_length=50)
+    is_primary: bool | None = None
+
+    @field_validator("color_name")
+    @classmethod
+    def blank_colour_is_none(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
 
 
 class ProductVariantPublicResponse(BaseModel):
@@ -208,6 +230,7 @@ class ProductPublicResponse(BaseModel):
 
 
 class ProductAdminResponse(ProductPublicResponse):
+    vton_enabled: bool = True
     stock_quantity: int
     reserved_quantity: int
     sold_quantity: int
@@ -226,6 +249,7 @@ class VariantLookupPublicItem(BaseModel):
     color_name: str
     color_hex: str | None = None
     price: float
+    currency: str
     available_stock: int
     in_stock: bool = True
     is_active: bool
@@ -295,6 +319,7 @@ class ProductDetailPublicResponse(BaseModel):
 
 
 class ProductDetailAdminResponse(ProductDetailPublicResponse):
+    vton_enabled: bool = True
     stock_quantity: int
     reserved_quantity: int
     sold_quantity: int

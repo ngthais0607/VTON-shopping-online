@@ -1,6 +1,5 @@
-import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { expect,it,vi } from 'vitest';
 import CustomerOrdersPage from '../app/store/orders/page';
 
 const { post, get } = vi.hoisted(() => ({ post: vi.fn(async () => ({})), get: vi.fn() }));

@@ -17,6 +17,8 @@ class ProductStorage(Protocol):
         content_type: str,
     ) -> None: ...
 
+    def get(self, object_name: str) -> bytes: ...
+
     def delete(self, object_name: str) -> None: ...
 
     def public_url(self, object_name: str) -> str: ...
@@ -68,6 +70,14 @@ class MinioProductStorage:
             part_size=10 * 1024 * 1024,
             content_type=content_type,
         )
+
+    def get(self, object_name: str) -> bytes:
+        response = self._client.get_object(self._bucket, object_name)
+        try:
+            return response.read()
+        finally:
+            response.close()
+            response.release_conn()
 
     def delete(self, object_name: str) -> None:
         self._client.remove_object(

@@ -1,10 +1,9 @@
 /* Test image double avoids the Next.js image optimizer in jsdom. */
 /* eslint-disable @next/next/no-img-element */
-import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
-import { ImageUploader } from '../components/image-uploader';
+import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
+import { beforeEach,expect,it,vi } from 'vitest';
 import ProductsPage from '../app/products/page';
+import { ImageUploader } from '../components/image-uploader';
 const {get,upload,post,patch,remove,productState,categoryState} = vi.hoisted(()=>({get:vi.fn(),upload:vi.fn(),post:vi.fn(),patch:vi.fn(),remove:vi.fn(),productState:{error:null as Error|null,products:[] as any[],total:0},categoryState:{error:null as Error|null}}));
 vi.mock('@/lib/api',()=>({apiGet:get,apiUpload:upload,apiPost:post,apiPatch:patch,apiPut:patch,apiDelete:remove}));
 vi.mock('@/components/ui/dropdown-menu',()=>({DropdownMenu:({children}:any)=><div>{children}</div>,DropdownMenuTrigger:({children}:any)=><>{children}</>,DropdownMenuContent:({children}:any)=><div>{children}</div>,DropdownMenuItem:({children,onClick}:any)=><button onClick={onClick}>{children}</button>}));
@@ -52,12 +51,16 @@ it('clears the pending file after a persisted replacement succeeds',async()=>{
   await waitFor(()=>expect(selected).toHaveBeenLastCalledWith(null));
 });
 it('retains the replacement file for retry if its immediate upload fails',async()=>{
-  const selected=vi.fn();upload.mockRejectedValue(new Error('Replacement unavailable'));
+  const selected=vi.fn();const failure=new Error('Replacement unavailable');upload.mockRejectedValue(failure);
+  const consoleError=vi.spyOn(console,'error').mockImplementation(()=>{});
+  try {
   const file=new File(['b'],'b.png',{type:'image/png'});
   const {container}=render(<ImageUploader productId={7} onUploadSuccess={()=>{}} onFileSelected={selected}/>);
   fireEvent.change(container.querySelector('input[type=file]')!,{target:{files:[file]}});
   await screen.findByText('Replacement unavailable');
   expect(selected).toHaveBeenLastCalledWith(file);
+  expect(consoleError).toHaveBeenCalledExactlyOnceWith('Upload failed',failure);
+  } finally { consoleError.mockRestore(); }
 });
 it('displays the persisted image returned by the server', async()=>{
   upload.mockResolvedValue({id:'image-1',url:'https://images.example.test/p.png'});
@@ -80,17 +83,39 @@ it('retries an image failure without creating the product twice', async()=>{
   post.mockResolvedValue({id:7,name:'New product',price:10,currency:'USD',stock_quantity:0,reserved_quantity:0,sold_quantity:0,is_active:true,category:null,description:null,images:[],created_at:null,updated_at:null});
   patch.mockResolvedValue({id:7});
   upload.mockRejectedValueOnce(new Error('Storage offline')).mockResolvedValueOnce({id:'image-1',url:'https://images.example.test/p.png'});
-  const {container}=render(<ProductsPage/>);
+  render(<ProductsPage/>);
   fireEvent.click(screen.getByRole('button',{name:'Create Product'}));
   fireEvent.change(screen.getByPlaceholderText('Enter product name'),{target:{value:'New product'}});
   fireEvent.change(screen.getByPlaceholderText('0.00'),{target:{value:'10'}});
   fireEvent.change(document.querySelector('input[type=file]')!,{target:{files:[new File(['png'],'p.png',{type:'image/png'})]}});
+  await screen.findByAltText('Staged image 1');
   fireEvent.click(screen.getAllByRole('button',{name:'Create Product'}).at(-1)!);
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('Storage offline'));
   fireEvent.click(screen.getByRole('button',{name:'Update Product'}));
   await waitFor(()=>expect(upload).toHaveBeenCalledTimes(2));
   expect(post).toHaveBeenCalledTimes(1);
   expect(upload.mock.calls[1][0]).toBe('/products/7/upload-image');
+});
+it('keeps the garment for retry without re-uploading the cover, and sends the try-on switch', async()=>{
+  post.mockResolvedValue({id:7,name:'New product',price:10,currency:'USD',stock_quantity:0,reserved_quantity:0,sold_quantity:0,is_active:true,category:null,description:null,images:[],created_at:null,updated_at:null});
+  patch.mockResolvedValue({id:7});
+  upload.mockResolvedValueOnce({id:'cover',url:'https://images.example.test/c.png'}).mockRejectedValueOnce(new Error('Storage offline')).mockResolvedValueOnce({id:'g',url:'https://images.example.test/g.png'});
+  render(<ProductsPage/>);
+  fireEvent.click(screen.getByRole('button',{name:'Create Product'}));
+  fireEvent.change(screen.getByPlaceholderText('Enter product name'),{target:{value:'New product'}});
+  fireEvent.change(screen.getByPlaceholderText('0.00'),{target:{value:'10'}});
+  fireEvent.click(screen.getByLabelText('Offer virtual try-on'));
+  const inputs=document.querySelectorAll('input[type=file]');
+  fireEvent.change(inputs[0],{target:{files:[new File(['png'],'c.png',{type:'image/png'})]}});
+  fireEvent.change(inputs[1],{target:{files:[new File(['png'],'g.png',{type:'image/png'})]}});
+  expect(await screen.findByText('Selected: g.png')).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button',{name:'Create Product'}).at(-1)!);
+  await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('Storage offline'));
+  expect(post.mock.calls[0][1]).toMatchObject({vton_enabled:false});
+  fireEvent.click(screen.getByRole('button',{name:'Update Product'}));
+  await waitFor(()=>expect(upload).toHaveBeenCalledTimes(3));
+  expect(upload.mock.calls.map(call=>call[0])).toEqual(['/products/7/upload-image','/products/7/images','/products/7/images']);
+  expect(patch.mock.calls[0][1]).toMatchObject({vton_enabled:false});
 });
 it('retains a file input after preview and releases local previews', async()=>{
   const {container,unmount}=render(<ImageUploader onUploadSuccess={()=>{}}/>);
@@ -104,12 +129,12 @@ it('displays warning badge when product has no active variants', async () => {
   productState.products = [{ ...existingProduct, variants: [] }];
   productState.total = 1;
   render(<ProductsPage />);
-  expect(screen.getByText('Chưa hiển thị trên cửa hàng vì chưa có biến thể')).toBeInTheDocument();
+  expect(screen.getByText('Hidden from the store until variants are added')).toBeInTheDocument();
 });
 it('shows activation guidance when creating a product without active variants', async () => {
   render(<ProductsPage />);
   fireEvent.click(screen.getByRole('button', { name: 'Create Product' }));
-  expect(screen.getByText('Thêm biến thể rồi kích hoạt')).toBeInTheDocument();
+  expect(screen.getByText('Add variants, then activate')).toBeInTheDocument();
 });
 
 it('uses the same primary cover in the admin grid as the product response', () => {
@@ -128,12 +153,27 @@ it('fetches full admin detail before editing a product from a summary row', asyn
   fireEvent.click(screen.getByRole('button', { name: 'Edit Product' }));
   expect(await screen.findByRole('button', { name: 'Update Product' })).toBeInTheDocument();
   expect(get).toHaveBeenCalledWith('/products/by-slug/existing');
-  expect(screen.queryByText('Thêm biến thể rồi kích hoạt')).not.toBeInTheDocument();
+  expect(screen.queryByText('Add variants, then activate')).not.toBeInTheDocument();
 });
 
 it('does not claim a summary without variant details has no variants', () => {
   productState.products = [existingProduct];
   productState.total = 1;
   render(<ProductsPage />);
-  expect(screen.queryByText('Chưa hiển thị trên cửa hàng vì chưa có biến thể')).not.toBeInTheDocument();
+  expect(screen.queryByText('Hidden from the store until variants are added')).not.toBeInTheDocument();
+});
+it('stages several images for a new product, uploads them in order and marks only the first as cover', async()=>{
+  post.mockResolvedValue({id:7,name:'New product',price:10,currency:'USD',stock_quantity:0,reserved_quantity:0,sold_quantity:0,is_active:true,category:null,description:null,images:[],created_at:null,updated_at:null});
+  upload.mockResolvedValue({id:'x',url:'https://images.example.test/x.png'});
+  render(<ProductsPage/>);
+  fireEvent.click(screen.getByRole('button',{name:'Create Product'}));
+  fireEvent.change(screen.getByPlaceholderText('Enter product name'),{target:{value:'New product'}});
+  fireEvent.change(screen.getByPlaceholderText('0.00'),{target:{value:'10'}});
+  fireEvent.change(document.querySelector('input[type=file]')!,{target:{files:[new File(['1'],'a.png',{type:'image/png'}),new File(['2'],'b.png',{type:'image/png'})]}});
+  await screen.findByAltText('Staged image 2');
+  fireEvent.click(screen.getByRole('button',{name:'Move staged image 1 later'}));
+  fireEvent.click(screen.getAllByRole('button',{name:'Create Product'}).at(-1)!);
+  await waitFor(()=>expect(upload).toHaveBeenCalledTimes(2));
+  expect(upload.mock.calls.map(c=>(c[1] as FormData).get('is_primary'))).toEqual(['true','false']);
+  expect(upload.mock.calls.map(c=>((c[1] as FormData).get('file') as File).name)).toEqual(['b.png','a.png']);
 });

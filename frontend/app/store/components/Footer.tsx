@@ -1,95 +1,10 @@
 import Link from "next/link";
-import { Zap } from "lucide-react";
-
-const linkGroups = [
-  {
-    title: "Shop",
-    items: [
-      { label: "Catalog", href: "/store" },
-    ]
-  },
-  {
-    title: "Support",
-    items: [
-      { label: "Help Center", href: "/store/help" },
-      { label: "Track Order", href: "/store/orders" },
-      { label: "Returns", href: "/store/returns" },
-      { label: "Contact Us", href: "/store/contact" },
-    ]
-  },
-  {
-    title: "Company",
-    items: [
-      { label: "About Us", href: "/store/about" },
-    ]
-  },
-  {
-    title: "Legal",
-    items: [
-      { label: "Privacy Policy", href: "/store/privacy" },
-      { label: "Terms of Service", href: "/store/terms" },
-      { label: "Cookie Policy", href: "/store/cookie" },
-    ]
-  }
+import { Instagram, Facebook, CreditCard, Banknote, QrCode } from "lucide-react";
+const groups = [
+  { title: "Explore", items: [["New arrivals", "/store/collection?sort=latest"], ["Women", "/store/collection?gender=female"], ["Men", "/store/collection?gender=male"], ["Our story", "/store/about"]] },
+  { title: "Client services", items: [["Contact us", "/store/contact"], ["Shipping & returns", "/store/returns"], ["Shopping guide", "/store/help"], ["My orders", "/store/orders"]] },
+  { title: "The details", items: [["My account", "/store/account"], ["Privacy policy", "/store/privacy"], ["Terms of use", "/store/terms"], ["Cookie policy", "/store/cookie"]] },
 ];
-
 export function Footer() {
-  return (
-    <footer className="bg-slate-900 text-slate-300 border-t border-slate-800">
-      <div className="max-w-7xl mx-auto px-5 lg:px-8 py-16">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-10">
-          {/* Brand Column */}
-          <div className="col-span-2 lg:col-span-1 space-y-4">
-            <Link href="/store" className="flex items-center gap-2.5 group">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-                <Zap className="w-5 h-5 text-white" fill="white" />
-              </div>
-              <span className="text-white text-lg tracking-tight font-extrabold" style={{ fontFamily: "var(--font-display)" }}>
-                True<span className="text-indigo-400">Look</span>
-              </span>
-            </Link>
-
-            <p className="text-xs text-slate-400 leading-relaxed">
-              TrueLook shop demo. Explore the catalog, choose product variants and try Cash on Delivery checkout. No real orders are fulfilled.
-            </p>
-
-          </div>
-
-          {/* Navigation Links */}
-          {linkGroups.map((group) => (
-            <div key={group.title}>
-              <h4 className="text-white text-xs uppercase tracking-wider font-extrabold mb-4" style={{ fontFamily: "var(--font-display)" }}>
-                {group.title}
-              </h4>
-              <ul className="space-y-2.5">
-                {group.items.map((item) => (
-                  <li key={item.label}>
-                    <Link
-                      href={item.href}
-                      className="text-xs text-slate-400 hover:text-indigo-300 hover:underline underline-offset-4 transition-colors"
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-
-        {/* Bottom Bar */}
-        <div className="mt-14 pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
-          <p>© 2026 TrueLook E-Commerce Platform. All rights reserved.</p>
-          <div className="flex items-center gap-3">
-            <span className="text-slate-500">Demo checkout</span>
-            {["COD", "VietQR simulation"].map((name) => (
-              <span key={name} className="px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 font-semibold text-[11px] border border-slate-700/60">
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-    </footer>
-  );
+  return <footer className="border-t border-[#E8E3DB] bg-white text-[#1C1C1C]"><div className="mx-auto max-w-[1440px] px-6 pb-7 pt-16 lg:px-20 lg:pt-20"><div className="grid grid-cols-2 gap-x-6 gap-y-10 lg:grid-cols-[1.5fr_1fr_1fr_1fr]"><div className="col-span-2 max-w-[280px] lg:col-span-1"><Link href="/store" className="text-[42px] tracking-[-0.045em]" style={{fontFamily:"var(--font-display)"}}>TrueLook</Link><p className="mt-4 text-xs leading-6 text-[#6B6761]">A thoughtful approach to getting dressed.<br/>Pieces to make every day feel like you.</p><div className="mt-6 flex items-center gap-5 text-[#6B6761]" aria-label="Social channels are not connected in this demo"><Instagram size={16} strokeWidth={1.4} aria-label="Instagram — demo"/><Facebook size={15} strokeWidth={1.4} aria-label="Facebook — demo"/><span className="text-[9px] tracking-wider">SOCIAL / DEMO</span></div></div>{groups.map(group => <div key={group.title}><h2 className="mb-5 text-[10px] uppercase tracking-[0.16em]">{group.title}</h2><ul className="space-y-1">{group.items.map(([label, href]) => <li key={label}><Link href={href} className="inline-flex min-h-8 items-center text-[11px] text-[#6B6761] transition-colors hover:text-[#1C1C1C] hover:underline underline-offset-4">{label}</Link></li>)}</ul></div>)}</div><div className="mt-14 flex flex-col justify-between gap-5 border-t border-[#E8E3DB] pt-6 text-[9px] leading-5 text-[#6B6761] md:flex-row"><p>© {new Date().getFullYear()} TrueLook. All rights reserved.<br/>Demo store · No real payments or deliveries are processed.</p><div className="flex items-center gap-5"><span className="uppercase tracking-[0.13em]">Demo payment methods</span><span className="inline-flex items-center gap-1.5"><Banknote size={17} strokeWidth={1.3}/>COD</span><span className="inline-flex items-center gap-1.5"><QrCode size={16} strokeWidth={1.3}/>VietQR</span><CreditCard size={20} strokeWidth={1.3} aria-label="Payment illustration"/></div></div></div></footer>;
 }

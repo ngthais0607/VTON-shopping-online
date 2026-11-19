@@ -1,20 +1,17 @@
 /* Test image double avoids the Next.js image optimizer in jsdom. */
 /* eslint-disable @next/next/no-img-element */
-import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { act,fireEvent,render,screen,waitFor } from '@testing-library/react';
 import { SWRConfig } from 'swr';
-import { setAccessToken, clearAccessToken } from '../lib/session';
+import { beforeEach,expect,it,vi } from 'vitest';
 import CheckoutPage from '../app/store/checkout/page';
 import { CartProvider } from '../app/store/context/CartContext';
+import { clearAccessToken,setAccessToken } from '../lib/session';
 const {post,get,push} = vi.hoisted(()=>({post:vi.fn(),get:vi.fn(),push:vi.fn()}));
 vi.mock('@/lib/api',()=>({apiPost:post,apiGet:get}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push,replace:push})}));
 vi.mock('../app/store/components/Header',()=>({Header:()=>null}));
 vi.mock('../app/store/components/Footer',()=>({Footer:()=>null}));
 vi.mock('next/image',()=>({default:({src,alt}:{src:string;alt:string})=><img src={src} alt={alt}/>}));
-const variant = { id: 101, sku: 'TEST-1', size: 'ONE_SIZE', color_name: 'Default', price: 25, stock_quantity: 10, is_active: true };
-const product = { id: 1, name: 'Test product', price: 25, description: null, created_at: null, updated_at: null, stock_quantity: 10, reserved_quantity: 0, sold_quantity: 0, currency: 'USD', is_active: true, category: null, images: [], variants: [variant] };
 const order = { id: 11, user_id: 1, product_id: 1, product_name: 'Test product', unit_price: 25, quantity: 1, total: 25, total_amount: 25, currency: 'USD', status: 'confirmed', payment_method: 'cod', payment_status: 'pending', customer_name: 'Customer', customer_phone: '0987654321', shipping_address: '123 Test Street', notes: null, expires_at: null, paid_at: null, created_at: null };
 beforeEach(() => {
   post.mockReset();
