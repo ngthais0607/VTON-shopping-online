@@ -68,7 +68,7 @@ Giới hạn ảnh: PNG/JPEG/WebP, ≤ 8 MiB, cạnh ngắn ≥ 128 px. Mỗi l�
 
 1. Tạo `engines/<ten>.py`, kế thừa `TryOnEngine`, gắn `@register_engine("<type>")`, cài `load()` và `generate(request) -> PIL.Image`.
 2. Import module đó trong `engines/__init__.py`.
-3. Khai báo trong file JSON ở trên. Thêm test vào `tests/test_vton_engines.py`.
+3. Khai báo trong file JSON ở trên. Thêm test vào `tests/test_vton_lab_engines.py`.
 
 ## Việc còn lại
 
