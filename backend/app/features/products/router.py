@@ -11,7 +11,8 @@ from app.core.security import (
     get_current_user,
     get_current_user_optional,
 )
-from app.features.products import images, reviews, service
+from app.features.categories import service as category_service
+from app.features.products import images, reviews, service, size_charts
 from app.features.products.schemas import (
     ProductAdminResponse,
     ProductCreate,
@@ -30,6 +31,8 @@ from app.features.products.schemas import (
     ReviewCreate,
     ReviewPage,
     ReviewResponse,
+    SizeChartFamilyResponse,
+    SizeChartPresetResponse,
     StockStatus,
     VariantLookupAdminItem,
     VariantLookupPublicItem,
@@ -42,9 +45,10 @@ router = APIRouter(prefix="/api/v1/products", tags=["Products"])
 
 def get_product_filters(
     category_id: int | None = None,
-    search: str | None = None,
+    search: str | None = Query(default=None, max_length=200),
     min_price: float | None = Query(default=None, ge=0),
     max_price: float | None = Query(default=None, ge=0),
+    on_sale: bool | None = None,
     is_active: bool | None = None,
     stock_status: StockStatus | None = None,
     gender: Annotated[list[str] | None, Query()] = None,
@@ -60,6 +64,7 @@ def get_product_filters(
         search=search,
         min_price=min_price,
         max_price=max_price,
+        on_sale=on_sale,
         is_active=is_active,
         stock_status=stock_status,
         gender=gender,
@@ -150,6 +155,37 @@ def lookup_variants(
 )
 def get_product_facets(db: Session = Depends(get_db)):
     return service.get_product_facets(db)
+
+
+@router.get(
+    "/size-chart-presets",
+    response_model=list[SizeChartFamilyResponse],
+    summary="List size-chart families and which categories share them (admin)",
+)
+def list_size_chart_presets(_admin: User = Depends(get_current_admin)):
+    return size_charts.catalog()
+
+
+@router.get(
+    "/size-chart-preset",
+    response_model=SizeChartPresetResponse | None,
+    summary="Size chart proposed for a category and gender (admin)",
+)
+def get_size_chart_preset(
+    category_id: int | None = None,
+    gender: str = Query(default="unisex", max_length=20),
+    preset_key: str | None = Query(default=None, max_length=50),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+):
+    if preset_key is not None and preset_key not in size_charts.PRESETS_BY_KEY:
+        raise BusinessRuleError("Unknown size chart type", code="unknown_size_chart")
+    if category_id is None and preset_key is None:
+        raise BusinessRuleError(
+            "category_id or preset_key is required", code="size_chart_target_required"
+        )
+    category = category_service.get_category(db, category_id) if category_id else None
+    return size_charts.resolve_size_chart(category, gender, preset_key)
 
 
 @router.get(

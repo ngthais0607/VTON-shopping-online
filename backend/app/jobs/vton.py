@@ -10,6 +10,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.core.errors import ConflictError
 from app.features.vton import service
 from app.features.vton.model import VtonTask
 from app.integrations.storage import ProductStorage
@@ -21,15 +22,50 @@ logger = logging.getLogger(__name__)
 REQUEUE_AFTER_SECONDS = 30
 
 
-def _fail(db: Session, task_id: str, code: str) -> None:
-    db.query(VtonTask).filter(VtonTask.id == task_id).update(
-        {
-            VtonTask.status: "failed",
-            VtonTask.error_code: code,
-            VtonTask.finished_at: service.utcnow(),
-        }
+def _transition(db: Session, task_id: str, **values) -> bool:
+    """Update a task only while it is still ours (processing and not erased)."""
+    result = db.execute(
+        update(VtonTask)
+        .where(
+            VtonTask.id == task_id,
+            VtonTask.status == "processing",
+            VtonTask.purged_at.is_(None),
+        )
+        .values(**values)
     )
     db.commit()
+    return result.rowcount == 1
+
+
+def _fail(db: Session, task_id: str, code: str) -> None:
+    _transition(
+        db, task_id, status="failed", error_code=code, finished_at=service.utcnow()
+    )
+
+
+def _retry_or_fail(
+    db: Session,
+    task_id: str,
+    code: str,
+    *,
+    retryable: bool,
+    waiting: bool,
+    attempts: int,
+    settings: Settings,
+) -> str:
+    if retryable and (waiting or attempts < settings.vton_max_attempts):
+        logger.warning("VTON retryable failure task=%s code=%s", task_id, code)
+        _transition(
+            db,
+            task_id,
+            status="queued",
+            error_code=code,
+            attempts=attempts - 1 if waiting else attempts,
+        )
+        return "requeued"
+    logger.warning("VTON failed task=%s code=%s", task_id, code)
+    _fail(db, task_id, code)
+    return "failed"
 
 
 def _claim(db: Session, task_id: str) -> VtonTask | None:
@@ -89,48 +125,72 @@ async def process_vton_task(
 
     try:
         output = await engine.run(person, garment, cloth_type)
-        with Image.open(BytesIO(output)) as probe:
-            probe.verify()
-        result_object = f"vton/results/{task_id}.png"
-        await asyncio.to_thread(
-            storage.put, result_object, BytesIO(output), "image/png"
-        )
     except VtonEngineError as error:
         # A service that is still starting (first run downloads model weights) is
         # not a failed attempt: wait for it, bounded by the stale threshold.
         waiting = error.code == "engine_unavailable" and not _expired(
             created_at, settings
         )
-        if error.retryable and (waiting or attempts < settings.vton_max_attempts):
-            logger.warning(
-                "VTON retryable failure task=%s code=%s", task_id, error.code
-            )
-            db.query(VtonTask).filter(VtonTask.id == task_id).update(
-                {
-                    VtonTask.status: "queued",
-                    VtonTask.error_code: error.code,
-                    VtonTask.attempts: attempts - 1 if waiting else attempts,
-                }
-            )
-            db.commit()
-            return "requeued"
-        logger.warning("VTON failed task=%s code=%s", task_id, error.code)
-        _fail(db, task_id, error.code)
-        return "failed"
+        return _retry_or_fail(
+            db,
+            task_id,
+            error.code,
+            retryable=error.retryable,
+            waiting=waiting,
+            attempts=attempts,
+            settings=settings,
+        )
     except Exception:
+        # Unknown engine crash: retry like any engine error, bounded by attempts.
         logger.exception("VTON unexpected failure task=%s", task_id)
+        return _retry_or_fail(
+            db,
+            task_id,
+            "internal_error",
+            retryable=True,
+            waiting=False,
+            attempts=attempts,
+            settings=settings,
+        )
+
+    try:
+        with Image.open(BytesIO(output)) as probe:
+            probe.verify()
+    except Exception:
+        logger.exception("VTON engine returned an unreadable image task=%s", task_id)
         _fail(db, task_id, "internal_error")
         return "failed"
 
-    db.query(VtonTask).filter(VtonTask.id == task_id).update(
-        {
-            VtonTask.status: "succeeded",
-            VtonTask.result_object: result_object,
-            VtonTask.error_code: None,
-            VtonTask.finished_at: service.utcnow(),
-        }
+    result_object = f"vton/results/{task_id}.png"
+    try:
+        await asyncio.to_thread(
+            storage.put, result_object, BytesIO(output), "image/png"
+        )
+    except Exception:
+        # Storage hiccups are transient: retry instead of failing for good.
+        logger.exception("VTON result upload failed task=%s", task_id)
+        return _retry_or_fail(
+            db,
+            task_id,
+            "engine_error",
+            retryable=True,
+            waiting=False,
+            attempts=attempts,
+            settings=settings,
+        )
+
+    done = _transition(
+        db,
+        task_id,
+        status="succeeded",
+        result_object=result_object,
+        error_code=None,
+        finished_at=service.utcnow(),
     )
-    db.commit()
+    if not done:
+        # Erased or cancelled while the engine ran: never resurrect it.
+        await service._delete_quietly(storage, result_object)
+        return "skipped"
     return "succeeded"
 
 
@@ -167,18 +227,24 @@ def recover_vton_tasks(db: Session, settings: Settings) -> list[str]:
 async def purge_expired_vton_data(
     db: Session, storage: ProductStorage, settings: Settings
 ) -> int:
-    """Delete photos/results older than the retention window (rows are kept)."""
+    """Delete photos/results older than the retention window (rows are kept).
+
+    Tasks that never finished (stuck queued/processing) are retired and purged
+    too, and a task whose deletion failed is retried on the next run.
+    """
     cutoff = service.utcnow() - timedelta(hours=settings.vton_retention_hours)
     tasks = (
         db.query(VtonTask)
-        .filter(
-            VtonTask.purged_at.is_(None),
-            VtonTask.created_at < cutoff,
-            VtonTask.status.in_(("succeeded", "failed")),
-        )
+        .filter(VtonTask.purged_at.is_(None), VtonTask.created_at < cutoff)
+        .order_by(VtonTask.created_at)
         .limit(200)
         .all()
     )
+    purged = 0
     for task in tasks:
-        await service.purge_task(db, storage, task)
-    return len(tasks)
+        try:
+            if await service.purge_task(db, storage, task, reason="expired"):
+                purged += 1
+        except ConflictError:  # claimed by a worker a moment ago; next run
+            continue
+    return purged

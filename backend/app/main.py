@@ -1,3 +1,4 @@
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -23,10 +24,16 @@ from app.features.vton_lab.router import router as vton_lab_router
 from app.integrations.queue import ArqTaskQueue, create_task_queue
 from app.integrations.storage import MinioProductStorage
 
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
+
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        # Echoed into logs and response headers, so accept only a short, plain token.
+        incoming = request.headers.get("X-Request-ID", "")
+        request_id = (
+            incoming if _REQUEST_ID_RE.fullmatch(incoming) else str(uuid.uuid4())
+        )
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
@@ -67,8 +74,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=application_settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Request-ID",
+        ],
     )
 
     application.include_router(health_router)

@@ -6,6 +6,10 @@ from app.core.schemas import UtcDatetime
 
 HEX_COLOR_PATTERN = r"^#[0-9A-Fa-f]{6}$"
 
+# A size x colour matrix multiplies, so both axes stay small.
+MAX_MATRIX_AXIS = 30
+MAX_SIZE_LENGTH = 20
+
 
 class ColorItem(BaseModel):
     name: str = Field(min_length=1, max_length=50)
@@ -24,7 +28,7 @@ class VariantItem(BaseModel):
 class BulkVariantCreate(BaseModel):
     sizes: list[str] = Field(default_factory=list)
     colors: list[ColorItem] = Field(default_factory=list)
-    variants: list[VariantItem] = Field(default_factory=list)
+    variants: list[VariantItem] = Field(default_factory=list, max_length=200)
     default_stock: int = Field(default=0, ge=0)
     default_price: float | None = Field(default=None, ge=0)
 
@@ -35,10 +39,17 @@ class BulkVariantCreate(BaseModel):
         has_variants = bool(self.variants)
 
         # Validate non-blank trimmed entries
+        if len(self.sizes) > MAX_MATRIX_AXIS or len(self.colors) > MAX_MATRIX_AXIS:
+            raise ValueError(
+                f"A size and color matrix can have at most {MAX_MATRIX_AXIS} sizes and colors"
+            )
+
         if has_sizes:
             cleaned_sizes = [s.strip() for s in self.sizes]
             if any(not s for s in cleaned_sizes):
                 raise ValueError("Sizes cannot contain blank entries")
+            if any(len(s) > MAX_SIZE_LENGTH for s in cleaned_sizes):
+                raise ValueError(f"Sizes can have at most {MAX_SIZE_LENGTH} characters")
             self.sizes = cleaned_sizes
 
         if has_colors:

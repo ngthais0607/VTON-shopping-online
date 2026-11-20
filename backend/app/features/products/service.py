@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Query, Session, joinedload, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
@@ -17,6 +17,7 @@ from app.core.search import literal_contains_pattern
 from app.core.slug import generate_unique_slug, slugify
 from app.features.categories import service as category_service
 from app.features.categories.model import Category
+from app.features.products import size_charts
 from app.features.products.model import Product
 from app.features.products.schemas import (
     FacetColor,
@@ -95,6 +96,11 @@ def _persist_product(db: Session, command: ProductCreate) -> int:
 
     data = command.model_dump()
     variants_input = data.pop("variants", None)
+    if data.get("size_chart") is None:
+        # No chart sent: the garment type decides it, so the admin only picks a category.
+        preset = size_charts.resolve_size_chart(category, data.get("gender"))
+        if preset is not None:
+            data["size_chart"] = preset["size_chart"]
 
     base_slug = slugify(data.get("slug")) if data.get("slug") else slugify(data["name"])
     base_slug = base_slug or "product"
@@ -239,6 +245,12 @@ def list_products(
         query = query.filter(effective_price >= filters.min_price)
     if filters.max_price is not None:
         query = query.filter(effective_price <= filters.max_price)
+    if filters.on_sale is not None:
+        on_sale = and_(
+            Product.compare_at_price.isnot(None),
+            Product.compare_at_price > effective_price,
+        )
+        query = query.filter(on_sale if filters.on_sale else ~on_sale)
     if filters.category_id is not None:
         category_service.get_category(db, filters.category_id)
         cat_ids = category_service.get_category_and_descendant_ids(
@@ -617,6 +629,18 @@ def update_product(
         )
     set_committed_value(product, "variants", variants)
     changes = command.model_dump(exclude_unset=True)
+
+    new_price = changes.get("price", product.price)
+    new_compare = (
+        changes["compare_at_price"]
+        if "compare_at_price" in changes
+        else product.compare_at_price
+    )
+    if new_compare is not None and float(new_compare) <= float(new_price):
+        raise BusinessRuleError(
+            "compare_at_price must be greater than price; clear it to end the sale",
+            code="invalid_compare_at_price",
+        )
 
     if changes.get("is_active") is True:
         has_active_variant = any(v.is_active for v in variants)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -12,7 +13,7 @@ from app.core.errors import (
     ResourceNotFoundError,
 )
 from app.features.products.model import Product
-from app.features.products.service import invalidate_catalog_cache
+from app.features.products.service import _escape_like, invalidate_catalog_cache
 from app.features.products.variant_model import (
     InventoryAdjustment,
     ProductVariant,
@@ -24,6 +25,16 @@ from app.features.products.variant_schemas import (
     VariantStockAdjustment,
 )
 from app.features.vton.model import VtonTask
+
+
+def _colliding_skus(db: Session, slug: str, explicit_skus: list[str]) -> set[str]:
+    prefix = _escape_like(slug[:55])
+    conditions = [ProductVariant.sku.like(f"{prefix}%", escape="\\")]
+    if explicit_skus:
+        conditions.append(ProductVariant.sku.in_(explicit_skus))
+    return {
+        sku for (sku,) in db.query(ProductVariant.sku).filter(or_(*conditions)).all()
+    }
 
 
 def bulk_create_variants(
@@ -48,7 +59,9 @@ def bulk_create_variants(
     existing_pairs = {
         (v.size.strip().lower(), v.color_name.strip().lower()): v for v in existing
     }
-    existing_skus = set(s[0] for s in db.query(ProductVariant.sku).all())
+    # Only SKUs that can collide are read: the ones named explicitly and those sharing this product's prefix.
+    explicit_skus = [v.sku for v in command.variants if v.sku]
+    existing_skus = _colliding_skus(db, product.slug, explicit_skus)
 
     candidates: list[VariantItem] = list(command.variants)
     if command.sizes and command.colors:

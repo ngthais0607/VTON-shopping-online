@@ -38,39 +38,42 @@ def get_client_ip(request: Request) -> str:
     if not trusted_items:
         return client_host
 
-    is_trusted = False
-    if "*" in trusted_items:
-        is_trusted = True
-    else:
-        try:
-            client_addr = ipaddress.ip_address(client_host)
-            for item in trusted_items:
-                try:
-                    net = ipaddress.ip_network(item, strict=False)
-                    if client_addr in net:
-                        is_trusted = True
-                        break
-                except ValueError:
-                    if client_host == item:
-                        is_trusted = True
-                        break
-        except ValueError:
-            is_trusted = client_host in trusted_items
-
-    if not is_trusted:
+    if not _is_trusted_proxy(client_host, trusted_items):
         return client_host
 
-    xff = request.headers.get("x-forwarded-for") or request.headers.get(
-        "X-Forwarded-For"
-    )
+    xff = request.headers.get("x-forwarded-for")
     if not xff:
         return client_host
 
+    # Each proxy appends the address it received the request from, so only the
+    # entries to the right of the last untrusted hop are reliable. The leftmost
+    # entry is whatever the client chose to send. Walk right-to-left past our own
+    # proxies; the first address that is not one of them is the real client.
+    # A "*" wildcard only vouches for the direct peer; it cannot identify which
+    # forwarded hops are proxies, so it resolves to the rightmost entry.
+    hop_proxies = [item for item in trusted_items if item != "*"]
     parts = [p.strip() for p in xff.split(",") if p.strip()]
-    if parts:
-        return parts[0]
-
+    for hop in reversed(parts):
+        if not _is_trusted_proxy(hop, hop_proxies):
+            return hop
     return client_host
+
+
+def _is_trusted_proxy(host: str, trusted_items: list[str]) -> bool:
+    if "*" in trusted_items:
+        return True
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return host in trusted_items
+    for item in trusted_items:
+        try:
+            if addr in ipaddress.ip_network(item, strict=False):
+                return True
+        except ValueError:
+            if host == item:
+                return True
+    return False
 
 
 redis_url = get_settings().redis_url.strip() or "memory://"

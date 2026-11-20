@@ -58,7 +58,12 @@ def process_vietqr_webhook(
             "Invalid or missing webhook secret", code="unauthorized_webhook"
         )
 
-    if (
+    # In production the recipient account must be stated and match: without it a valid
+    # secret could confirm a transfer made to some other account.
+    account_missing = (
+        payload.account_number is None and settings.app_env == "production"
+    )
+    if account_missing or (
         payload.account_number is not None
         and payload.account_number != settings.vietqr_account_no
     ):

@@ -47,6 +47,8 @@ class Product(Base):
         default=_generate_default_product_slug,
     )
     price = Column(Numeric(12, 2), nullable=False, index=True)
+    # Original ("was") price shown struck through; the product is on sale while it is above the current price.
+    compare_at_price = Column(Numeric(12, 2), nullable=True)
     description = Column(String(1000), nullable=True)
 
     brand = Column(String(100), nullable=True)
@@ -118,6 +120,20 @@ class Product(Base):
                     )
                 )
         return float(self.price or 0.0)
+
+    @property
+    def on_sale(self) -> bool:
+        return (
+            self.compare_at_price is not None
+            and float(self.compare_at_price) > self.price_min
+        )
+
+    @property
+    def discount_percent(self) -> int:
+        if not self.on_sale:
+            return 0
+        compare = float(self.compare_at_price)
+        return max(1, round((compare - self.price_min) / compare * 100))
 
     @property
     def total_available(self) -> int:

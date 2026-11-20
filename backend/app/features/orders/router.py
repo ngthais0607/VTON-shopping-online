@@ -58,7 +58,9 @@ def vietqr_webhook(
     status_code=status.HTTP_201_CREATED,
     summary="Checkout multi-item cart",
 )
+@limiter.limit("20/minute")
 def checkout_cart(
+    request: Request,
     command: CheckoutCommand,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),

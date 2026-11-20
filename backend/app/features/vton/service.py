@@ -8,6 +8,7 @@ from typing import BinaryIO
 from uuid import uuid4
 
 from PIL import Image, ImageOps
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -184,11 +185,31 @@ def _prepare_person_photo(stream: BinaryIO, filename: str, content_type: str) ->
 # --- task lifecycle --------------------------------------------------------
 
 
+def _require_same_request(
+    existing: VtonTask, product_id: int, variant_id: int | None
+) -> None:
+    """A key may only replay the request it was first used for."""
+    if existing.product_id != product_id or existing.variant_id != variant_id:
+        raise ConflictError(
+            "Idempotency-Key was already used for a different try-on",
+            code="idempotency_key_conflict",
+        )
+
+
 def _find_by_idempotency_key(db: Session, user: User, key: str) -> VtonTask | None:
     return (
         db.query(VtonTask)
         .filter(VtonTask.user_id == user.id, VtonTask.idempotency_key == key)
         .first()
+    )
+
+
+def _has_active_task(db: Session, user: User) -> bool:
+    return (
+        db.query(VtonTask.id)
+        .filter(VtonTask.user_id == user.id, VtonTask.status.in_(ACTIVE_STATUSES))
+        .first()
+        is not None
     )
 
 
@@ -216,6 +237,7 @@ async def create_task(
     if idempotency_key:
         existing = _find_by_idempotency_key(db, user, idempotency_key)
         if existing is not None:
+            _require_same_request(existing, product_id, variant_id)
             return existing
 
     color_name: str | None = None
@@ -245,17 +267,22 @@ async def create_task(
             details={"reason": reason},
         )
 
+    # Serialise this user's creates (no-op on SQLite) so the checks below and the
+    # INSERT cannot interleave; the partial unique index is the hard guarantee.
+    db.query(User.id).filter(User.id == user.id).with_for_update().first()
     stale_before = utcnow() - timedelta(minutes=settings.vton_stale_processing_minutes)
-    active = (
-        db.query(VtonTask)
-        .filter(
+    # A task past the stale threshold is dead (the recovery cron agrees); retire it
+    # so it cannot occupy the user's single active slot.
+    db.execute(
+        update(VtonTask)
+        .where(
             VtonTask.user_id == user.id,
             VtonTask.status.in_(ACTIVE_STATUSES),
-            VtonTask.created_at >= stale_before,
+            VtonTask.created_at < stale_before,
         )
-        .first()
+        .values(status="failed", error_code="engine_timeout", finished_at=utcnow())
     )
-    if active is not None:
+    if _has_active_task(db, user):
         raise ConflictError(
             "A try-on is already in progress", code="vton_task_in_progress"
         )
@@ -295,7 +322,12 @@ async def create_task(
         if idempotency_key:
             existing = _find_by_idempotency_key(db, user, idempotency_key)
             if existing is not None:
+                _require_same_request(existing, product_id, variant_id)
                 return existing
+        if _has_active_task(db, user):  # lost the race on the one-active index
+            raise ConflictError(
+                "A try-on is already in progress", code="vton_task_in_progress"
+            ) from None
         raise
     except Exception:
         db.rollback()
@@ -317,13 +349,16 @@ async def create_task(
     return task
 
 
-async def _delete_quietly(storage: ProductStorage, object_name: str | None) -> None:
+async def _delete_quietly(storage: ProductStorage, object_name: str | None) -> bool:
+    """Best-effort delete; True when the object is gone (or there was none)."""
     if not object_name:
-        return
+        return True
     try:
         await asyncio.to_thread(storage.delete, object_name)
     except Exception:
         logger.exception("VTON object cleanup failed object=%s", object_name)
+        return False
+    return True
 
 
 def get_task(db: Session, user: User, task_id: str) -> VtonTask:
@@ -385,18 +420,42 @@ async def delete_task_images(
         raise ConflictError(
             "Try-on is processing; try again shortly", code="vton_task_in_progress"
         )
-    await purge_task(db, storage, task)
+    if not await purge_task(db, storage, task):
+        raise ServiceUnavailableError(
+            "Could not erase the photo right now; please try again",
+            code="vton_erase_failed",
+        )
 
 
-async def purge_task(db: Session, storage: ProductStorage, task: VtonTask) -> None:
-    person, result = task.person_object, task.result_object
-    task.person_object = None
-    task.result_object = None
-    task.purged_at = utcnow()
+async def purge_task(
+    db: Session, storage: ProductStorage, task: VtonTask, reason: str = "cancelled"
+) -> bool:
+    """Delete a task's objects, then forget them. True when fully purged.
+
+    Pointers are cleared only for objects that were really deleted, so a storage
+    outage leaves the task retryable instead of orphaning a private photo.
+    """
     if task.status in ACTIVE_STATUSES:
-        task.status = "failed"
-        task.error_code = task.error_code or "cancelled"
-        task.finished_at = task.purged_at
+        # Conditional on the status we saw: a worker that claimed it meanwhile wins.
+        moved = db.execute(
+            update(VtonTask)
+            .where(VtonTask.id == task.id, VtonTask.status == task.status)
+            .values(status="failed", error_code=reason, finished_at=utcnow())
+        )
+        db.commit()
+        if moved.rowcount != 1:
+            db.refresh(task)
+            raise ConflictError(
+                "Try-on is processing; try again shortly", code="vton_task_in_progress"
+            )
+        db.refresh(task)
+    person_gone = await _delete_quietly(storage, task.person_object)
+    result_gone = await _delete_quietly(storage, task.result_object)
+    if person_gone:
+        task.person_object = None
+    if result_gone:
+        task.result_object = None
+    if person_gone and result_gone:
+        task.purged_at = utcnow()
     db.commit()
-    await _delete_quietly(storage, person)
-    await _delete_quietly(storage, result)
+    return person_gone and result_gone

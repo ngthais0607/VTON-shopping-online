@@ -6,6 +6,7 @@ import hmac
 from fastapi import Request
 
 from app.core.config import get_settings
+from app.core.rate_limiter import get_client_ip
 from app.features.users.schemas import LoginCommand
 
 
@@ -15,7 +16,11 @@ def prepare_login_command(request: Request, command: LoginCommand) -> LoginComma
         command.identifier.strip().casefold().encode(),
         hashlib.sha256,
     ).hexdigest()
-    request.state.login_identifier_key = "login-identifier:" + digest
+    # Scoped to the caller's IP as well, so a stranger hammering a victim's identifier
+    # exhausts only their own budget and cannot lock the real owner out.
+    request.state.login_identifier_key = (
+        f"login-identifier:{digest}:{get_client_ip(request)}"
+    )
     return command
 
 

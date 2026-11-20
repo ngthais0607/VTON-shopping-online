@@ -11,6 +11,7 @@ from app.core.errors import (
     ConflictError,
     ForbiddenError,
     ResourceNotFoundError,
+    TooManyRequestsError,
 )
 from app.core.schemas import Page
 from app.features.categories.model import Category
@@ -56,6 +57,11 @@ from app.features.users.model import User
 from app.integrations.queue import TaskQueue
 
 logger = logging.getLogger(__name__)
+
+
+# Unpaid VietQR orders hold reserved stock until they expire, so one shopper may only
+# have a few open at a time.
+MAX_OPEN_PENDING_ORDERS = 5
 
 
 class ProductNotFoundError(ResourceNotFoundError):
@@ -133,6 +139,21 @@ def checkout_cart(
                 "Each cart item must have a valid variant_id", code="missing_variant_id"
             )
         variant_quantities[vid] = variant_quantities.get(vid, 0) + item.quantity
+
+    if command.payment_method == OrderPaymentMethod.VIETQR:
+        open_pending = (
+            db.query(Order)
+            .filter(
+                Order.user_id == user.id,
+                Order.status == OrderStatus.PENDING.value,
+            )
+            .count()
+        )
+        if open_pending >= MAX_OPEN_PENDING_ORDERS:
+            raise TooManyRequestsError(
+                "Too many unpaid orders. Pay or cancel one before placing another.",
+                code="too_many_pending_orders",
+            )
 
     variant_ids = sorted(variant_quantities.keys())
     by_variant_id: dict[int, ProductVariant] = {}

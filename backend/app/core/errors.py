@@ -1,9 +1,13 @@
 import logging
+import math
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.exc import DataError
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +81,29 @@ class BusinessRuleError(ApplicationError):
     code = "business_rule_violation"
 
 
+def _json_safe(value: Any) -> Any:
+    """Echo of a rejected input that JSON can carry: NaN and Infinity cannot be encoded."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RequestValidationError)
+    async def handle_validation_error(
+        _request: Request,
+        exc: RequestValidationError,
+    ) -> JSONResponse:
+        # Same body as FastAPI's default, but a body such as `NaN` no longer breaks the encoder (-> 500).
+        return JSONResponse(
+            status_code=422,
+            content={"detail": jsonable_encoder(_json_safe(exc.errors()))},
+        )
+
     @app.exception_handler(ApplicationError)
     async def handle_application_error(
         _request: Request,
@@ -90,6 +116,24 @@ def register_error_handlers(app: FastAPI) -> None:
         )
         return JSONResponse(
             status_code=exc.status_code,
+            content=response.model_dump(mode="json"),
+        )
+
+    @app.exception_handler(OverflowError)
+    @app.exception_handler(DataError)
+    async def handle_out_of_range_value(
+        _request: Request,
+        exc: Exception,
+    ) -> JSONResponse:
+        # An id or number beyond what the database can hold (SQLite raises OverflowError, PostgreSQL a
+        # DataError) is a bad request, not a server fault.
+        logger.info("Rejected out-of-range value: %s", type(exc).__name__)
+        response = ErrorResponse(
+            code="value_out_of_range",
+            message="A value in the request is outside the allowed range",
+        )
+        return JSONResponse(
+            status_code=422,
             content=response.model_dump(mode="json"),
         )
 

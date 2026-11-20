@@ -547,12 +547,15 @@ def test_recovery_fails_or_requeues_stale_processing_tasks(
             )
         )
 
-    make("stuck-retry", 1)
+    # One active task per user is a DB invariant, so exercise the cases in turn.
     make("stuck-final", settings.vton_max_attempts)
     db_session.commit()
-    requeue = vton_jobs.recover_vton_tasks(db_session, settings)
-    assert requeue == ["stuck-retry"]
+    assert vton_jobs.recover_vton_tasks(db_session, settings) == []
     assert db_session.get(VtonTask, "stuck-final").error_code == "engine_timeout"
+
+    make("stuck-retry", 1)
+    db_session.commit()
+    assert vton_jobs.recover_vton_tasks(db_session, settings) == ["stuck-retry"]
 
 
 def test_retention_purges_old_finished_tasks(

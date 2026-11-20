@@ -15,7 +15,7 @@ class CartItemRequest(BaseModel):
 
 
 class CheckoutCommand(BaseModel):
-    items: list[CartItemRequest] = Field(min_length=1)
+    items: list[CartItemRequest] = Field(min_length=1, max_length=50)
     customer_name: str
     customer_phone: str
     shipping_address: str

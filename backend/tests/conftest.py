@@ -207,3 +207,12 @@ def mock_user_auth(client, db_session):
         del app.dependency_overrides[get_current_user]
     if get_current_user_optional in app.dependency_overrides:
         del app.dependency_overrides[get_current_user_optional]
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Rate-limit counters live in process memory; keep tests independent of each other."""
+    from app.core.rate_limiter import limiter
+
+    limiter.reset()
+    yield

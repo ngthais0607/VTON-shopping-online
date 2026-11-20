@@ -99,3 +99,22 @@ def test_rate_limiting_with_trusted_proxy():
     # Client B should still have quota because client A was throttled separately
     r4 = client.get("/rate-limited", headers={"X-Forwarded-For": "2.2.2.2"})
     assert r4.status_code == 200
+
+
+def test_spoofed_leftmost_xff_entry_is_ignored():
+    # A client behind our proxy prepends a fake address; the proxy appends the real one.
+    req = _make_mock_request(
+        client_ip="10.0.0.2",
+        xff="1.2.3.4, 198.51.100.22",
+        forwarded_allow_ips="10.0.0.0/16",
+    )
+    assert get_client_ip(req) == "198.51.100.22"
+
+
+def test_trusted_hops_are_skipped_right_to_left():
+    req = _make_mock_request(
+        client_ip="10.0.0.2",
+        xff="1.2.3.4, 198.51.100.22, 10.0.0.9",
+        forwarded_allow_ips="10.0.0.0/16",
+    )
+    assert get_client_ip(req) == "198.51.100.22"

@@ -8,6 +8,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 
 from app.core.database import Base
@@ -27,6 +28,17 @@ class VtonTask(Base):
         ),
         Index("ix_vton_tasks_user_created", "user_id", "created_at"),
         Index("ix_vton_tasks_status_created", "status", "created_at"),
+        # Hard guarantee of "one active try-on per user" under concurrent requests.
+        # Partial index on SQLite/PostgreSQL only: MySQL/MariaDB ignore the WHERE clause and
+        # would build a plain UNIQUE(user_id). There the migration adds a generated column
+        # (active_user_id) instead, which the ORM never touches.
+        Index(
+            "uq_vton_tasks_one_active_per_user",
+            "user_id",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'processing')"),
+            sqlite_where=text("status IN ('queued', 'processing')"),
+        ).ddl_if(dialect=("sqlite", "postgresql")),
     )
 
     id = Column(String(36), primary_key=True)

@@ -5,6 +5,7 @@ import io
 from PIL import Image, ImageChops, ImageFilter, ImageOps, UnidentifiedImageError
 
 from app.core.errors import BusinessRuleError
+from app.features.products.images import MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS
 
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 MIN_SIDE = 128
@@ -25,6 +26,17 @@ def decode_image(data: bytes, label: str) -> Image.Image:
         if image.format not in ALLOWED_FORMATS:
             raise BusinessRuleError(
                 f"{label} image must be PNG, JPEG or WebP", code="vton_invalid_image"
+            )
+        # Header-only check first: load() would allocate the full bitmap of a decompression bomb.
+        width, height = image.size
+        if (
+            width > MAX_IMAGE_DIMENSION
+            or height > MAX_IMAGE_DIMENSION
+            or width * height > MAX_IMAGE_PIXELS
+        ):
+            raise BusinessRuleError(
+                f"{label} image dimensions exceed the allowed limit",
+                code="vton_invalid_image",
             )
         image.load()
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:

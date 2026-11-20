@@ -84,17 +84,44 @@ def get_current_user(
     if credentials is None or not credentials.credentials:
         raise _invalid_token()
 
-    user_id = int(decode_access_token(credentials.credentials))
+    user = _load_token_user(db, credentials.credentials)
+    if user is None:
+        raise _invalid_token()
+    return user
+
+
+def _load_token_user(db: Session, token: str) -> User | None:
+    """Resolve an access token to its user, honouring logout and session revocation.
+
+    Tokens issued at login carry the id of the device session they belong to; once
+    that session is revoked (logout, password change) or expired, the token is dead
+    even though its signature and `exp` are still valid.
+    """
+    payload = _decode_token_payload(token, expected_type="access")
     user = (
         db.query(User)
-        .filter(
-            User.id == user_id,
-            User.is_deleted.is_(False),
-        )
+        .filter(User.id == int(payload["sub"]), User.is_deleted.is_(False))
         .first()
     )
     if user is None:
-        raise _invalid_token()
+        return None
+    session_id = payload.get("sid")
+    if session_id is not None:
+        # Imported lazily: the users package imports this module at load time.
+        from app.features.users.session_model import UserSession
+
+        active = (
+            db.query(UserSession.id)
+            .filter(
+                UserSession.id == session_id,
+                UserSession.user_id == user.id,
+                UserSession.revoked_at.is_(None),
+                UserSession.expires_at > datetime.now(timezone.utc),
+            )
+            .first()
+        )
+        if active is None:
+            return None
     return user
 
 
@@ -114,15 +141,7 @@ def get_current_user_optional(
     if credentials is None or not credentials.credentials:
         return None
     try:
-        user_id = int(decode_access_token(credentials.credentials))
-        return (
-            db.query(User)
-            .filter(
-                User.id == user_id,
-                User.is_deleted.is_(False),
-            )
-            .first()
-        )
+        return _load_token_user(db, credentials.credentials)
     except Exception:
         return None
 

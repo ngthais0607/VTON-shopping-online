@@ -363,7 +363,7 @@ def test_cached_engine_serves_prewarmed_and_never_stores_user_photos():
 
     writer = CachedVtonEngine(Inner(), store, write=True)
     asyncio.run(writer.run(b"p", b"g", "upper"))
-    assert list(store.data) == [cache_key(b"p", b"g", "upper")]
+    assert list(store.data) == [cache_key(b"p", b"g", "upper", Inner.name)]
     assert asyncio.run(reader.run(b"p", b"g", "upper")) == b"png"
     assert Inner.calls == 2  # second read was a cache hit
 

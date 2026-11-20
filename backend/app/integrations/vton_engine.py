@@ -58,6 +58,7 @@ class MockVtonEngine:
                 OUTPUT_SIZE,
             )
             cloth = Image.open(BytesIO(garment)).convert("RGBA")
+            has_alpha = cloth.getchannel("A").getextrema()[1] > 0
         except Exception as error:  # any decode failure is permanent
             raise VtonEngineError(
                 "Input image could not be decoded",
@@ -67,13 +68,21 @@ class MockVtonEngine:
 
         # Background = pixels connected to the corner that match its colour.
         marker = (255, 0, 255)
-        flooded = cloth.convert("RGB")
+        flooded_source = cloth.convert("RGB")
+        flooded = flooded_source.copy()
         ImageDraw.floodfill(flooded, (0, 0), marker, thresh=14)
         alpha = ImageChops.difference(flooded, Image.new("RGB", cloth.size, marker))
         alpha = alpha.convert("L").point(lambda v: 255 if v else 0)
         alpha = alpha.filter(ImageFilter.GaussianBlur(1.2))
         cloth.putalpha(alpha)
         bbox = alpha.point(lambda v: 255 if v > 20 else 0).getbbox()
+        corner = flooded_source.getpixel((0, 0))
+        if bbox is None and has_alpha and min(corner) < 235:
+            # Solid coloured photo filling the frame: the corner flood erased the
+            # whole garment. Only a blank white sheet is really "no garment".
+            alpha = Image.new("L", cloth.size, 255)
+            cloth.putalpha(alpha)
+            bbox = alpha.getbbox()
         if bbox is None:
             raise VtonEngineError(
                 "Garment image has no visible garment",
@@ -111,9 +120,10 @@ class MockVtonEngine:
         return out.getvalue()
 
 
-def cache_key(person: bytes, garment: bytes, cloth_type: str) -> str:
+def cache_key(person: bytes, garment: bytes, cloth_type: str, engine: str) -> str:
+    """Engine is part of the key: a mock result must never pass as a real one."""
     digest = hashlib.sha256()
-    for part in (person, garment, cloth_type.encode()):
+    for part in (person, garment, cloth_type.encode(), engine.encode()):
         digest.update(hashlib.sha256(part).digest())
     return f"vton/cache/{digest.hexdigest()}.png"
 
@@ -121,7 +131,7 @@ def cache_key(person: bytes, garment: bytes, cloth_type: str) -> str:
 class CachedVtonEngine:
     """Serves pre-generated results (demo pairs) so they work offline and instantly.
 
-    Lookup is by content hash of (person, garment, cloth_type). Only ``write=True``
+    Lookup is by content hash of (person, garment, cloth_type, engine). Only ``write=True``
     (the prewarm script) stores results: shoppers' photos are never cached.
     """
 
@@ -132,7 +142,7 @@ class CachedVtonEngine:
         self.name = inner.name
 
     async def run(self, person: bytes, garment: bytes, cloth_type: str) -> bytes:
-        key = cache_key(person, garment, cloth_type)
+        key = cache_key(person, garment, cloth_type, self.name)
         try:
             hit = await asyncio.to_thread(self._storage.get, key)
         except Exception:  # missing object or storage hiccup: just compute

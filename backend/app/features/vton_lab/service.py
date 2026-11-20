@@ -19,12 +19,18 @@ from pathlib import Path
 from PIL import Image
 
 from app.core.config import get_settings
-from app.core.errors import BusinessRuleError, ResourceNotFoundError
+from app.core.errors import (
+    ApplicationError,
+    BusinessRuleError,
+    ResourceNotFoundError,
+)
 from app.features.vton_lab.engines import TryOnEngine, TryOnRequest, build_engine
 from app.features.vton_lab.errors import VtonConfigError, VtonEngineError
 from app.features.vton_lab.images import decode_image
 
 MOCK_NAME = "mock"
+# Longest a request waits for the single generation slot before giving up.
+LOCK_WAIT_SECONDS = 120.0
 
 
 @dataclass(frozen=True)
@@ -96,13 +102,18 @@ class EngineRegistry:
                 code="vton_cloth_type_unsupported",
                 details={"supported": sorted(engine.supported_cloth_types)},
             )
-        with self._lock:
+        # A hung generate() must not block every later request forever.
+        if not self._lock.acquire(timeout=LOCK_WAIT_SECONDS):
+            raise VtonEngineError("The try-on engine is busy; try again shortly")
+        try:
             if name not in self._loaded:
                 engine.load()
                 self._loaded.add(name)
             started = time.perf_counter()
             image = engine.generate(request)
             elapsed_ms = round((time.perf_counter() - started) * 1000)
+        finally:
+            self._lock.release()
         return TryOnResult(image=image, engine=name, elapsed_ms=elapsed_ms)
 
 
@@ -165,7 +176,7 @@ def try_on(
     )
     try:
         return registry.run(engine, request)
-    except VtonEngineError:
+    except (ApplicationError, VtonEngineError):
         raise
-    except (MemoryError, RuntimeError) as exc:
+    except Exception as exc:  # engines may raise anything (ValueError, OSError...)
         raise VtonEngineError(f"Engine crashed: {exc.__class__.__name__}") from exc

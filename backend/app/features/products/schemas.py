@@ -34,11 +34,17 @@ class StockStatus(StrEnum):
     OUT_OF_STOCK = "out_of_stock"
 
 
+# A filter can name this many values; more would only bloat the SQL (and SQLite rejects huge expressions).
+MAX_FILTER_VALUES = 50
+MAX_VARIANTS_PER_REQUEST = 200
+
+
 class ProductFilters(BaseModel):
     category_id: int | None = None
     search: str | None = None
     min_price: float | None = Field(default=None, ge=0)
     max_price: float | None = Field(default=None, ge=0)
+    on_sale: bool | None = None
     is_active: bool | None = None
     stock_status: StockStatus | None = None
     gender: list[str] | None = None
@@ -56,7 +62,7 @@ class ProductFilters(BaseModel):
             return None
         if isinstance(v, str):
             parts = [p.strip() for p in v.split(",") if p.strip()]
-            return parts if parts else None
+            return parts[:MAX_FILTER_VALUES] if parts else None
         if isinstance(v, (list, tuple, set)):
             res = []
             for item in v:
@@ -66,8 +72,60 @@ class ProductFilters(BaseModel):
                             res.append(p.strip())
                 elif item is not None:
                     res.append(str(item))
-            return res if res else None
+            return res[:MAX_FILTER_VALUES] if res else None
         return v
+
+
+MAX_PRICE = 1_000_000_000_000
+MAX_SIZE_CHART_SIZES = 30
+MAX_SIZE_CHART_METRICS = 20
+MAX_SIZE_CHART_VALUE = 1000
+
+
+GENDERS = ("male", "female", "unisex", "kids")
+
+
+def validate_gender(value: str | None) -> str | None:
+    """Gender decides the size table and the storefront filter, so only known values are stored."""
+    if value is None:
+        return value
+    normalized = value.strip().lower()
+    if normalized not in GENDERS:
+        raise ValueError(f"gender must be one of: {', '.join(GENDERS)}")
+    return normalized
+
+
+def validate_size_chart(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A chart is `{size: {metric: cm}}` with positive, bounded numbers."""
+    if value is None:
+        return None
+    if len(value) > MAX_SIZE_CHART_SIZES:
+        raise ValueError(
+            f"size_chart cannot have more than {MAX_SIZE_CHART_SIZES} sizes"
+        )
+    for size, row in value.items():
+        if not size.strip() or len(size) > 20:
+            raise ValueError("size_chart sizes must be 1-20 characters")
+        if not isinstance(row, dict) or len(row) > MAX_SIZE_CHART_METRICS:
+            raise ValueError(
+                f"size_chart row '{size}' must be an object of measurements"
+            )
+        for metric, number in row.items():
+            if (
+                isinstance(number, bool)
+                or not isinstance(number, (int, float))
+                or not 0 < number <= MAX_SIZE_CHART_VALUE
+            ):
+                raise ValueError(
+                    f"size_chart '{size}.{metric}' must be a number between 0 and {MAX_SIZE_CHART_VALUE}"
+                )
+    return value
+
+
+def _not_blank(value: str | None) -> str | None:
+    if value is not None and not value.strip():
+        raise ValueError("name cannot be blank")
+    return value
 
 
 class ProductCreate(BaseModel):
@@ -75,7 +133,8 @@ class ProductCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=255)
     slug: str | None = Field(default=None, max_length=255)
-    price: float = Field(ge=0)
+    price: float = Field(ge=0, le=MAX_PRICE)
+    compare_at_price: float | None = Field(default=None, gt=0, le=MAX_PRICE)
     description: str | None = Field(default=None, max_length=1000)
     category_id: int | None = None
     currency: str = Field(default="VND", min_length=1, max_length=10)
@@ -87,7 +146,19 @@ class ProductCreate(BaseModel):
     fit: str | None = Field(default=None, max_length=50)
     care_instructions: str | None = Field(default=None, max_length=500)
     size_chart: dict[str, Any] | None = None
-    variants: list[VariantItem] | None = None
+    variants: list[VariantItem] | None = Field(
+        default=None, max_length=MAX_VARIANTS_PER_REQUEST
+    )
+
+    _name_not_blank = field_validator("name")(_not_blank)
+    _gender_valid = field_validator("gender")(validate_gender)
+    _size_chart_valid = field_validator("size_chart")(validate_size_chart)
+
+    @model_validator(mode="after")
+    def compare_at_above_price(self) -> "ProductCreate":
+        if self.compare_at_price is not None and self.compare_at_price <= self.price:
+            raise ValueError("compare_at_price must be greater than price")
+        return self
 
 
 class ProductPatch(BaseModel):
@@ -95,7 +166,8 @@ class ProductPatch(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     slug: str | None = Field(default=None, max_length=255)
-    price: float | None = Field(default=None, ge=0)
+    price: float | None = Field(default=None, ge=0, le=MAX_PRICE)
+    compare_at_price: float | None = Field(default=None, gt=0, le=MAX_PRICE)
     description: str | None = Field(default=None, max_length=1000)
     category_id: int | None = None
     currency: str | None = Field(default=None, min_length=1, max_length=10)
@@ -108,12 +180,17 @@ class ProductPatch(BaseModel):
     care_instructions: str | None = Field(default=None, max_length=500)
     size_chart: dict[str, Any] | None = None
 
+    _name_not_blank = field_validator("name")(_not_blank)
+    _gender_valid = field_validator("gender")(validate_gender)
+    _size_chart_valid = field_validator("size_chart")(validate_size_chart)
+
     @model_validator(mode="before")
     @classmethod
     def reject_null_required_fields(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
         nullable_fields = {
+            "compare_at_price",
             "description",
             "category_id",
             "brand",
@@ -208,6 +285,9 @@ class ProductPublicResponse(BaseModel):
     name: str
     slug: str
     price: float
+    compare_at_price: float | None = None
+    on_sale: bool = False
+    discount_percent: int = 0
     description: str | None = None
     currency: str
     is_active: bool
@@ -279,6 +359,33 @@ class ProductFacetsResponse(BaseModel):
     price_max: float
 
 
+class SizeChartPresetResponse(BaseModel):
+    """Chart the system proposes for a garment type (category) and gender."""
+
+    preset_key: str
+    label: str
+    cloth_type: str
+    sharing: str
+    shared_with: list[str]
+    note: str
+    gender_table: str
+    unit: str
+    size_chart: dict[str, dict[str, float]]
+
+
+class SizeChartFamilyResponse(BaseModel):
+    """One chart family and the categories that use it."""
+
+    preset_key: str
+    label: str
+    cloth_type: str
+    sharing: str
+    shared_with: list[str]
+    note: str
+    metrics: list[str]
+    genders: list[str]
+
+
 class FitFeedbackSummary(BaseModel):
     small: float = 0.0
     true_to_size: float = 0.0
@@ -293,6 +400,9 @@ class ProductDetailPublicResponse(BaseModel):
     name: str
     slug: str
     price: float
+    compare_at_price: float | None = None
+    on_sale: bool = False
+    discount_percent: int = 0
     price_min: float
     price_max: float
     description: str | None = None
