@@ -20,6 +20,9 @@ MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_DIMENSION = 8192
 MAX_IMAGE_PIXELS = 16_000_000
 VTON_GARMENT_MIN_SIDE = 256
+# 3D fitting-room camera slots, identified by (sort_order, kind). Keep in sync with ANGLE_SLOTS
+# in frontend/lib/demo-upper/productFit.ts.
+_ANGLE_SLOT_KINDS = {900: "vton_garment", 901: "flat_lay", 902: "catalog", 903: "catalog"}
 
 SUPPORTED_IMAGE_FORMATS = {
     "jpeg": {
@@ -314,8 +317,18 @@ def reorder_product_images(
             "The order must list every image of the product exactly once",
             code="invalid_image_order",
         )
+    def in_slot(image: ProductImage) -> bool:
+        return _ANGLE_SLOT_KINDS.get(image.sort_order) == image.kind
+
+    # The cover is the first gallery photo; a garment-only fitting-room slot photo is cover only
+    # when the product has nothing else.
+    cover_id = next((i for i in image_ids if not in_slot(existing[i])), image_ids[0])
     for position, image_id in enumerate(image_ids):
-        existing[image_id].sort_order = position
+        image = existing[image_id]
+        image.is_primary = image_id == cover_id
+        # Explicit fitting-room slots use these positions to identify their camera.
+        if not in_slot(image):
+            image.sort_order = position
     db.commit()
     return sorted(
         existing.values(),

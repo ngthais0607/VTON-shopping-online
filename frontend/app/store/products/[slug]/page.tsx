@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import { isTopCategory, storefrontGallery } from "@/lib/demo-upper/productFit";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -13,6 +14,7 @@ import {
   Plus,
   Ruler,
   Sparkles,
+  Box,
   ShoppingCart,
   Star,
   Zap,
@@ -142,7 +144,8 @@ export default function ProductDetailPage() {
 
   // Try-on uses the gallery photo the shopper has selected; colour does not matter.
   const productId = product?.id;
-  const tryOnImageId = (product?.images ?? []).filter((img) => img.kind !== "vton_garment")[activeImageIndex]?.id;
+  const galleryImages = useMemo(() => storefrontGallery(product?.images ?? []), [product]);
+  const tryOnImageId = galleryImages[activeImageIndex]?.id;
   useEffect(() => {
     if (!productId) return;
     let ignore = false;
@@ -156,13 +159,13 @@ export default function ProductDetailPage() {
   // Switch image when color changes
   useEffect(() => {
     if (!product || !selectedColor || !product.images) return;
-    const matchIndex = product.images.findIndex(
+    const matchIndex = galleryImages.findIndex(
       (img) => img.color_name?.toLowerCase() === selectedColor.toLowerCase(),
     );
     if (matchIndex >= 0) {
       setActiveImageIndex(matchIndex);
     }
-  }, [selectedColor, product]);
+  }, [selectedColor, product, galleryImages]);
 
   const handleAddToCart = () => {
     if (!product) return;
@@ -240,7 +243,6 @@ export default function ProductDetailPage() {
   }
 
   // vton_garment images are model inputs, not storefront gallery photos.
-  const galleryImages = (product.images ?? []).filter((img) => img.kind !== "vton_garment");
   const images = galleryImages.length > 0 ? galleryImages : [{ id: "placeholder", url: product.image_url || DEFAULT_PRODUCT_PLACEHOLDER }];
   const mainImage = images[activeImageIndex] || images[0];
   const rating = reviewsData?.average_rating ?? product.rating_avg;
@@ -503,6 +505,10 @@ export default function ProductDetailPage() {
               {tryOn?.eligible === true && (
                 <button type="button" onClick={() => setIsTryOnOpen(true)} className="flex min-h-12 w-full items-center justify-center gap-2 border border-foreground text-[11px] uppercase tracking-[0.1em] hover:bg-secondary"><Sparkles className="h-4 w-4" />Virtual try-on</button>
               )}
+              {/* The 3D fitting room has one sample tee, so it is only offered on tops. */}
+              {isTopCategory(product.category?.name) && (
+                <Link href={`/store/try-on-3d?product=${encodeURIComponent(product.slug ?? slug)}${selectedColor ? `&color=${encodeURIComponent(selectedColor)}` : ""}`} className="flex min-h-12 w-full items-center justify-center gap-2 border border-foreground text-[11px] uppercase tracking-[0.1em] hover:bg-secondary"><Box className="h-4 w-4" />3D fit check</Link>
+              )}
               {tryOn?.eligible === true && images.length > 1 && (
                 <p className="-mt-1 text-[11px] text-muted-foreground">Tip: choose a photo below, then try on that look.</p>
               )}
@@ -739,7 +745,7 @@ export default function ProductDetailPage() {
           productName={product.name}
           variantId={selectedVariant?.id}
           imageId={tryOnImageId}
-          imageUrl={(product.images ?? []).filter((img) => img.kind !== "vton_garment")[activeImageIndex]?.url}
+          imageUrl={galleryImages[activeImageIndex]?.url}
           eligibility={tryOn}
         />
       )}

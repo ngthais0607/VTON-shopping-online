@@ -59,3 +59,19 @@ curl http://localhost:8000/api/v1/vton/products/1/eligibility   # engine phải 
 - Chạy toàn bộ bằng `docker compose up -d` chưa có worker try-on (FASHN/dmvton_cpu); worker này chạy trên máy.
 - Tài khoản thử: `vtontest@example.com` (nên xóa sau khi demo).
 - Chi tiết engine: `docs/VTON_ENGINES.md`.
+
+## Thử áo 3D thân trên (`/store/try-on-3d`)
+
+Chỉ cần frontend; không gọi backend, không tốn credit FASHN.
+
+```powershell
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Mở http://localhost:3000/store/try-on-3d, nhập chiều cao / ngực / eo / vai (hoặc chọn preset), chọn size S/M/L.
+
+- Kiểm tra: `pnpm vitest run tests/demo-upper` (lưới kín, đúng chiều mặt, vòng đo trên lưới lệch < 1%, áo không xuyên thân).
+- Khi đang đổi số đo, ma-nơ-canh dựng lưới thô (1.6 cm); sau 250 ms đứng yên thì dựng lưới mịn (0.85 cm).
+- Áo nhỏ hơn người được giữ đúng size, vùng chật tô đỏ và ghi trong mục gợi ý size.

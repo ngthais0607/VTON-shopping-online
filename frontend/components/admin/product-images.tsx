@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Star, Trash2, X } from "lucide-react";
 import { apiDelete, apiPatch, apiPut } from "@/lib/api";
 import { PRODUCT_IMAGE_KINDS, type ProductImage, type ProductImageKind } from "@/lib/types";
 import { ImageUploader } from "@/components/image-uploader";
+import { AngleSlots } from "@/components/admin/angle-slots";
+import { allSlotImages } from "@/lib/demo-upper/productFit";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription } from "@/components/ui/alert-dialog";
 
@@ -31,6 +33,8 @@ const KIND_LABELS: Record<ProductImageKind, string> = {
   vton_garment: "Try-on garment (hidden from gallery)",
 };
 
+const GENERAL_KINDS = PRODUCT_IMAGE_KINDS.filter(value => value === "model_photo" || value === "detail" || value === "size_chart");
+
 export function AdminProductImages({ productId, images = [], onImagesChange, onUploadSuccess, stagedFiles = [], onStagedFilesChange, onBusyChange, colors = [] }: Props) {
   const [kind, setKind] = useState<ProductImageKind>("model_photo");
   const [colorName, setColorName] = useState("");
@@ -47,7 +51,12 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
     [next[index], next[target]] = [next[target], next[index]];
     onStagedFilesChange?.(next);
   }
-  const cover = images.find(image => image.is_primary) || images[0];
+  // Photos in a 3D angle slot live in their own panel; this grid holds the rest (other colours, details...).
+  const gallery = useMemo(() => {
+    const slotIds = new Set(allSlotImages(images).map(image => image.id));
+    return images.filter(image => !slotIds.has(image.id));
+  }, [images]);
+  const cover = gallery.find(image => image.is_primary) || gallery[0];
 
   async function updateImage(image: ProductImage, patch: { is_primary?: boolean; color_name?: string | null }) {
     if (!productId || uploading) return;
@@ -70,8 +79,8 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
 
   async function moveImage(index: number, offset: -1 | 1) {
     const target = index + offset;
-    if (!productId || uploading || target < 0 || target >= images.length) return;
-    const reordered = [...images];
+    if (!productId || uploading || target < 0 || target >= gallery.length) return;
+    const reordered = [...gallery];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     setError(null);
     setUploading(true);
@@ -79,7 +88,7 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
     try {
       const saved = await apiPut<ProductImage[], { image_ids: string[] }>(
         `/products/${productId}/images/order`,
-        { image_ids: reordered.map(image => image.id) },
+        { image_ids: [...reordered, ...allSlotImages(images)].map(image => image.id) },
       );
       onImagesChange(saved);
     } catch (error) {
@@ -117,14 +126,14 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
       {productId && (
         <div className="grid grid-cols-2 gap-3">
           <label className="text-xs font-semibold text-foreground">
-            Upload next image as
+            Add image as
             <select
               value={kind}
               disabled={uploading}
               onChange={event => setKind(event.target.value as ProductImageKind)}
               className="mt-1 block w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm font-normal"
             >
-              {PRODUCT_IMAGE_KINDS.map(value => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}
+              {GENERAL_KINDS.map(value => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}
             </select>
           </label>
           <label className="text-xs font-semibold text-foreground">
@@ -141,15 +150,14 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
           </label>
         </div>
       )}
-      {productId && kind === "vton_garment" ? (
-        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Hidden from the gallery. Garment only (no mannequin or person), front view, plain background, at least 256 px.
-        </p>
-      ) : productId ? (
+      {productId ? (
         <p className="text-xs text-muted-foreground">
-          Any PNG, JPG or WebP photo can be tried on. Shoppers pick which photo to use on the product page.
+          Use this for the shop gallery and other shirt colours: pick a colour, then add its photos. Shoppers pick which photo to use on the product page.
         </p>
-      ) : null}
+      ) : (
+        <p className="text-xs text-muted-foreground">Save the product first, then add the Front / 45° / Side / Back photos for the 3D fitting room.</p>
+      )}
+      {productId && <AngleSlots productId={productId} images={images} colors={colors} onImagesChange={onImagesChange} onBusyChange={onBusyChange} />}
       <ImageUploader
         productId={productId}
         multiple
@@ -157,7 +165,7 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
         label="Add images"
         kind={kind}
         colorName={colorName || null}
-        isPrimary={!productId || (kind !== "vton_garment" && !images.some(image => image.kind !== "vton_garment"))}
+        isPrimary={!productId || !gallery.length}
         currentImageUrl={cover?.url}
         onFilesPicked={productId ? undefined : files => onStagedFilesChange?.([...stagedFiles, ...files])}
         onBusyChange={busy => { setUploading(busy); onBusyChange?.(busy); }}
@@ -193,11 +201,11 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
         </div>
       )}
       {error && !selected && <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p>}
-      {productId && images.length > 0 && (
+      {productId && gallery.length > 0 && (
         <div>
           <p className="mb-2 text-xs text-muted-foreground">The first image becomes the cover (star). Use the arrows to change the display order. Tag each image with its colour so shoppers see the right photos when they pick a colour.</p>
           <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {images.map((image, index) => (
+            {gallery.map((image, index) => (
               <li key={image.id} className="overflow-hidden rounded-md border border-border bg-white">
                 <div className="relative aspect-square bg-background">
                   <Image src={image.url} alt={`Product image ${index + 1}`} fill sizes="160px" className="object-contain" />
@@ -222,7 +230,7 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
                     <Button type="button" variant="ghost" size="sm" aria-label={`Move image ${index + 1} earlier`} title="Move earlier" disabled={uploading || deleting || index === 0} onClick={() => moveImage(index, -1)}>
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <Button type="button" variant="ghost" size="sm" aria-label={`Move image ${index + 1} later`} title="Move later" disabled={uploading || deleting || index === images.length - 1} onClick={() => moveImage(index, 1)}>
+                    <Button type="button" variant="ghost" size="sm" aria-label={`Move image ${index + 1} later`} title="Move later" disabled={uploading || deleting || index === gallery.length - 1} onClick={() => moveImage(index, 1)}>
                       <ChevronRight className="h-4 w-4" />
                     </Button>
                     <Button type="button" variant="ghost" size="sm" aria-label={`Delete image ${index + 1}`} disabled={deleting || uploading} onClick={() => { setError(null); setSelected(image); }}>

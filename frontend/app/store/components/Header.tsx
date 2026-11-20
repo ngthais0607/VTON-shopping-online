@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Search, Heart, ShoppingBag, UserRound, Menu, X, LogOut } from "lucide-react";
 import { useSession } from "@/hooks/use-session";
 import { useCart } from "../context/CartContext";
-const links = [["New In", "/store/collection?sort=latest"], ["Women", "/store/collection?gender=female"], ["Men", "/store/collection?gender=male"], ["Accessories", "/store/collection?search=accessories"], ["Sale", "/store/collection?sort=price_asc"]];
+const links = [["New In", "/store/collection?sort=latest"], ["Women", "/store/collection?gender=female"], ["Men", "/store/collection?gender=male"], ["Accessories", "/store/collection?search=accessories"], ["Sale", "/store/collection?sort=price_asc"], ["3D Try-On", "/store/try-on-3d"]];
 export function Header() {
   const { user, logout } = useSession();
   const { totalCount, setIsCartOpen } = useCart();

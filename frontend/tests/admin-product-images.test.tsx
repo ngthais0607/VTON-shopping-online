@@ -6,6 +6,9 @@ const { remove, upload, patch, put } = vi.hoisted(() => ({ remove: vi.fn(), uplo
 vi.mock('@/lib/api', () => ({ apiDelete: remove, apiUpload: upload, apiPatch: patch, apiPut: put }));
 vi.mock('next/image', () => ({ default: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} /> }));
 const images = [{ id: 'one', url: '/one.png', is_primary: true }, { id: 'two', url: '/two.png', is_primary: false }];
+/** The slot panel's inputs come first; the general uploader's is last. */
+const fileInputs = (c: HTMLElement) => Array.from(c.querySelectorAll<HTMLInputElement>('input[type=file]'));
+const generalInput = (c: HTMLElement) => fileInputs(c).at(-1)!;
 beforeEach(() => { remove.mockReset(); upload.mockReset(); patch.mockReset(); put.mockReset(); });
 
 it('deletes the chosen image and updates the gallery after server success', async () => {
@@ -44,20 +47,20 @@ it('uses the server fallback order after deleting a repeatedly replaced cover', 
 });
 
 it('uploads a garment-only image tagged with its type and colour without taking over the cover', async () => {
-  upload.mockResolvedValue({ id: 'three', url: '/three.png', kind: 'flat_lay', color_name: 'Đỏ', is_primary: false });
+  upload.mockResolvedValue({ id: 'three', url: '/three.png', kind: 'detail', color_name: 'Đỏ', is_primary: false });
   const changed = vi.fn();
   const { container } = render(
     <AdminProductImages productId={7} images={images} colors={['Đỏ', 'Đen']} onImagesChange={changed} onUploadSuccess={() => {}} />,
   );
-  fireEvent.change(screen.getByLabelText('Upload next image as'), { target: { value: 'flat_lay' } });
+  fireEvent.change(screen.getByLabelText('Add image as'), { target: { value: 'detail' } });
   fireEvent.change(screen.getByLabelText('Colour'), { target: { value: 'Đỏ' } });
-  fireEvent.change(container.querySelector('input[type=file]')!, {
+  fireEvent.change(generalInput(container), {
     target: { files: [new File(['png'], 'flat.png', { type: 'image/png' })] },
   });
   await waitFor(() => expect(upload).toHaveBeenCalled());
   const form = upload.mock.calls[0][1] as FormData;
   expect(upload.mock.calls[0][0]).toBe('/products/7/upload-image');
-  expect(form.get('kind')).toBe('flat_lay');
+  expect(form.get('kind')).toBe('detail');
   expect(form.get('color_name')).toBe('Đỏ');
   expect(form.get('is_primary')).toBe('false');
   await waitFor(() => expect(changed).toHaveBeenCalled());
@@ -71,7 +74,7 @@ it('does not take over the cover when a model photo is added to a product that a
   const { container } = render(
     <AdminProductImages productId={7} images={images} onImagesChange={() => {}} onUploadSuccess={() => {}} />,
   );
-  fireEvent.change(container.querySelector('input[type=file]')!, {
+  fireEvent.change(generalInput(container), {
     target: { files: [new File(['png'], 'm.png', { type: 'image/png' })] },
   });
   await waitFor(() => expect(upload).toHaveBeenCalled());
@@ -86,7 +89,7 @@ it('makes the first image of a product its cover', async () => {
   const { container } = render(
     <AdminProductImages productId={7} images={[]} onImagesChange={() => {}} onUploadSuccess={() => {}} />,
   );
-  fireEvent.change(container.querySelector('input[type=file]')!, {
+  fireEvent.change(generalInput(container), {
     target: { files: [new File(['png'], 'm.png', { type: 'image/png' })] },
   });
   await waitFor(() => expect(upload).toHaveBeenCalled());
@@ -114,17 +117,35 @@ it('tags an existing image with a colour', async () => {
   expect(patch).toHaveBeenCalledWith('/products/7/images/two', { color_name: 'Đen' });
 });
 
-it('never makes a try-on garment the cover, even for a product without images', async () => {
-  upload.mockResolvedValue({ id: 'g', url: '/g.png', kind: 'vton_garment', is_primary: false });
+it('uploads a slot photo as the 3D angle for the chosen colour, never as the cover', async () => {
+  upload.mockResolvedValue({ id: 'f', url: '/f.png', kind: 'vton_garment', color_name: 'Đỏ', sort_order: 900, is_primary: false });
+  const changed = vi.fn();
   const { container } = render(
-    <AdminProductImages productId={7} images={[]} onImagesChange={() => {}} onUploadSuccess={() => {}} />,
+    <AdminProductImages productId={7} images={[]} colors={['Đỏ', 'Đen']} onImagesChange={changed} onUploadSuccess={() => {}} />,
   );
-  fireEvent.change(screen.getByLabelText('Upload next image as'), { target: { value: 'vton_garment' } });
-  fireEvent.change(container.querySelector('input[type=file]')!, {
-    target: { files: [new File(['png'], 'g.png', { type: 'image/png' })] },
-  });
+  fireEvent.click(screen.getByRole('button', { name: 'Đỏ' }));
+  fireEvent.change(fileInputs(container)[0], { target: { files: [new File(['png'], 'g.png', { type: 'image/png' })] } });
   await waitFor(() => expect(upload).toHaveBeenCalled());
-  expect((upload.mock.calls[0][1] as FormData).get('is_primary')).toBe('false');
+  const form = upload.mock.calls[0][1] as FormData;
+  expect(form.get('kind')).toBe('vton_garment');
+  expect(form.get('color_name')).toBe('Đỏ');
+  expect(form.get('sort_order')).toBe('900');
+  expect(form.get('is_primary')).toBe('false');
+  await waitFor(() => expect(changed).toHaveBeenCalled());
+});
+
+it('keeps slot photos out of the general grid and sends them last when reordering', async () => {
+  put.mockResolvedValue([]);
+  const mixed = [
+    { id: 'front', url: '/f.png', kind: 'vton_garment', sort_order: 900 },
+    { id: 'm1', url: '/m1.png', kind: 'model_photo', is_primary: true },
+    { id: 'm2', url: '/m2.png', kind: 'model_photo' },
+  ];
+  render(<AdminProductImages productId={7} images={mixed as never} onImagesChange={() => {}} onUploadSuccess={() => {}} />);
+  expect(screen.queryByRole('button', { name: 'Move image 3 later' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Move image 1 later' }));
+  await waitFor(() => expect(put).toHaveBeenCalled());
+  expect(put).toHaveBeenCalledWith('/products/7/images/order', { image_ids: ['m2', 'm1', 'front'] });
 });
 
 it('saves a new display order when an image is moved later', async () => {
@@ -142,7 +163,7 @@ it('uploads several selected files one after another', async () => {
   const { container } = render(
     <AdminProductImages productId={7} images={images} onImagesChange={() => {}} onUploadSuccess={() => {}} />,
   );
-  fireEvent.change(container.querySelector('input[type=file]')!, {
+  fireEvent.change(generalInput(container), {
     target: { files: [new File(['1'], 'a.png', { type: 'image/png' }), new File(['2'], 'b.png', { type: 'image/png' })] },
   });
   await waitFor(() => expect(upload).toHaveBeenCalledTimes(2));
