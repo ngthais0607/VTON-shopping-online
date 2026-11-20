@@ -176,6 +176,31 @@
   text-wrap: balance;
 }
 
+/* Animated "Sale -X%" ribbon: a gentle pulse plus a light sweep (disabled by prefers-reduced-motion below). */
+.sale-badge {
+  position: absolute;
+  overflow: hidden;
+  transform-origin: left center;
+  animation: sale-pulse 1.8s ease-in-out infinite;
+}
+.sale-badge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-150%);
+  animation: sale-shine 2.8s ease-in-out infinite;
+}
+@keyframes sale-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+@keyframes sale-shine {
+  0%, 55% { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

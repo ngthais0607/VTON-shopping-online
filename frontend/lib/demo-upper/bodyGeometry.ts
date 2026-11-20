@@ -34,13 +34,16 @@ export type BodyModel = {
 export function buildBodyModel(m: UpperBodyMeasurements, form: BodyForm = "male"): BodyModel {
   const levels = bodyLevels(m.heightCm);
   const female = form === "female";
+  levels.neckTop = female ? 8.5 : 9;
   if (female) {
-    levels.chest = -0.134 * m.heightCm;
-    levels.underbust = -0.177 * m.heightCm;
-    levels.waist = -0.236 * m.heightCm;
+    levels.chest = -0.116 * m.heightCm;
+    levels.underbust = -0.160 * m.heightCm;
+    levels.waist = -0.232 * m.heightCm;
+    // The form runs on past the hip line towards the thighs, so the hips read as a flare, not a bulb.
+    levels.base = -0.36 * m.heightCm;
   }
-  const hipCm = derivedHipCm(m.chestCm, m.waistCm) + (female ? 6 : 0);
-  const rArm = armRadiusCm(m.chestCm) * (female ? 0.90 : 1);
+  const hipCm = derivedHipCm(m.chestCm, m.waistCm) + (female ? 14 : 0);
+  const rArm = armRadiusCm(m.chestCm) * (female ? 0.97 : 1);
   const s = m.heightCm / 170;
 
   const chest = solveSuperellipse(m.chestCm, DEPTH_RATIOS.chest, BODY_EXPONENT);
@@ -67,20 +70,21 @@ export function buildBodyModel(m: UpperBodyMeasurements, form: BodyForm = "male"
     { name: "base", y: levels.base, radii: sect(hipCm * 0.98, DEPTH_RATIOS.hip) },
   ];
 
-  if (female) {
+  {
     // Distribute the bust girth towards the front and the two bust points.
     // Rescale the finished section so a tape around it still reads the input.
     const bust = keyRings.find(ring => ring.name === "chest")!;
     const shaped = bust.radii.map((r, i) => {
       const angle = 2 * Math.PI * i / RING_SEGMENTS;
       const front = Math.max(0, Math.sin(angle));
-      const lobe = Math.exp(-(((Math.abs(Math.cos(angle)) - 0.48) / 0.32) ** 2));
-      return r * (1 + front * (0.09 + 0.11 * lobe) - 0.04 * Math.cos(angle) ** 2);
+      const lobe = Math.exp(-(((Math.abs(Math.cos(angle)) - 0.5) / (female ? 0.32 : 0.42)) ** 2));
+      const fullness = female ? 0.05 + 0.29 * lobe : 0.025 + 0.08 * lobe;
+      return r * (1 + front * fullness - (female ? 0.04 : 0) * Math.cos(angle) ** 2);
     });
     const scale = m.chestCm / polygonPerimeter(shaped);
     bust.radii = shaped.map(r => r * scale);
   }
-  const alpha = (ARM_ANGLE_DEG * Math.PI) / 180;
+  const alpha = ((ARM_ANGLE_DEG + (female ? 6 : 0)) * Math.PI) / 180;
   const rootY = levels.shoulder - rArm * 0.65;
   // Normally set by the shoulder width; for a broad chest on narrow shoulders the arm is moved out just
   // enough to hang clear of the ribcage instead of sinking into it.
@@ -182,5 +186,8 @@ export function armRadiusAt(arm: ArmModel, t: number): number {
 
 export function armRing(arm: ArmModel, t: number, radius: number, segments = RING_SEGMENTS): Ring3D {
   const { u, v } = axisFrame(arm.dir);
-  return { center: addScaled(arm.root, arm.dir, t), u, v, radii: Array(segments).fill(radius) };
+  const bend = Math.max(0, t - arm.lengthCm * 0.5);
+  const outward = arm.side === "right" ? 1 : -1;
+  const center = addScaled(addScaled(addScaled(arm.root, arm.dir, t), u, -outward * bend * 0.17), v, bend * 0.21);
+  return { center, u, v, radii: Array(segments).fill(radius) };
 }

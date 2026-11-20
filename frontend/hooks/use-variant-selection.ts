@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { getAvailableStock, isVariantInStock } from "@/lib/inventory";
+import { compareSizeLabels } from "@/lib/sizes";
 import type { ProductVariant } from "@/lib/types";
 
 export interface AvailableColor {
@@ -37,10 +38,11 @@ export interface UseVariantSelectionReturn {
 }
 
 export function useVariantSelection({
-  variants = [],
+  variants: suppliedVariants = [],
   defaultPrice,
   initialVariantId,
 }: UseVariantSelectionProps): UseVariantSelectionReturn {
+  const variants = useMemo(() => suppliedVariants.filter(variant => variant.is_active !== false), [suppliedVariants]);
   // Determine initial variant
   const initialVariant = useMemo(() => {
     if (initialVariantId) {
@@ -101,7 +103,7 @@ export function useVariantSelection({
       size: v.size,
       inStock: isVariantInStock(v),
       availableStock: getAvailableStock(v),
-    }));
+    })).sort((a, b) => compareSizeLabels(a.size, b.size));
   }, [variants, selectedColor]);
 
   // Active selected variant

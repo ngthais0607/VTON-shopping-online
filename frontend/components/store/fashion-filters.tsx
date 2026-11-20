@@ -15,7 +15,7 @@ export function FashionFilters({ isOpen = true, onClose, className = '', hideSto
   const { data: facets, error, isLoading, mutate } = useSWR<ProductFacetsResponse>('/products/facets', swrFetcher);
   const param = (key: string) => searchParams?.get?.(key) || '';
   const updateParam = (key: string, value: string | null) => router.replace(updateCatalogQuery(searchParams?.toString() || '', { [key]: value }), { scroll: false });
-  const keys = ['category_id', 'gender', 'brand', 'size', 'color', 'stock_status', 'min_price', 'max_price'];
+  const keys = ['category_id', 'gender', 'brand', 'size', 'color', 'stock_status', 'min_price', 'max_price', 'on_sale'];
   const choice = (selected: boolean) => 'inline-flex min-h-9 min-w-9 items-center justify-center gap-2 border px-2.5 text-xs transition-colors ' + (selected ? 'border-foreground bg-foreground text-white' : 'border-border hover:bg-secondary');
   if (!isOpen) return null;
   return <div className={className} data-testid="fashion-filters-container">
@@ -26,6 +26,7 @@ export function FashionFilters({ isOpen = true, onClose, className = '', hideSto
     {!!facets?.sizes?.length && <FilterSection title="Size" selected={param('size')}>{facets.sizes.map(size => <button key={size} aria-label={'Size ' + size} aria-pressed={param('size') === size} onClick={() => updateParam('size', param('size') === size ? null : size)} className={choice(param('size') === size)}>{size}</button>)}</FilterSection>}
     {!!facets?.colors?.length && <FilterSection title="Color" selected={param('color')}>{facets.colors.map(color => <button key={color.name} aria-label={'Color ' + color.name} aria-pressed={param('color') === color.name} onClick={() => updateParam('color', param('color') === color.name ? null : color.name)} className={choice(param('color') === color.name)}><span className="h-3 w-3 rounded-full border border-black/20" style={{backgroundColor:color.hex || '#999'}} />{color.name}</button>)}</FilterSection>}
     {!!facets?.brands?.length && <FilterSection title="Brand" selected={param('brand')}>{facets.brands.map(brand => <button key={brand} aria-label={'Brand ' + brand} aria-pressed={param('brand') === brand} onClick={() => updateParam('brand', param('brand') === brand ? null : brand)} className={choice(param('brand') === brand)}>{brand}</button>)}</FilterSection>}
+    <label className="mt-4 flex min-h-11 items-center gap-2 text-xs"><input type="checkbox" checked={param('on_sale') === 'true'} onChange={event => updateParam('on_sale', event.target.checked ? 'true' : null)} />On sale only</label>
     {!hideStock && <label className="mt-4 flex min-h-11 items-center gap-2 text-xs"><input type="checkbox" checked={param('stock_status') === 'in_stock'} onChange={event => updateParam('stock_status', event.target.checked ? 'in_stock' : null)} />In stock only</label>}
   </div>;
 }

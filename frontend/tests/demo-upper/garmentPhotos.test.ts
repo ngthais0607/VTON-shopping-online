@@ -1,3 +1,4 @@
+import { measureFrontCut, tracePhotoRows } from "@/lib/demo-upper/photoRegistration";
 import { describe, expect, it } from "vitest";
 import { bleedBackground, classifyViews, EDGE_TRIM, garmentMask, maskBBox, photoStats, projectionMap, type Rgba } from "@/lib/demo-upper/garmentPhotos";
 
@@ -66,4 +67,19 @@ describe("garment photos", () => {
     expect(0 * sy + oy).toBeCloseTo(1 - 110 / 130, 6);
     expect(1 * sy + oy).toBeCloseTo(1 - 20 / 130, 6);
   });
+});
+
+it("measures shirt proportions from an uploaded silhouette", () => {
+  const img = synth(140, 130, (x, y) => {
+    if (y < 10 || y >= 110) return false;
+    const width = y < 49 ? 118 : y < 77 ? 76 : y < 98 ? 64 : 70;
+    return Math.abs(x - 70) < width / 2;
+  });
+  const mask = garmentMask(img);
+  const box = maskBBox(mask, img.width, img.height)!;
+  const cut = measureFrontCut({ box, outline: tracePhotoRows(mask, img.width, box) })!;
+  expect(cut.waistToChest).toBeLessThan(0.95);
+  expect(cut.hemToChest).toBeGreaterThan(cut.waistToChest);
+  expect(cut.lengthToChestWidth).toBeGreaterThan(1);
+  expect(cut.sleeveDropFraction).toBeGreaterThan(0.2);
 });

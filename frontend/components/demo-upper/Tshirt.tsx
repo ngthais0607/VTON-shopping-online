@@ -11,29 +11,34 @@ type TshirtProps = {
   markerTexture: Texture | null;
   /** Product photos painted onto the tee; empty → plain fabric colour from the vertex colours. */
   photos: GarmentPhoto[];
-  photoTint: string | null;
   tightColor: string;
+  /** 1 = opaque; lower lets the mannequin show through to judge how snug the tee is. */
+  opacity?: number;
 };
 
-function PhotoTee({ geometry, photos, photoTint, tightColor }: { geometry: BufferGeometry; photos: GarmentPhoto[]; photoTint: string | null; tightColor: string }) {
+function PhotoTee({ geometry, photos, tightColor, opacity }: { geometry: BufferGeometry; photos: GarmentPhoto[]; tightColor: string; opacity: number }) {
   const material = useMemo(
-    () => createPhotoMaterial(photos, tightColor, photoTint),
-    [photos, tightColor, photoTint],
+    () => createPhotoMaterial(photos, tightColor),
+    [photos, tightColor],
   );
   useEffect(() => () => material.dispose(), [material]);
-  return <mesh geometry={geometry} material={material} renderOrder={0} />;
+  return (
+    <mesh geometry={geometry} renderOrder={0}>
+      <primitive object={material} attach="material" transparent={opacity < 0.999} opacity={opacity} />
+    </mesh>
+  );
 }
 
 /** Opaque tee, coloured per vertex (tight areas blush red), with a small back logo so the 180° view is recognisable. */
-export function Tshirt({ geometry, markerPosition, markerTexture, photos, photoTint, tightColor }: TshirtProps) {
+export function Tshirt({ geometry, markerPosition, markerTexture, photos, tightColor, opacity = 1 }: TshirtProps) {
   const [x, y, z] = markerPosition.map((v) => v * CM_TO_M);
   return (
     <group>
       {photos.length ? (
-        <PhotoTee geometry={geometry} photos={photos} photoTint={photoTint} tightColor={tightColor} />
+        <PhotoTee geometry={geometry} photos={photos} tightColor={tightColor} opacity={opacity} />
       ) : (
         <mesh geometry={geometry} renderOrder={0}>
-          <meshStandardMaterial vertexColors side={DoubleSide} roughness={0.85} metalness={0} />
+          <meshStandardMaterial vertexColors side={DoubleSide} roughness={0.85} metalness={0} transparent={opacity < 0.999} opacity={opacity} />
         </mesh>
       )}
       {/* The product's own back photo replaces the TrueLook marker. */}

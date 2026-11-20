@@ -173,6 +173,25 @@ describe("TryOnModal long-running generation", () => {
     expect(await screen.findByAltText("Try-on result", undefined, { timeout: 5000 })).toBeInTheDocument();
   }, 12000);
 
+  it("stops polling when closed while a status request is in flight", async () => {
+    let release: (value: unknown) => void = () => {};
+    let taskPolls = 0;
+    api.apiGet.mockImplementation(async (path: string) => {
+      if (path.startsWith("/vton/quota")) return { limit: 10, used: 1, remaining: 9, retention_hours: 24 };
+      if (path.startsWith("/vton/tasks?")) return { items: [running], total: 1 };
+      taskPolls += 1;
+      return new Promise((resolve) => {
+        release = () => resolve({ ...running });
+      });
+    });
+    render(<TryOnModal {...baseProps} />);
+    await waitFor(() => expect(taskPolls).toBe(1), { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    release(null);
+    await new Promise((resolve) => setTimeout(resolve, 2600));
+    expect(taskPolls).toBe(1);
+  }, 12000);
+
   it("closes on Escape", async () => {
     const onClose = vi.fn();
     render(<TryOnModal {...baseProps} onClose={onClose} />);
@@ -200,7 +219,27 @@ describe("TryOnModal long-running generation", () => {
   }, 12000);
 });
 
+describe("TryOnModal photo validation", () => {
+  it("drops a previously chosen photo when the next pick is rejected", async () => {
+    render(<TryOnModal {...baseProps} />);
+    pickPhoto();
+    fireEvent.click(screen.getByRole("checkbox"));
+    const button = screen.getByRole("button", { name: "Try it on" });
+    expect(button).toBeEnabled();
+    const big = new File([new Uint8Array(6 * 1024 * 1024)], "big.png", { type: "image/png" });
+    fireEvent.change(document.getElementById("vton-photo") as HTMLInputElement, { target: { files: [big] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent(/5MB/);
+    expect(button).toBeDisabled();
+  });
+});
+
 describe("vtonErrorMessage", () => {
+  it("has messages for the new backend codes", () => {
+    for (const code of ["idempotency_key_conflict", "vton_erase_failed", "expired", "cancelled", "superseded"]) {
+      expect(vtonErrorMessage(code)).not.toMatch(/Unable to run/);
+    }
+  });
+
   it("maps known codes and falls back for unknown ones", () => {
     expect(vtonErrorMessage("vton_quota_exceeded")).toMatch(/come back tomorrow/);
     expect(vtonErrorMessage("zzz")).toMatch(/Unable to run/);

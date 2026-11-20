@@ -120,18 +120,6 @@ export function mirrorSymmetry(mask: Uint8Array, w: number, box: BBox): number {
   return any ? both / any : 0;
 }
 
-/** Horizontal centre of mass of the garment relative to the bbox: −0.5 (left edge) … 0 (centre) … 0.5 (right edge). */
-export function massOffset(mask: Uint8Array, w: number, box: BBox): number {
-  let sum = 0, n = 0;
-  for (let y = box.y0; y <= box.y1; y++) {
-    for (let x = box.x0; x <= box.x1; x++) {
-      if (mask[y * w + x]) { sum += x; n++; }
-    }
-  }
-  if (!n) return 0;
-  return (sum / n - (box.x0 + box.x1) / 2) / (box.x1 - box.x0 + 1);
-}
-
 export function meanColor(img: Rgba, mask: Uint8Array): [number, number, number] {
   let r = 0, g = 0, b = 0, n = 0;
   for (let p = 0; p < mask.length; p++) {
@@ -172,15 +160,6 @@ export function bleedBackground(img: Rgba, mask: Uint8Array, passes = 6): Rgba {
   for (let p = 0; p < w * h; p++) {
     if (filled[p]) { data[4 * p + 3] = 255; continue; }
     data[4 * p] = mr; data[4 * p + 1] = mg; data[4 * p + 2] = mb; data[4 * p + 3] = 255;
-  }
-  return { data, width: w, height: h };
-}
-
-export function flipHorizontal(img: Rgba): Rgba {
-  const { width: w, height: h } = img;
-  const data = new Uint8ClampedArray(img.data.length);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) data.set(img.data.subarray(4 * (y * w + x), 4 * (y * w + x) + 4), 4 * (y * w + (w - 1 - x)));
   }
   return { data, width: w, height: h };
 }
@@ -229,9 +208,6 @@ export const VIEW_AXES: Record<PhotoView, { dir: [number, number, number]; right
   side: { dir: [1, 0, 0], right: [0, 0, -1] },
   back: { dir: [0, 0, -1], right: [-1, 0, 0] },
 };
-
-/** Views that only exist for one side of the body and are mirrored onto the other (x → |x|). */
-export const MIRRORED_VIEWS: PhotoView[] = ["angle45", "side"];
 
 /**
  * Linear map from object space to texture uv for one view: u = right·p · sx + ox, v = y · sy + oy.

@@ -105,6 +105,7 @@ export default function ProductsPage() {
   const [formData, setFormData] = useState<ProductFormData>({
     name: "",
     price: 0,
+    compare_at_price: null,
     currency: "VND",
     category_id: null,
     stock_quantity: 0,
@@ -118,6 +119,7 @@ export default function ProductsPage() {
     material: "",
     fit: "",
     care_instructions: "",
+    size_chart: null,
   });
 
   // Filters and sorting are now handled backend-side.
@@ -134,6 +136,7 @@ export default function ProductsPage() {
     setFormData({
       name: "",
       price: 0,
+      compare_at_price: null,
       currency: "VND",
       category_id: null,
       stock_quantity: 0,
@@ -147,6 +150,7 @@ export default function ProductsPage() {
       material: "",
       fit: "",
       care_instructions: "",
+      size_chart: null,
     });
     setStagedImages([]);
     storedImages.current = 0;
@@ -210,6 +214,7 @@ export default function ProductsPage() {
     setFormData({
       name: product.name,
       price: product.price,
+      compare_at_price: product.compare_at_price ?? null,
       currency: product.currency,
       category_id: product.category?.id || null,
       stock_quantity: product.stock_quantity,
@@ -223,6 +228,7 @@ export default function ProductsPage() {
       material: product.material || "",
       fit: product.fit || "",
       care_instructions: product.care_instructions || "",
+      size_chart: product.size_chart ?? null,
     });
     setCreateDialogOpen(true);
   };
@@ -327,32 +333,32 @@ export default function ProductsPage() {
                   Create Product
                 </Button>
               </DialogTrigger>
-              <DialogContent className="admin-dialog max-w-xl max-h-[85vh] overflow-y-auto">
-                <DialogHeader>
+              <DialogContent className="admin-dialog grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-3xl max-h-[90dvh]">
+                <DialogHeader className="border-b px-4 py-3 text-left sm:px-6">
                   <DialogTitle>
                     {editingProduct ? "Edit Product" : "Create New Product"}
                   </DialogTitle>
-                  <DialogDescription>
-                    Fill in the product details below
-                  </DialogDescription>
+                  <DialogDescription className="sr-only">Product details, size chart and images</DialogDescription>
                 </DialogHeader>
-                <ProductFormFields
-                  formData={formData}
-                  onChange={updateFormData}
-                  categories={categories}
-                  editingProduct={editingProduct}
-                  saveError={saveError}
-                  stagedImages={stagedImages}
-                  onStagedImagesChange={setStagedImages}
-                  onBusyChange={setImageBusy}
-                  onImagesChange={(images) =>
-                    setEditingProduct((current) => (current ? { ...current, images } : current))
-                  }
-                  onProductsChanged={() => void mutateProducts()}
-                  onGarmentSelected={setGarmentImage}
-                />
+                <div className="min-h-0 overflow-y-auto px-4 py-3 sm:px-6">
+                  <ProductFormFields
+                    formData={formData}
+                    onChange={updateFormData}
+                    categories={categories}
+                    editingProduct={editingProduct}
+                    saveError={saveError}
+                    stagedImages={stagedImages}
+                    onStagedImagesChange={setStagedImages}
+                    onBusyChange={setImageBusy}
+                    onImagesChange={(images) =>
+                      setEditingProduct((current) => (current ? { ...current, images } : current))
+                    }
+                    onProductsChanged={() => void mutateProducts()}
+                    onGarmentSelected={setGarmentImage}
+                  />
+                </div>
 
-                <div className="flex gap-2 justify-end">
+                <div className="flex justify-end gap-2 border-t px-4 py-3 sm:px-6">
                   <Button
                     variant="outline"
                     disabled={saving || imageBusy}
@@ -364,7 +370,7 @@ export default function ProductsPage() {
                     onClick={
                       editingProduct ? () => runSave(handleUpdateProduct) : () => runSave(handleCreateProduct)
                     }
-                    disabled={saving || imageBusy || !formData.name || formData.price <= 0}
+                    disabled={saving || imageBusy || !formData.name || formData.price <= 0 || (formData.compare_at_price != null && formData.compare_at_price <= formData.price)}
                   >
                     {editingProduct ? "Update Product" : "Create Product"}
                   </Button>
@@ -381,6 +387,7 @@ export default function ProductsPage() {
                 aria-label="Search products"
                 placeholder="Search products..."
                 value={searchVal}
+                maxLength={200}
                 onChange={(e) => setSearchVal(e.target.value)}
                 className="pl-10 bg-white"
               />

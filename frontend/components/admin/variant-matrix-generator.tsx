@@ -58,7 +58,7 @@ export function VariantMatrixGenerator({
   const [colorHexInput, setColorHexInput] = useState("#000000");
 
   const [defaultStock, setDefaultStock] = useState<number>(10);
-  const [priceInput, setPriceInput] = useState<number>(defaultPrice);
+  const [priceInput, setPriceInput] = useState<number>(0); // blank = follow the product price, so a later sale price still applies
 
   const applyPreset = (preset: string[]) => {
     setSelectedSizes(Array.from(new Set([...selectedSizes, ...preset])));
@@ -107,7 +107,7 @@ export function VariantMatrixGenerator({
           size,
           color_name: "Tiêu chuẩn",
           color_hex: null,
-          price: priceInput,
+          price: priceInput > 0 ? priceInput : undefined,
           stock_quantity: defaultStock,
         });
       } else {
@@ -116,7 +116,7 @@ export function VariantMatrixGenerator({
             size,
             color_name: color.name,
             color_hex: color.hex,
-            price: priceInput,
+            price: priceInput > 0 ? priceInput : undefined,
             stock_quantity: defaultStock,
           });
         }
@@ -127,10 +127,13 @@ export function VariantMatrixGenerator({
 
   const handleGenerateClick = () => {
     if (selectedSizes.length === 0 && selectedColors.length === 0) return;
+    // A full size x colour matrix is expanded by the API (the explicit list is capped at 200 rows);
+    // only the "no colour chosen" case needs the explicit list.
+    const isMatrix = selectedSizes.length > 0 && selectedColors.length > 0;
     onGenerate({
       sizes: selectedSizes,
       colors: selectedColors,
-      variants: combinations,
+      variants: isMatrix ? [] : combinations,
       default_stock: defaultStock,
       default_price: priceInput > 0 ? priceInput : undefined,
     });

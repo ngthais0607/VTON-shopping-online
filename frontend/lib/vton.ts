@@ -27,6 +27,13 @@ const MESSAGES: Record<string, string> = {
   person_image_missing: "Your photo has been removed. Please upload it again.",
   invalid_input: "We could not process the input image.",
   internal_error: "Something went wrong. Please try again.",
+  engine_misconfigured: "The try-on service is not set up correctly. Please try again later.",
+  vton_rejected_by_provider: "The service could not accept this photo. Try a different one.",
+  idempotency_key_conflict: "That request was already used for a different item. Please try again.",
+  vton_erase_failed: "We could not delete your photo right now. Please try again in a moment.",
+  expired: "This try-on expired before it finished. Please try again.",
+  cancelled: "This try-on was cancelled.",
+  superseded: "This try-on was replaced by a newer one.",
 };
 
 export function vtonErrorMessage(codeOrError: unknown): string {

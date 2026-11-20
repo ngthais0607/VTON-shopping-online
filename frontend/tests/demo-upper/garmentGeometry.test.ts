@@ -2,10 +2,10 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { buildBodyModel, getKeyRing } from "@/lib/demo-upper/bodyGeometry";
 import { GARMENT_SIZES, SIZES } from "@/lib/demo-upper/demoCatalog";
-import { BODY_PRESETS, DEFAULT_BODY } from "@/lib/demo-upper/demoPresets";
+import { BODY_PRESETS, DEFAULT_BODY, WOMENS_PRESETS } from "@/lib/demo-upper/demoPresets";
 import { polygonPerimeter } from "@/lib/demo-upper/ellipse";
 import { Color } from "three";
-import { buildGarmentDisplay, buildGarmentGeometry, buildGarmentModel, TIGHT_MAX_MIX } from "@/lib/demo-upper/garmentGeometry";
+import { buildGarmentDisplay, buildGarmentGeometry, buildGarmentModel, dimensionsFromFrontPhoto, TIGHT_MAX_MIX } from "@/lib/demo-upper/garmentGeometry";
 import { diagnoseGeometry } from "@/lib/demo-upper/geometryDiagnostics";
 import { useDisposableGeometry } from "@/lib/demo-upper/useDisposableGeometry";
 import { getBodyField } from "@/lib/demo-upper/bodyField";
@@ -161,4 +161,63 @@ describe("tee on the mannequin", () => {
     expect(maxJump).toBeLessThan(full * 0.5);
     geometry.dispose();
   });
+});
+
+it.each(["male", "female"] as const)("keeps the %s shoulder inside the outer shirt panels", form => {
+  const presets = form === "male" ? BODY_PRESETS : WOMENS_PRESETS;
+  for (const { body: measurements } of presets) {
+    const body = buildBodyModel(measurements, form);
+    const field = getBodyField(body);
+    for (const size of SIZES) {
+      const display = buildGarmentDisplay(body, buildGarmentModel(body, GARMENT_SIZES[size]), false, true);
+      for (const ring of display.torsoRings) {
+        if (ring.center[1] < body.levels.shoulder - 2) break;
+        for (let i = 0; i < ring.radii.length; i++) {
+          expect(field.full(...ringPoint(ring, i))).toBeGreaterThan(0.2);
+        }
+      }
+    }
+  }
+});
+
+it.each(["male", "female"] as const)("tapers the standing collar into the %s neckline", form => {
+  const measurements = form === "male" ? DEFAULT_BODY : WOMENS_PRESETS[1].body;
+  const body = buildBodyModel(measurements, form);
+  const display = buildGarmentDisplay(body, buildGarmentModel(body, GARMENT_SIZES.M), true);
+  const mesh = buildGarmentGeometry(display);
+  const pos = mesh.getAttribute("position");
+  const front = display.torsoRings[0];
+  const segments = front.radii.length;
+  // The collar's first and last columns meet the shirt at the front opening.
+  const last = segments - 14;
+  const start = pos.count - (last + 1) * 5;
+  expect(pos.getY(start) * 100).toBeCloseTo(front.heights![segments / 4 + 7], 4);
+  expect(pos.getY(start + last * 5) * 100).toBeCloseTo(front.heights![segments / 4 - 7], 4);
+  expect(diagnoseGeometry(mesh).degenerateTriangles).toBe(0);
+  mesh.dispose();
+});
+
+it("can hide pressure colouring without changing garment shape or fit data", () => {
+  const body = buildBodyModel({ ...DEFAULT_BODY, chestCm: 107 });
+  const display = buildGarmentDisplay(body, buildGarmentModel(body, GARMENT_SIZES.S));
+  const highlighted = buildGarmentGeometry(display);
+  const plain = buildGarmentGeometry(display, "#EEE9E0", "#b13d36", false);
+  expect(display.tightZones).toContain("chest");
+  expect(plain.getAttribute("position").array).toEqual(highlighted.getAttribute("position").array);
+  expect(plain.getAttribute("color").array).not.toEqual(highlighted.getAttribute("color").array);
+  highlighted.dispose();
+  plain.dispose();
+});
+
+it("can show a waist-length cut while the size chart keeps its supplied length", () => {
+  const body = buildBodyModel(WOMENS_PRESETS[1].body, "female");
+  const chart = GARMENT_SIZES.M;
+  const visual = dimensionsFromFrontPhoto(chart, {
+    waistToChest: 0.86, hemToChest: 0.92, lengthToChestWidth: 1.28, sleeveDropFraction: 0.30,
+  });
+  expect(visual.lengthCm).toBeLessThan(chart.lengthCm);
+  const model = buildGarmentModel(body, chart, -body.levels.waist + 1.5);
+  expect(model.garment.lengthCm).toBe(chart.lengthCm);
+  expect(model.hemY).toBeCloseTo(body.levels.waist - 1.5);
+  expect(diagnoseGeometry(buildGarmentGeometry(buildGarmentDisplay(body, model))).degenerateTriangles).toBe(0);
 });

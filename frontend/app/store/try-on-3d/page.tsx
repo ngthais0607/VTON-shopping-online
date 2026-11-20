@@ -10,5 +10,5 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const product = first(params.product);
   const color = first(params.color);
   // Keyed by product so switching products starts from a fresh state.
-  return <TryOn3DPage key={product ?? "sample"} productSlug={product} colorName={color} />;
+  return <TryOn3DPage key={product ?? "sample"} productSlug={product} colorName={color} initialSize={first(params.size)} />;
 }

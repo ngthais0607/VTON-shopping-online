@@ -1,4 +1,4 @@
-/** Tỉ lệ độ cao (giả định cho demo) tính từ HSP xuống, nhân với chiều cao H. */
+/** Tỉ lệ độ cao (giả định) tính từ HSP xuống, nhân với chiều cao H. */
 export const HEIGHT_RATIOS = {
   shoulderDrop: 0.03,
   armpit: 0.075,

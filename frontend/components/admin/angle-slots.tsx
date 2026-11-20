@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { Replace, Trash2, Upload } from "lucide-react";
 import { apiDelete, apiUpload } from "@/lib/api";
 import { ANGLE_SLOTS, angleSlots } from "@/lib/demo-upper/productFit";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 
 interface Props {
   productId: number;
+  productSlug?: string;
   images: ProductImage[];
   colors: string[];
   onImagesChange: (images: ProductImage[]) => void;
@@ -18,13 +20,14 @@ interface Props {
 
 const ALL = "";
 
-export function AngleSlots({ productId, images, colors, onImagesChange, onBusyChange }: Props) {
+export function AngleSlots({ productId, productSlug, images, colors, onImagesChange, onBusyChange }: Props) {
   const [color, setColor] = useState(ALL);
   const [busySlot, setBusySlot] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputs = useRef<Record<string, HTMLInputElement | null>>({});
   const tabs = [ALL, ...colors];
   const set = angleSlots(images, color || null);
+  const readyCount = ANGLE_SLOTS.filter(slot => set.views[slot.view]).length;
 
   async function put(view: string, file: File) {
     const slot = ANGLE_SLOTS.find(s => s.view === view)!;
@@ -80,7 +83,7 @@ export function AngleSlots({ productId, images, colors, onImagesChange, onBusyCh
       <div>
         <p className="text-sm font-semibold text-foreground">3D angle photos</p>
         <p className="text-xs text-muted-foreground">
-          Upload the garment alone on a plain background, one photo per angle. The front photo is also used by the 2D try-on. Photos placed here are used by the 3D fitting room automatically; the colour tabs hold one set per colour.
+          Photograph the same garment and colour on a plain background. Keep the camera height and framing consistent, with the neckline, cuffs and hem visible in each angle. The front photo guides the 3D outline and is also used for 2D try-on.
         </p>
       </div>
       <div className="flex flex-wrap gap-1">
@@ -135,6 +138,14 @@ export function AngleSlots({ productId, images, colors, onImagesChange, onBusyCh
           );
         })}
       </ul>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="text-muted-foreground" aria-live="polite">{readyCount} of 4 angles added</span>
+        {productSlug && set.views.front && (
+          <Link className="font-medium underline underline-offset-4"
+            href={`/store/try-on-3d?product=${encodeURIComponent(productSlug)}${color ? `&color=${encodeURIComponent(color)}` : ""}`}
+            target="_blank" rel="noopener">Preview saved 3D fit</Link>
+        )}
+      </div>
       {set.unsorted.length > 0 && (
         <p className="text-xs text-amber-700">{set.unsorted.length} older garment photo(s) for this colour are not in a slot; the 3D room guesses their angle. Upload to the slots to be exact.</p>
       )}

@@ -1,3 +1,4 @@
+import { compareSizeLabels } from "@/lib/sizes";
 import type { Product, ProductImage, ProductImageKind } from "@/lib/types";
 import type { PhotoView } from "./garmentPhotos";
 import { DEMO_PRODUCT, GARMENT_SIZES, SIZES } from "./demoCatalog";
@@ -25,7 +26,9 @@ export function chartNumber(value: unknown): number | null {
   if (typeof value !== "string") return null;
   const nums = value.replace(",", ".").match(/\d+(\.\d+)?/g)?.map(Number) ?? [];
   if (!nums.length) return null;
-  return nums.length >= 2 ? (nums[0] + nums[1]) / 2 : nums[0];
+  const n = nums.length >= 2 ? (nums[0] + nums[1]) / 2 : nums[0];
+  // A 400-digit "number" parses to Infinity; it must never reach the renderer.
+  return Number.isFinite(n) ? n : null;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -63,10 +66,10 @@ export function rowToGarment(size: string, row: Record<string, unknown>, unitFac
     sleeveLengthCm: round1(read("sleeveLengthCm") ?? 21 + (chest - 102) / 6),
   };
   // Waist / hem that are clearly impossible for a tee fall back to the chest.
-  if (garment.waistCircCm < chest * 0.6) garment.waistCircCm = round1(chest - 2);
-  if (garment.hemCircCm < chest * 0.6) garment.hemCircCm = round1(chest);
-  if (garment.lengthCm < 40 || garment.lengthCm > 110) garment.lengthCm = round1(68 + (chest - 102) * 0.5);
-  if (garment.sleeveLengthCm < 5 || garment.sleeveLengthCm > 40) garment.sleeveLengthCm = round1(21 + (chest - 102) / 6);
+  if (garment.waistCircCm < chest * 0.6 || garment.waistCircCm > chest * 1.5) garment.waistCircCm = round1(chest - 2);
+  if (garment.hemCircCm < chest * 0.6 || garment.hemCircCm > chest * 1.5) garment.hemCircCm = round1(chest);
+  if (garment.lengthCm < 28 || garment.lengthCm > 110) garment.lengthCm = round1(68 + (chest - 102) * 0.5);
+  if (garment.sleeveLengthCm < 5 || garment.sleeveLengthCm > 75) garment.sleeveLengthCm = round1(21 + (chest - 102) / 6);
   if (garment.shoulderWidthCm < 30 || garment.shoulderWidthCm > 70) garment.shoulderWidthCm = round1(chest * 0.431);
   return garment;
 }
@@ -287,6 +290,42 @@ const WOMENS_SAMPLE_SIZES: GarmentSize[] = [
   { size: "L", chestCircCm: 102, waistCircCm: 93, hemCircCm: 105, shoulderWidthCm: 40, lengthCm: 60, sleeveLengthCm: 17 },
 ];
 
+// The full shared tee tables also include the extended sizes offered in Admin.
+const STANDARD_WOMENS_TEE: GarmentSize[] = [
+  { size: "XS", chestCircCm: 82, waistCircCm: 73, hemCircCm: 85, shoulderWidthCm: 35, lengthCm: 54, sleeveLengthCm: 14 },
+  ...WOMENS_SAMPLE_SIZES,
+  { size: "XL", chestCircCm: 110, waistCircCm: 101, hemCircCm: 113, shoulderWidthCm: 41.5, lengthCm: 62, sleeveLengthCm: 18 },
+];
+const STANDARD_MENS_TEE: GarmentSize[] = [
+  ...SAMPLE_SIZES,
+  { size: "XL", chestCircCm: 114, waistCircCm: 112, hemCircCm: 114, shoulderWidthCm: 48, lengthCm: 74, sleeveLengthCm: 23 },
+  { size: "XXL", chestCircCm: 120, waistCircCm: 118, hemCircCm: 120, shoulderWidthCm: 50, lengthCm: 77, sleeveLengthCm: 24 },
+];
+const TEE_METRICS = Object.keys(SAMPLE_SIZES[0]).filter(key => key !== "size") as (keyof Omit<GarmentSize, "size">)[];
+const STANDARD_UNISEX_TEE = [...STANDARD_WOMENS_TEE.map(women => {
+  const men = STANDARD_MENS_TEE.find(row => row.size === women.size);
+  if (!men) return women;
+  const row = { ...women };
+  for (const metric of TEE_METRICS) {
+    // Match the shared preset's nearest half-centimetre, ties to even.
+    const sum = women[metric] + men[metric];
+    const floor = Math.floor(sum);
+    row[metric] = (sum - floor === 0.5 ? floor + (floor % 2) : Math.round(sum)) / 2;
+  }
+  return row;
+}), STANDARD_MENS_TEE[STANDARD_MENS_TEE.length - 1]];
+
+function standardTeeChart(gender?: string) {
+  return gender === "female" ? STANDARD_WOMENS_TEE
+    : gender === "male" ? STANDARD_MENS_TEE : STANDARD_UNISEX_TEE;
+}
+
+export function usesStandardTeeChart(sizes: GarmentSize[], gender?: string) {
+  const standard = standardTeeChart(gender);
+  return sizes.length === standard.length && standard.every(row => sizes.some(size =>
+    size.size === row.size && TEE_METRICS.every(key => size[key] === row[key])));
+}
+
 export const SAMPLE_FIT: ProductFit = {
   name: DEMO_PRODUCT.name,
   colorName: DEMO_PRODUCT.colorName,
@@ -297,11 +336,35 @@ export const SAMPLE_FIT: ProductFit = {
   photos: null,
 };
 
+/** Stock can change without changing which sizes are configured for this colour. */
+export function fitSizeOptions(product: Product | null, colorName: string | null, chart: GarmentSize[], useSharedFallback = false) {
+  if (!product) return chart.map(dimensions => ({ size: dimensions.size, dimensions, estimated: false }));
+  const sizes = new Map<string, string>();
+  for (const variant of product.variants ?? []) {
+    if (variant.is_active === false || (colorName && !sameColor(variant.color_name, colorName))) continue;
+    const size = variant.size.trim();
+    if (size && !sizes.has(size.toLowerCase())) sizes.set(size.toLowerCase(), size);
+  }
+  const fallback = useSharedFallback ? standardTeeChart(product.gender) : [];
+  // Extend the existing grade by one size for products using the shared chart.
+  const extra = useSharedFallback && product.gender === "male"
+    ? { size: "XS", chestCircCm: 90, waistCircCm: 88, hemCircCm: 90, shoulderWidthCm: 40, lengthCm: 62, sleeveLengthCm: 19 }
+    : useSharedFallback && product.gender === "female"
+      ? { size: "XXL", chestCircCm: 118, waistCircCm: 109, hemCircCm: 121, shoulderWidthCm: 43, lengthCm: 64, sleeveLengthCm: 19 }
+      : undefined;
+  return Array.from(sizes.values()).sort(compareSizeLabels).map(size => {
+    const matches = (row: GarmentSize) => row.size.trim().toLowerCase() === size.toLowerCase();
+    const supplied = chart.find(matches);
+    const estimated = supplied ? undefined : fallback.find(matches) ?? (extra && matches(extra) ? extra : undefined);
+    return { size, dimensions: supplied ?? estimated, estimated: !!estimated };
+  });
+}
+
 export function resolveProductFit(product: Product | null, colorName?: string | null): ProductFit {
   if (!product) return SAMPLE_FIT;
   const colors: { name: string; hex: string | null }[] = [];
   for (const v of product.variants ?? []) {
-    if (v.color_name && !colors.some((c) => sameColor(c.name, v.color_name))) colors.push({ name: v.color_name, hex: v.color_hex ?? null });
+    if (v.is_active !== false && v.color_name && !colors.some((c) => sameColor(c.name, v.color_name))) colors.push({ name: v.color_name, hex: v.color_hex ?? null });
   }
   const color = colors.find((c) => sameColor(c.name, colorName)) ?? colors[0] ?? null;
   const chart = parseSizeChart(product.size_chart);

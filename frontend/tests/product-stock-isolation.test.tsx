@@ -11,6 +11,7 @@ const { post, patch, productState, categoryState } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/api', () => ({
+  apiGet: vi.fn().mockResolvedValue([]),
   apiUpload: vi.fn(),
   apiPost: post,
   apiPatch: patch,
@@ -97,7 +98,7 @@ describe('Product Stock Isolation in Admin UI', () => {
 
     // Fill required fields
     fireEvent.change(screen.getByLabelText(/Product Name/i), { target: { value: 'New Dress' } });
-    fireEvent.change(screen.getByLabelText(/Price/i), { target: { value: '500000' } });
+    fireEvent.change(screen.getByLabelText('Price'), { target: { value: '500000' } });
 
     // Submit form (inside dialog)
     const submitBtn = screen.getByRole('button', { name: 'Create Product' });

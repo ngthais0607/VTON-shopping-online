@@ -1,7 +1,7 @@
 // Path: frontend/components/auth/auth-container.tsx
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 
@@ -32,6 +32,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const submitting = useRef(false); // state updates are async, so two quick submits would both pass `loading`
 
     // Sync state when prop changes (e.g. navigation between /login and /register)
     useEffect(() => {
@@ -59,6 +60,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (submitting.current) return;
         setError("");
 
         if (activeTab === "signup") {
@@ -74,6 +76,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
 
         const validation = activeTab === "signin" ? loginSchema.safeParse(formData) : registerSchema.safeParse({ ...formData, username: formData.email.split('@')[0] });
         if (!validation.success) { setError(validation.error.issues[0]?.message || 'Invalid input'); return; }
+        submitting.current = true;
         setLoading(true);
 
         try {
@@ -134,6 +137,7 @@ export function AuthContainer({ defaultTab }: AuthContainerProps) {
             setError(err.message || "An error occurred. Please try again.");
             toast.error(err.message || "Operation failed.");
         } finally {
+            submitting.current = false;
             setLoading(false);
         }
     };

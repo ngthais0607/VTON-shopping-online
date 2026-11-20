@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { SalePrice } from "@/components/store/sale-price";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Product } from "@/lib/types";
-import { displayDate, formatCurrency } from "@/lib/utils";
+import { displayDate } from "@/lib/utils";
 import { Image as ImageIcon, MoreVertical } from "lucide-react";
 import Image from "next/image";
 
@@ -94,7 +95,7 @@ export function AdminProductList({
                         {product.category?.name || "N/A"}
                       </TableCell>
                       <TableCell className="text-foreground font-medium">
-                        {formatCurrency(product.price, product.currency)}
+                        <SalePrice price={product.price_min || product.price} compareAt={product.compare_at_price} currency={product.currency} />
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {product.stock_quantity}
@@ -235,6 +236,11 @@ export function AdminProductList({
                       <ImageIcon className="w-8 h-8 text-muted-foreground" />
                     </div>
                   )}
+                  {product.on_sale && (
+                    <span className="sale-badge top-3 left-3 bg-red-600 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white shadow">
+                      Sale{product.discount_percent ? ` -${product.discount_percent}%` : ""}
+                    </span>
+                  )}
                   <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
                     <Badge
                       className={
@@ -263,7 +269,7 @@ export function AdminProductList({
                     {product.category?.name}
                   </p>
                   <p className="text-lg font-bold text-foreground mt-2">
-                    {formatCurrency(product.price, product.currency)}
+                    <SalePrice price={product.price_min || product.price} compareAt={product.compare_at_price} currency={product.currency} />
                   </p>
                   <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
                     <div className="text-center">

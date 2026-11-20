@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { storefrontGallery, angleSlots, chartNumber, parseSizeChart, pickColorPhotos, resolveProductFit, SAMPLE_SIZES, toSameOriginImage } from "@/lib/demo-upper/productFit";
+import { fitSizeOptions, storefrontGallery, angleSlots, chartNumber, parseSizeChart, pickColorPhotos, resolveProductFit, SAMPLE_SIZES, toSameOriginImage } from "@/lib/demo-upper/productFit";
 import type { Product, ProductImage } from "@/lib/types";
 
 describe("size chart parsing", () => {
@@ -117,4 +117,26 @@ it("uses the women's sample cut only when a women's product has no usable chart"
   expect(resolveProductFit({ ...product, gender: "unisex" }).sizes).toEqual(SAMPLE_SIZES);
   const chart = { M: { chest: 108, length: 65 } };
   expect(resolveProductFit({ ...product, size_chart: chart }).sizes).toEqual(parseSizeChart(chart));
+});
+
+it("offers only the selected colour's active variants, with matching chart rows", () => {
+  const product = { variants: [
+    { size: "L", color_name: "Xam", is_active: true, available_stock: 0 },
+    { size: "M", color_name: "Xam", is_active: true },
+    { size: "XL", color_name: "Xam", is_active: true },
+    { size: "S", color_name: "Xam", is_active: false },
+    { size: "S", color_name: "Den", is_active: true },
+  ] } as Product;
+  expect(fitSizeOptions({ ...product, variants: [] }, "xam", SAMPLE_SIZES)).toEqual([]);
+  const options = fitSizeOptions(product, "xam", SAMPLE_SIZES);
+  expect(options.map(option => option.size)).toEqual(["M", "L", "XL"]);
+  expect(options.map(option => option.dimensions?.size)).toEqual(["M", "L", undefined]);
+  const shared = fitSizeOptions({ ...product, gender: "male" }, "xam", SAMPLE_SIZES, true);
+  expect(shared.find(option => option.size === "XL")).toMatchObject({ estimated: true, dimensions: { lengthCm: 74 } });
+  expect(fitSizeOptions(product, "Den", SAMPLE_SIZES).map(option => option.size)).toEqual(["S"]);
+});
+
+it("keeps actual cropped lengths and long sleeves from the chart", () => {
+  expect(parseSizeChart({ S: { chest: 88, length: 36, sleeve: 57 } })[0])
+    .toMatchObject({ lengthCm: 36, sleeveLengthCm: 57 });
 });

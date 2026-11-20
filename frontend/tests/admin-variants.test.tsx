@@ -43,7 +43,19 @@ describe("VariantMatrixGenerator", () => {
     const payload = handleGenerate.mock.calls[0][0];
     expect(payload.sizes).toContain("M");
     expect(payload.colors.some((c: any) => c.name === "Đen")).toBe(true);
-    expect(payload.variants.length).toBeGreaterThan(0);
+    // The API expands a full matrix itself, so no explicit rows (capped at 200) are sent.
+    expect(payload.variants).toEqual([]);
+  });
+
+  it("sends explicit rows when no colour is chosen", () => {
+    const handleGenerate = vi.fn();
+    render(<VariantMatrixGenerator onGenerate={handleGenerate} />);
+    fireEvent.click(screen.getByRole("button", { name: /Apparel \(XS - XXL\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Generate Variant Matrix/i }));
+    const payload = handleGenerate.mock.calls[0][0];
+    expect(payload.colors).toEqual([]);
+    expect(payload.variants.length).toBe(payload.sizes.length);
+    expect(payload.variants.length).toBeLessThanOrEqual(200);
   });
 });
 

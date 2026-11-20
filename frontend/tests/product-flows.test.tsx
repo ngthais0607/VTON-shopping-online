@@ -11,7 +11,7 @@ vi.mock('@/hooks/use-products',()=>({useProducts:()=>({isLoading:false,mutate:as
 vi.mock('@/hooks/use-categories',()=>({useCategoryOptions:()=>({categories:[],mutate:async()=>{},...categoryState})}));
 vi.mock('@/components/header',()=>({Header:()=>null}));
 vi.mock('next/image',()=>({default:({src,alt}:{src:string;alt:string})=><img src={src} alt={alt}/>}));
-beforeEach(()=>{productState.error=null;productState.products=[];productState.total=0;categoryState.error=null;remove.mockReset();get.mockReset();upload.mockReset();post.mockReset();patch.mockReset();URL.createObjectURL=vi.fn(()=> 'blob:preview');URL.revokeObjectURL=vi.fn();});
+beforeEach(()=>{productState.error=null;productState.products=[];productState.total=0;categoryState.error=null;remove.mockReset();get.mockReset();get.mockResolvedValue([]);upload.mockReset();post.mockReset();patch.mockReset();URL.createObjectURL=vi.fn(()=> 'blob:preview');URL.revokeObjectURL=vi.fn();});
 const existingProduct={id:7,name:'Existing',price:10,currency:'USD',stock_quantity:10,reserved_quantity:0,sold_quantity:0,is_active:true,category:null,images:[],created_at:null,updated_at:null};
 it('reports a delete failure on the product page',async()=>{
   productState.products=[existingProduct];productState.total=1;remove.mockRejectedValue(new Error('Delete unavailable'));
@@ -176,4 +176,19 @@ it('stages several images for a new product, uploads them in order and marks onl
   await waitFor(()=>expect(upload).toHaveBeenCalledTimes(2));
   expect(upload.mock.calls.map(c=>(c[1] as FormData).get('is_primary'))).toEqual(['true','false']);
   expect(upload.mock.calls.map(c=>((c[1] as FormData).get('file') as File).name)).toEqual(['b.png','a.png']);
+});
+
+it('keeps edits and the save action when switching product settings tabs', async () => {
+  productState.products = [existingProduct];
+  productState.total = 1;
+  render(<ProductsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Product' }));
+  const name = await screen.findByLabelText('Product Name');
+  fireEvent.change(name, { target: { value: 'Updated name' } });
+  const chart = screen.getByRole('tab', { name: 'Size chart' });
+  fireEvent.mouseDown(chart, { button: 0, ctrlKey: false });
+  expect(chart).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('button', { name: 'Update Product' })).toBeEnabled();
+  fireEvent.mouseDown(screen.getByRole('tab', { name: 'Details' }), { button: 0, ctrlKey: false });
+  expect(screen.getByLabelText('Product Name')).toHaveValue('Updated name');
 });

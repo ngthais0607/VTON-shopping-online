@@ -40,6 +40,63 @@ function cuffRow(shape: Outline) {
   return best > 0.08 ? row : 0;
 }
 
+/** A raised collar has a narrow top above a gradual widening into the shoulders. */
+export function hasRaisedCollar({ box, outline }: { box: BBox; outline: Outline }) {
+  const width = box.x1 - box.x0 + 1;
+  const firstWideRow = (fraction: number) => outline.right.findIndex((right, row) =>
+    right - outline.left[row] >= width * fraction);
+  const narrow = firstWideRow(0.24);
+  const shoulder = firstWideRow(0.62);
+  return narrow >= 0 && narrow <= ROWS * 0.04
+    && shoulder >= ROWS * 0.084 && shoulder <= ROWS * 0.19
+    && shoulder - narrow >= ROWS * 0.065;
+}
+
+export type FrontCut = {
+  waistToChest: number;
+  hemToChest: number;
+  lengthToChestWidth: number;
+  sleeveDropFraction: number;
+};
+
+function averageSpan(outline: Outline, fraction: number) {
+  const center = Math.round(fraction * (ROWS - 1));
+  let sum = 0;
+  for (let row = center - 2; row <= center + 2; row++) {
+    sum += outline.right[row] - outline.left[row];
+  }
+  return sum / 5;
+}
+
+/** Estimate the visible cut from the front photograph below the sleeve openings. */
+export function measureFrontCut({ box, outline }: { box: BBox; outline: Outline }): FrontCut | null {
+  const aspect = (box.x1 - box.x0 + 1) / (box.y1 - box.y0 + 1);
+  const cuff = cuffRow(outline);
+  if (aspect < 0.55 || aspect > 1.45 || cuff < ROWS * 0.25 || cuff > ROWS * 0.56) return null;
+  const chest = averageSpan(outline, Math.max(0.52, cuff / ROWS + 0.07));
+  const waist = averageSpan(outline, 0.77);
+  const hem = averageSpan(outline, 0.94);
+  if (!Number.isFinite(chest + waist + hem) || chest <= 0 || waist <= 0 || hem <= 0) return null;
+  const waistToChest = waist / chest;
+  const hemToChest = hem / chest;
+  if (waistToChest < 0.72 || waistToChest > 1.14 || hemToChest < 0.72 || hemToChest > 1.24) return null;
+  const shoulder = outline.right.findIndex((right, row) => right - outline.left[row] >= (box.x1 - box.x0) * 0.62);
+  if (shoulder < 0 || shoulder >= cuff) return null;
+  return {
+    waistToChest,
+    hemToChest,
+    lengthToChestWidth: (box.y1 - box.y0 + 1) / chest,
+    sleeveDropFraction: (cuff - shoulder) / (ROWS - 1),
+  };
+}
+
+/** Recognise a compact, fitted tee from its frontal silhouette. */
+export function isCompactFittedTee(photo: { box: BBox; outline: Outline }, cut = measureFrontCut(photo)) {
+  const { box } = photo;
+  const aspect = (box.x1 - box.x0 + 1) / (box.y1 - box.y0 + 1);
+  return !!cut && aspect >= 0.91 && cut.waistToChest < 0.97 && cut.hemToChest > cut.waistToChest * 1.025;
+}
+
 function sample(values: Float32Array, row: number, fallback: number) {
   const i = Math.floor(row), j = Math.min(ROWS - 1, i + 1);
   if (!Number.isFinite(values[i]) || !Number.isFinite(values[j])) return fallback;

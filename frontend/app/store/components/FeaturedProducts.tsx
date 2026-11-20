@@ -9,7 +9,7 @@ import { getAvailableStock } from "@/lib/inventory";
 import { CategoryNavigation } from '@/components/store/category-navigation';
 import { CategoryOption, categoryGroups, categoryLabel } from '@/lib/catalog-presentation';
 import { FashionFilters } from "@/components/store/fashion-filters";
-import { formatCurrency } from "@/lib/utils";
+import { SalePrice } from "@/components/store/sale-price";
 import { getProductImageUrl } from "@/lib/placeholder-images";
 import { QuickViewModal } from "./QuickViewModal";
 
@@ -50,6 +50,7 @@ function ProductCard({ product, onBuy, onQuickView }: { product: DBProduct; onBu
   return <article className="group min-w-0">
     <div className="relative aspect-[4/5] overflow-hidden bg-[#eeede6]">
       <Link href={pdpUrl} className="block h-full w-full"><Image src={getProductImageUrl(product)} alt={product.name} fill sizes="(max-width: 640px) 46vw, (max-width: 1024px) 30vw, 23vw" className="object-cover transition-transform duration-700 motion-safe:group-hover:scale-[1.035]" />{secondaryImage && <Image src={secondaryImage.url} alt={product.name + " · alternate view"} fill sizes="(max-width: 640px) 46vw, 25vw" className="object-cover opacity-0 transition-opacity duration-500 motion-safe:group-hover:opacity-100" />}</Link>
+      {product.on_sale && stock > 0 && <span className="sale-badge left-0 top-3 z-10 flex items-center gap-1.5 bg-red-600 py-1.5 pl-3 pr-3 text-white shadow-md"><span className="text-[10px] font-semibold uppercase tracking-wider">Sale</span>{!!product.discount_percent && <span className="text-sm font-bold leading-none">-{product.discount_percent}%</span>}</span>}
       {stock <= 0 && <span className="absolute left-3 top-3 bg-background/95 px-2.5 py-1.5 text-[10px] uppercase tracking-wider">Sold out</span>}
       <div className="absolute right-2 top-2 flex gap-1">
         <button onClick={onQuickView} aria-label={"Quick view " + product.name} title="Quick View" className="flex h-10 w-10 items-center justify-center bg-background/90 hover:bg-white"><Eye className="h-4 w-4" /></button>
@@ -63,7 +64,7 @@ function ProductCard({ product, onBuy, onQuickView }: { product: DBProduct; onBu
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[10px] uppercase tracking-[0.12em] text-muted-foreground"><span>{categoryLabel(product.category?.name || "TrueLook")}</span>{stock > 0 && stock < 10 && <span className="normal-case tracking-normal">{stock} available</span>}</div>
       <Link href={pdpUrl} className="block text-base font-normal leading-6 hover:text-primary sm:text-lg" style={{ fontFamily: "var(--font-display)" }}><h3>{product.name}</h3></Link>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-medium tracking-wide">{product.price_min && product.price_max && product.price_min < product.price_max ? "From " + formatCurrency(product.price_min, product.currency) : formatCurrency(product.price, product.currency)}</p>
+        <p className="text-xs font-medium tracking-wide"><SalePrice price={product.price_min || product.price} compareAt={product.compare_at_price} currency={product.currency} prefix={product.price_min && product.price_max && product.price_min < product.price_max ? "From " : ""} /></p>
         {colors.length > 0 && <div className="flex items-center gap-1.5" aria-label="Available colors">{colors.slice(0, 4).map(color => <span key={color.name} title={color.name} className="h-3 w-3 rounded-full border border-black/15" style={{ backgroundColor: color.hex || "#8b9380" }} />)}{colors.length > 4 && <span className="text-[10px] text-muted-foreground">+{colors.length - 4}</span>}</div>}
       </div>
       {product.rating_avg != null && (product.review_count ?? 0) > 0 && <p className="mt-2 text-xs text-muted-foreground">★ {product.rating_avg} · {product.review_count} reviews</p>}
@@ -95,7 +96,7 @@ export function FeaturedProducts({ listing = false, onResetFilters, products, lo
           </div>
         </div>
         <form onSubmit={e => { e.preventDefault(); setSearchQuery(searchInput); setCurrentPage(1); }} className={"flex w-full gap-2 lg:max-w-xs " + (listing ? "lg:order-first lg:max-w-md" : "lg:order-last")}>
-          <div className="relative min-w-0 flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input type="search" aria-label="Search products" placeholder="Search products…" value={searchInput} onChange={e => setSearchInput(e.target.value)} className={control + " pl-10"} /></div><button type="submit" aria-label="Search" className={"h-10 bg-foreground px-4 text-sm text-background hover:bg-primary"}>Search</button>
+          <div className="relative min-w-0 flex-1"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input type="search" aria-label="Search products" placeholder="Search products…" maxLength={200} value={searchInput} onChange={e => setSearchInput(e.target.value)} className={control + " pl-10"} /></div><button type="submit" aria-label="Search" className={"h-10 bg-foreground px-4 text-sm text-background hover:bg-primary"}>Search</button>
         </form>
       </div>
       <div className={listing ? "mt-6 grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10" : ""}>

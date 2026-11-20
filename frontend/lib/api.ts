@@ -129,10 +129,6 @@ export async function apiDelete<T>(path: string): Promise<T> {
     return apiClient.delete<T, T>(path);
 }
 
-export async function apiDeleteWithBody<T, B = unknown>(path: string, body: B): Promise<T> {
-    return apiClient.delete<T, T, B>(path, { data: body });
-}
-
 export async function apiPost<T, B = unknown>(path: string, body: B): Promise<T> {
     return apiClient.post<T, T, B>(path, body);
 }

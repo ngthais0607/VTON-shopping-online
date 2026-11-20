@@ -55,15 +55,25 @@ export function TryOnModal({
   const idempotencyKey = useRef<string>(newIdempotencyKey());
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelled = useRef(false);
-  const pollRef = useRef<((taskId: string, startedAt: number) => void) | null>(null);
+  const pollRef = useRef<((taskId: string, startedAt: number, generation: number) => void) | null>(null);
+  // Bumped whenever polling is stopped or restarted so an in-flight request of an older loop cannot reschedule.
+  const pollGeneration = useRef(0);
   const networkErrors = useRef(0);
   const historyUrls = useRef<string[]>([]);
   const [history, setHistory] = useState<{ task: VtonTask; url: string; blob: Blob }[]>([]);
 
   const stopPolling = () => {
+    pollGeneration.current += 1;
     if (pollTimer.current) clearTimeout(pollTimer.current);
     pollTimer.current = null;
   };
+
+  const beginPolling = useCallback((taskId: string) => {
+    pollGeneration.current += 1;
+    if (pollTimer.current) clearTimeout(pollTimer.current);
+    pollTimer.current = null;
+    pollRef.current?.(taskId, Date.now(), pollGeneration.current);
+  }, []);
 
   const loadQuota = useCallback(async () => {
     try {
@@ -125,7 +135,7 @@ export function TryOnModal({
         if (!active || !running || pollTimer.current) return;
         setTask(running);
         setPhase("working");
-        pollRef.current?.(running.id, Date.now());
+        beginPolling(running.id);
       } catch {
         // Resume is best effort; the form still works.
       }
@@ -133,7 +143,7 @@ export function TryOnModal({
     return () => {
       active = false;
     };
-  }, [isOpen, user, productId]);
+  }, [isOpen, user, productId, beginPolling]);
 
   useEffect(() => {
     cancelled.current = false;
@@ -179,11 +189,13 @@ export function TryOnModal({
   }, [loadQuota, loadHistory]);
 
   const poll = useCallback(
-    (taskId: string, startedAt: number) => {
+    (taskId: string, startedAt: number, generation: number) => {
       pollTimer.current = setTimeout(async () => {
-        if (cancelled.current) return;
+        pollTimer.current = null;
+        if (cancelled.current || generation !== pollGeneration.current) return;
         try {
           const current = await apiGet<VtonTask>(`/vton/tasks/${taskId}`);
+          if (cancelled.current || generation !== pollGeneration.current) return;
           networkErrors.current = 0;
           setTask(current);
           if (isVtonTerminal(current.status)) {
@@ -191,6 +203,7 @@ export function TryOnModal({
             return;
           }
         } catch (err) {
+          if (cancelled.current || generation !== pollGeneration.current) return;
           networkErrors.current += 1;
           if (!isTransientVtonError(err) || networkErrors.current > VTON_POLL_MAX_NETWORK_ERRORS) {
             setError(vtonErrorMessage(err));
@@ -203,7 +216,7 @@ export function TryOnModal({
           setPhase("failed");
           return;
         }
-        pollRef.current?.(taskId, startedAt);
+        pollRef.current?.(taskId, startedAt, generation);
       }, VTON_POLL_INTERVAL_MS);
     },
     [finish],
@@ -271,6 +284,8 @@ export function TryOnModal({
     setPhotoWarning(null);
     if (picked && picked.size > VTON_MAX_PHOTO_BYTES) {
       setError(vtonErrorMessage("image_too_large"));
+      setFile(null);
+      setPreviewUrl(null);
       return;
     }
     if (picked && typeof createImageBitmap === "function") {
@@ -280,6 +295,8 @@ export function TryOnModal({
         bitmap.close?.();
         if (Math.min(width, height) < 256) {
           setError(`This photo is too small (${width}×${height}). Use one at least 256 px on each side.`);
+          setFile(null);
+          setPreviewUrl(null);
           return;
         }
         if (width > height * 1.1) {
@@ -287,6 +304,8 @@ export function TryOnModal({
         }
       } catch {
         setError("This file cannot be read as an image. Try a different photo.");
+        setFile(null);
+        setPreviewUrl(null);
         return;
       }
     }
@@ -309,7 +328,7 @@ export function TryOnModal({
       });
       setTask(created);
       if (isVtonTerminal(created.status)) await finish(created);
-      else poll(created.id, Date.now());
+      else beginPolling(created.id);
     } catch (err) {
       setError(vtonErrorMessage(err));
       setPhase("form");

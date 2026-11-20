@@ -28,7 +28,7 @@ import { SizeChartModal } from "@/components/store/size-chart-modal";
 import { TryOnModal } from "@/components/store/try-on-modal";
 import { useVariantSelection } from "@/hooks/use-variant-selection";
 import { apiGet, apiPost } from "@/lib/api";
-import { formatCurrency } from "@/lib/utils";
+import { SalePrice } from "@/components/store/sale-price";
 import { DEFAULT_PRODUCT_PLACEHOLDER, getProductImageUrl } from "@/lib/placeholder-images";
 import type { FitFeedbackType, Product, ReviewSummary, Page, VtonEligibility } from "@/lib/types";
 import { useCart } from "../../context/CartContext";
@@ -364,7 +364,7 @@ export default function ProductDetailPage() {
               {/* Price */}
               <div className="flex items-baseline gap-3">
                 <span className="text-xl font-normal text-foreground tracking-wide">
-                  {formatCurrency(price)}
+                  <SalePrice price={price} compareAt={product?.compare_at_price} />
                 </span>
 
               </div>
@@ -507,7 +507,7 @@ export default function ProductDetailPage() {
               )}
               {/* The 3D fitting room has one sample tee, so it is only offered on tops. */}
               {isTopCategory(product.category?.name) && (
-                <Link href={`/store/try-on-3d?product=${encodeURIComponent(product.slug ?? slug)}${selectedColor ? `&color=${encodeURIComponent(selectedColor)}` : ""}`} className="flex min-h-12 w-full items-center justify-center gap-2 border border-foreground text-[11px] uppercase tracking-[0.1em] hover:bg-secondary"><Box className="h-4 w-4" />3D fit check</Link>
+                <Link href={`/store/try-on-3d?product=${encodeURIComponent(product.slug ?? slug)}${selectedColor ? `&color=${encodeURIComponent(selectedColor)}` : ""}${selectedSize ? `&size=${encodeURIComponent(selectedSize)}` : ""}`} className="flex min-h-12 w-full items-center justify-center gap-2 border border-foreground text-[11px] uppercase tracking-[0.1em] hover:bg-secondary"><Box className="h-4 w-4" />3D fit check</Link>
               )}
               {tryOn?.eligible === true && images.length > 1 && (
                 <p className="-mt-1 text-[11px] text-muted-foreground">Tip: choose a photo below, then try on that look.</p>
@@ -613,7 +613,7 @@ export default function ProductDetailPage() {
                   )}
                 </dl>
               </details>
-              <details className="border-b border-border pb-6 md:col-span-2"><summary className="cursor-pointer text-xs uppercase tracking-[0.14em]">Shipping & returns</summary><p className="mt-4 text-sm leading-6 text-muted-foreground">This demo store does not process real deliveries. Product details and variant choices let you explore the shopping experience.</p></details>
+              <details className="border-b border-border pb-6 md:col-span-2"><summary className="cursor-pointer text-xs uppercase tracking-[0.14em]">Shipping & returns</summary><p className="mt-4 text-sm leading-6 text-muted-foreground">This store does not process real deliveries. Product details and variant choices let you explore the shopping experience.</p></details>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
@@ -732,7 +732,7 @@ export default function ProductDetailPage() {
             </div>
           )}
         </section>
-        {relatedProducts.length > 0 && <section className="mt-20 border-t border-border pt-12"><div className="mb-8 flex items-end justify-between gap-4"><div><p className="mb-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">THE NEXT DISCOVERY</p><h2 className="text-4xl font-normal" style={{ fontFamily: "var(--font-display)" }}>You may also like</h2></div><Link href="/store/collection" className="text-xs underline underline-offset-4">Explore the collection</Link></div><div className="grid grid-cols-2 gap-x-4 gap-y-8 md:grid-cols-4 md:gap-x-6">{relatedProducts.map(item => <Link key={item.id} href={"/store/products/" + (item.slug || item.id)} className="group"><div className="relative aspect-[4/5] overflow-hidden bg-secondary"><Image src={getProductImageUrl(item)} alt={item.name} fill sizes="(max-width: 640px) 45vw, 25vw" className="object-cover transition-transform duration-500 motion-safe:group-hover:scale-[1.03]" /></div><h3 className="mt-4 text-lg" style={{ fontFamily: "var(--font-display)" }}>{item.name}</h3><p className="mt-2 text-xs">{formatCurrency(item.price, item.currency)}</p></Link>)}</div></section>}
+        {relatedProducts.length > 0 && <section className="mt-20 border-t border-border pt-12"><div className="mb-8 flex items-end justify-between gap-4"><div><p className="mb-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">THE NEXT DISCOVERY</p><h2 className="text-4xl font-normal" style={{ fontFamily: "var(--font-display)" }}>You may also like</h2></div><Link href="/store/collection" className="text-xs underline underline-offset-4">Explore the collection</Link></div><div className="grid grid-cols-2 gap-x-4 gap-y-8 md:grid-cols-4 md:gap-x-6">{relatedProducts.map(item => <Link key={item.id} href={"/store/products/" + (item.slug || item.id)} className="group"><div className="relative aspect-[4/5] overflow-hidden bg-secondary"><Image src={getProductImageUrl(item)} alt={item.name} fill sizes="(max-width: 640px) 45vw, 25vw" className="object-cover transition-transform duration-500 motion-safe:group-hover:scale-[1.03]" /></div><h3 className="mt-4 text-lg" style={{ fontFamily: "var(--font-display)" }}>{item.name}</h3><p className="mt-2 text-xs"><SalePrice price={item.price_min || item.price} compareAt={item.compare_at_price} currency={item.currency} /></p></Link>)}</div></section>}
       </main>
 
       <Footer />

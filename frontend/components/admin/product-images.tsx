@@ -13,6 +13,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescripti
 
 interface Props {
   productId?: number;
+  productSlug?: string;
   images?: ProductImage[];
   onImagesChange: (images: ProductImage[]) => void;
   onUploadSuccess: (url: string) => void;
@@ -35,7 +36,7 @@ const KIND_LABELS: Record<ProductImageKind, string> = {
 
 const GENERAL_KINDS = PRODUCT_IMAGE_KINDS.filter(value => value === "model_photo" || value === "detail" || value === "size_chart");
 
-export function AdminProductImages({ productId, images = [], onImagesChange, onUploadSuccess, stagedFiles = [], onStagedFilesChange, onBusyChange, colors = [] }: Props) {
+export function AdminProductImages({ productId, productSlug, images = [], onImagesChange, onUploadSuccess, stagedFiles = [], onStagedFilesChange, onBusyChange, colors = [] }: Props) {
   const [kind, setKind] = useState<ProductImageKind>("model_photo");
   const [colorName, setColorName] = useState("");
   const [selected, setSelected] = useState<ProductImage | null>(null);
@@ -157,7 +158,7 @@ export function AdminProductImages({ productId, images = [], onImagesChange, onU
       ) : (
         <p className="text-xs text-muted-foreground">Save the product first, then add the Front / 45° / Side / Back photos for the 3D fitting room.</p>
       )}
-      {productId && <AngleSlots productId={productId} images={images} colors={colors} onImagesChange={onImagesChange} onBusyChange={onBusyChange} />}
+      {productId && <AngleSlots productId={productId} productSlug={productSlug} images={images} colors={colors} onImagesChange={onImagesChange} onBusyChange={onBusyChange} />}
       <ImageUploader
         productId={productId}
         multiple

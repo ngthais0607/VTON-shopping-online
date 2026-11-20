@@ -11,6 +11,7 @@ export interface UseProductsParams {
   category_id?: string | number | null;
   min_price?: number | null;
   max_price?: number | null;
+  on_sale?: boolean | null;
   is_active?: boolean | null;
   stock_status?: string | null;
   sort_by?: string | null;
@@ -26,7 +27,7 @@ export function useProducts(params?: UseProductsParams) {
   if (params?.page && params?.pageSize) {
     query.append("offset", ((params.page - 1) * params.pageSize).toString());
   }
-  if (params?.search) query.append("search", params.search);
+  if (params?.search) query.append("search", params.search.slice(0, 200)); // API rejects longer terms
   if (params?.category_id && params.category_id !== "all" && params.category_id !== "All") {
     query.append("category_id", params.category_id.toString());
   }
@@ -36,6 +37,7 @@ export function useProducts(params?: UseProductsParams) {
   if (params?.max_price !== undefined && params?.max_price !== null) {
     query.append("max_price", params.max_price.toString());
   }
+  if (params?.on_sale) query.append("on_sale", "true");
   if (params?.is_active !== undefined && params?.is_active !== null) {
     query.append("is_active", params.is_active.toString());
   }

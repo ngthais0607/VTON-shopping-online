@@ -40,6 +40,7 @@ function StorefrontContent({ listing = false }: { listing?: boolean }) {
     const urlStock = searchParams?.get?.("stock_status");
     const urlMinPrice = searchParams?.get?.("min_price");
     const urlMaxPrice = searchParams?.get?.("max_price");
+    const urlOnSale = searchParams?.get?.("on_sale") === "true";
     const urlSort = searchParams?.get?.("sort") || searchParams?.get?.("sort_by");
     const urlSearch = searchParams?.get?.("search");
 
@@ -59,6 +60,7 @@ function StorefrontContent({ listing = false }: { listing?: boolean }) {
         category_id: effectiveCategoryId,
         min_price: effectiveMinPrice,
         max_price: effectiveMaxPrice,
+        on_sale: urlOnSale,
         stock_status: effectiveStockStatus,
         sort_by: effectiveSortBy,
         // Men / Women pages also list unisex items.
@@ -102,7 +104,7 @@ function StorefrontContent({ listing = false }: { listing?: boolean }) {
                         setStockStatus={(value) => updateQuery({stock_status: value})}
                         sortBy={effectiveSortBy}
                         setSortBy={(value) => updateQuery({sort: value})}
-                        onResetFilters={() => updateQuery(Object.fromEntries(['category_id','gender','brand','size','color','stock_status','min_price','max_price','search','sort'].map(key => [key, null])))}
+                        onResetFilters={() => updateQuery(Object.fromEntries(['category_id','gender','brand','size','color','stock_status','min_price','max_price','on_sale','search','sort'].map(key => [key, null])))}
                         categories={categories}
                     />}
                 </div>

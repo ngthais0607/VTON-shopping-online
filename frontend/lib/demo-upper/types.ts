@@ -22,14 +22,6 @@ export type GarmentSize = {
   sleeveLengthCm: number;
 };
 
-export type TryOnState = {
-  body: UpperBodyMeasurements;
-  size: Size;
-  activeAngle: ViewAngle;
-  mannequinVisible: boolean;
-  mannequinOpacity: number;
-};
-
 export type Vec3 = [number, number, number];
 
 /** Một mặt cắt khoá: bán kính cực (cm) tại RING_SEGMENTS góc đều nhau quanh trục Y. */

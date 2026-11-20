@@ -7,7 +7,7 @@ import type { Vec3 } from "./types";
 
 /**
  * The mannequin is one implicit surface: a sculpted torso (from the measured key rings) smoothly
- * unioned with two tapered arms, then meshed in one piece. That is what makes shoulders, armpits and
+ * unioned with two arms and their rounded shoulders, then meshed in one piece. That is what makes shoulders, armpits and
  * the neck continuous instead of separate tubes pushed into each other.
  */
 
@@ -42,12 +42,11 @@ export type BodyField = {
   bounds: { min: Vec3; max: Vec3 };
 };
 
-function armDistance(arm: ArmModel, x: number, y: number, z: number): number {
+function armDistance(arm: ArmModel, x: number, y: number, z: number, withHand = false): number {
   const px = x - arm.root[0], py = y - arm.root[1], pz = z - arm.root[2];
   const t = px * arm.dir[0] + py * arm.dir[1] + pz * arm.dir[2];
   if (t <= 0) return Math.hypot(px, py, pz) - arm.rootRadius;
-  // Below the elbow the forearm settles inward and forward. Use the same field
-  // for skin and sleeve clearance so that a longer sleeve follows the bend.
+  // Use an extended arm guide to shape the sleeve even past the display form.
   const bend = Math.max(0, t - arm.lengthCm * 0.5);
   const outward = arm.side === "right" ? 1 : -1;
   const lateral = (px * -arm.dir[1] + py * arm.dir[0]) * outward + bend * 0.17;
@@ -55,21 +54,19 @@ function armDistance(arm: ArmModel, x: number, y: number, z: number): number {
   const radius = armRadiusAt(arm, Math.min(t, arm.lengthCm));
   const wrist = t - arm.lengthCm;
   const forearm = Math.hypot(lateral * 1.04, depth * 0.96, Math.max(0, wrist)) - radius;
-  if (wrist < -5) return forearm;
+  if (!withHand || wrist < -4) return forearm;
 
-  // Relaxed hand seen edge-on from the front. The padded palm narrows
-  // into joined fingers, with the thumb resting along the forward edge.
-  const scale = arm.lengthCm / 51;
-  // Turn the palms partly toward the viewer, thumbs inward in a relaxed pose.
-  const palmDepth = depth * 0.82 - lateral * 0.57;
-  const palmWidth = lateral * 0.82 + depth * 0.57;
-  const hand = (dy: number, dz: number, width: number, length: number, breadth: number) =>
-    (Math.hypot((palmWidth + 0.06 * wrist) / (width * scale),
-      (wrist / scale - dy) / length, (palmDepth / scale - dz) / breadth) - 1) * width * scale;
-  const palm = hand(4, 0, 1.9, 5.7, 3.8);
-  const fingers = hand(9.5, -0.35, 1.45, 5.8, 3.15);
-  const thumb = hand(4.6, 2.7, 1.4, 3.8, 1.65);
-  return smin(forearm, smin(smin(palm, fingers, 1.25), thumb, 1.15), 1.0);
+  const scale = Math.min(1.08, arm.lengthCm / 53);
+  const across = (lateral * 0.82 + depth * 0.57) / scale;
+  const palmDepth = (depth * 0.82 - lateral * 0.57) / scale;
+  const hand = (offset: number, depthOffset: number, width: number, length: number, breadth: number) =>
+    (Math.hypot(across / width, (wrist / scale - offset) / length,
+      (palmDepth - depthOffset) / breadth) - 1) * width * scale;
+  const palm = hand(3.6, 0, 1.65, 5, 3.05);
+  const fingers = hand(8, -0.3, 1.3, 5.2, 2.55);
+  const thumb = hand(4.2, 2.2, 1.15, 3, 1.3);
+  return smin(forearm, smin(smin(palm, fingers, 1.1), thumb, 0.9), 1);
+
 }
 
 export function createBodyField(model: BodyModel): BodyField {
@@ -132,9 +129,19 @@ export function createBodyField(model: BodyModel): BodyField {
 
   const full = (x: number, y: number, z: number) => {
     const t = torso(x, y, z);
-    // Each arm only blends with the torso on its own side.
-    const arm = x < 0 ? armDistance(left, x, y, z) : armDistance(right, x, y, z);
-    return smin(t, arm, ARM_BLEND_CM);
+    const arm = x < 0 ? left : right;
+    const radius = arm.rootRadius;
+    const female = model.form === "female";
+    const side = arm.side === "right" ? 1 : -1;
+    const dx = side * (x - arm.root[0]) + radius * 0.65;
+    const dy = y - arm.root[1] - radius * 0.22 + dx * (female ? 0.14 : 0.3);
+    const dz = z - arm.root[2];
+    const shoulder = (Math.hypot(dx / (radius * 1.62), dy / (radius * 1.02), dz / (radius * 1.12)) - 1) * radius;
+    // A shallow, open notch makes the sculpted hip base read from both sides.
+    const notch = Math.hypot(x * 1.25, y - yBot + 0.8) - (model.form === "female" ? 3.5 : 2.8);
+    const limb = armDistance(arm, x, y, z, true);
+    const torsoWithShoulder = smin(t, shoulder, radius * 0.85);
+    return smax(smin(torsoWithShoulder, limb, ARM_BLEND_CM), -notch, 1.25);
   };
   const torsoSurface = (x: number, y: number, z: number) => {
     const t = torso(x, y, z);
@@ -148,8 +155,8 @@ export function createBodyField(model: BodyModel): BodyField {
 
   let maxR = 0;
   for (let i = 0; i < table.length; i++) maxR = Math.max(maxR, table[i]);
-  const reachX = Math.max(...model.arms.map((a) => Math.abs(a.root[0] + a.dir[0] * a.lengthCm) + a.rootRadius));
-  const lowestArm = Math.min(...model.arms.map((a) => a.root[1] + a.dir[1] * a.lengthCm - a.lengthCm * 0.33));
+  const reachX = Math.max(...model.arms.map((a) => Math.abs(a.root[0] + a.dir[0] * a.lengthCm) + 2 * a.rootRadius));
+  const lowestArm = Math.min(...model.arms.map(a => a.root[1] + a.dir[1] * a.lengthCm - 16));
   const margin = 2;
   const bounds = {
     min: [-Math.max(reachX, maxR) - margin, Math.min(yBot, lowestArm) - margin, -maxR - 3 - margin] as Vec3,
@@ -173,7 +180,8 @@ export function getBodyField(model: BodyModel): BodyField {
 /** The mannequin as one closed, indexed mesh in metres, with normals from the field. */
 export function buildBodyGeometry(model: BodyModel, step = MESH_STEP_CM): BufferGeometry {
   const field = getBodyField(model);
-  return surfaceNets(field.full, { ...field.bounds, step, scale: CM_TO_M });
+  // Even the interactive preview needs enough samples across the wrist and thumb.
+  return surfaceNets(field.full, { ...field.bounds, step: Math.min(step, 1.2), scale: CM_TO_M });
 }
 
 /**

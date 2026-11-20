@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { registerPhoto } from "@/lib/demo-upper/photoRegistration";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, View } from "@react-three/drei";
-import { CanvasTexture, Matrix4, Quaternion, SRGBColorSpace, Vector3, type BufferGeometry } from "three";
+import { BufferAttribute, CanvasTexture, Matrix4, Quaternion, SRGBColorSpace, Vector3, type BufferGeometry } from "three";
 import { buildBodyGeometry, MESH_STEP_CM } from "@/lib/demo-upper/bodyField";
 import type { BodyModel } from "@/lib/demo-upper/bodyGeometry";
 import { CAMERA_FOV, CAMERA_TARGET, cameraPosition, VIEW_ANGLES } from "@/lib/demo-upper/cameraAngles";
@@ -21,13 +21,15 @@ export type UpperBodySceneProps = {
   activeAngle: ViewAngle;
   onSelectAngle: (angle: ViewAngle) => void;
   mannequinVisible: boolean;
+  teeVisible: boolean;
+  teeOpacity: number;
+  showPressure: boolean;
   mannequinOpacity: number;
   /** Fabric colour of the selected product colour (used where no photo covers the tee). */
   fabricColor: string;
   /** Processed product photos to paint onto the tee. */
   photos: GarmentPhoto[];
   /** Colour the photos are recoloured to when they were taken of another colour; null = as photographed. */
-  photoTint: string | null;
 };
 
 export const TIGHT_COLOR = "#b13d36";
@@ -56,14 +58,14 @@ function useBackMarkerTexture() {
   return texture;
 }
 
-function SceneContent(props: { bodyGeometry: BufferGeometry; garmentGeometry: BufferGeometry; garment: GarmentDisplay; marker: CanvasTexture | null; visible: boolean; opacity: number; photos: GarmentPhoto[]; photoTint: string | null }) {
+function SceneContent(props: { bodyGeometry: BufferGeometry; garmentGeometry: BufferGeometry; garment: GarmentDisplay; marker: CanvasTexture | null; visible: boolean; teeVisible: boolean; teeOpacity: number; opacity: number; photos: GarmentPhoto[] }) {
   return (
     <>
       <color attach="background" args={["#EDE8E0"]} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[2, 3, 4]} intensity={1.6} />
       <directionalLight position={[-3, 1.5, -3]} intensity={0.7} />
-      <Tshirt geometry={props.garmentGeometry} markerPosition={props.garment.backMarker.position} markerTexture={props.marker} photos={props.photos} photoTint={props.photoTint} tightColor={TIGHT_COLOR} />
+      {props.teeVisible && <Tshirt geometry={props.garmentGeometry} markerPosition={props.garment.backMarker.position} markerTexture={props.marker} photos={props.photos} tightColor={TIGHT_COLOR} opacity={props.teeOpacity} />}
       <Mannequin geometry={props.bodyGeometry} opacity={props.opacity} visible={props.visible} />
     </>
   );
@@ -79,27 +81,37 @@ export function FixedCamera({ angle }: { angle: ViewAngle }) {
   return <PerspectiveCamera makeDefault fov={CAMERA_FOV} position={position} quaternion={quaternion} />;
 }
 
-/** Coarser grid used while measurements are still changing (about 4x faster to mesh). */
-const PREVIEW_STEP_CM = 1.6;
+/** Coarser grid used while measurements are still changing. */
+const PREVIEW_STEP_CM = 1.2;
 /** How long the inputs must stay unchanged before the full-resolution mannequin is built. */
 const SETTLE_MS = 250;
 type MannequinInput = { body: BodyModel; step: number };
 const buildMannequin = (input: MannequinInput) => buildBodyGeometry(input.body, input.step);
-type TeeInput = { garment: GarmentDisplay; fabric: string; photos: GarmentPhoto[] };
+type TeeInput = { garment: GarmentDisplay; fabric: string; photos: GarmentPhoto[]; showPressure: boolean };
 // With photos the fabric is white: the photo supplies the colour and the vertex colours only carry the fit tint.
-const buildTee = ({ garment, fabric, photos }: TeeInput) => {
-  const geometry = buildGarmentGeometry(garment, fabric, TIGHT_COLOR);
+const buildTee = ({ garment, fabric, photos, showPressure }: TeeInput) => {
+  const geometry = buildGarmentGeometry(garment, fabric, TIGHT_COLOR, showPressure);
   if (photos.length) {
     const views = ["front", "angle45", "side", "back"] as const;
     const uv = new Map(photos.map(photo => [photo.view, registerPhoto(geometry, photo.view, photo)]));
     const oblique = photos.find(photo => photo.view === "angle45");
     geometry.setAttribute("garmentUvLeft45", oblique ? registerPhoto(geometry, "angle45", oblique, true) : uv.get(photos[0].view)!);
     views.forEach((view, i) => geometry.setAttribute(`garmentUv${i}`, uv.get(view) ?? uv.get(photos[0].view)!));
+    // The front and back UV maps are registered to the cuff itself.
+    const cuffBlend = new Float32Array(geometry.getAttribute("position").count);
+    for (const { start, count, segments } of geometry.userData.sleeves) {
+      const cuff = start + count - 4 * segments;
+      for (let i = Math.max(start, cuff - 3 * segments); i < start + count; i++) {
+        const distance = Math.max(0, (cuff - i + (i - start) % segments) / segments);
+        cuffBlend[i] = Math.max(0, 1 - distance / 3);
+      }
+    }
+    geometry.setAttribute("garmentCuffBlend", new BufferAttribute(cuffBlend, 1));
   }
   return geometry;
 };
 
-export default function UpperBodyScene({ body, garment, activeAngle, onSelectAngle, mannequinVisible, mannequinOpacity, fabricColor, photos, photoTint }: UpperBodySceneProps) {
+export default function UpperBodyScene({ body, garment, activeAngle, onSelectAngle, mannequinVisible, teeVisible, teeOpacity, showPressure, mannequinOpacity, fabricColor, photos }: UpperBodySceneProps) {
   const container = useRef<HTMLDivElement>(null);
   // Built once here and shared by all five views; the previous geometry is disposed on change.
   // While values change quickly, mesh a coarse preview; once they settle, build the fine mesh.
@@ -114,12 +126,12 @@ export default function UpperBodyScene({ body, garment, activeAngle, onSelectAng
   );
   const bodyGeometry = useDisposableGeometry(mannequinInput, buildMannequin);
   const hasPhotos = photos.length > 0;
-  const teeInput = useMemo<TeeInput>(() => ({ garment, photos, fabric: hasPhotos ? "#ffffff" : fabricColor }), [garment, photos, hasPhotos, fabricColor]);
+  const teeInput = useMemo<TeeInput>(() => ({ garment, photos, showPressure, fabric: hasPhotos ? "#ffffff" : fabricColor }), [garment, photos, showPressure, hasPhotos, fabricColor]);
   const garmentGeometry = useDisposableGeometry(teeInput, buildTee);
   const marker = useBackMarkerTexture();
   const content = useMemo(
-    () => <SceneContent bodyGeometry={bodyGeometry} garmentGeometry={garmentGeometry} garment={garment} marker={marker} visible={mannequinVisible} opacity={mannequinOpacity} photos={photos} photoTint={photoTint} />,
-    [bodyGeometry, garmentGeometry, garment, marker, mannequinVisible, mannequinOpacity, photos, photoTint],
+    () => <SceneContent bodyGeometry={bodyGeometry} garmentGeometry={garmentGeometry} garment={garment} marker={marker} visible={mannequinVisible} teeVisible={teeVisible} teeOpacity={teeOpacity} opacity={mannequinOpacity} photos={photos} />,
+    [bodyGeometry, garmentGeometry, garment, marker, mannequinVisible, teeVisible, teeOpacity, showPressure, mannequinOpacity, photos],
   );
   const activeLabel = VIEW_ANGLES.find((v) => v.angle === activeAngle)?.label;
 

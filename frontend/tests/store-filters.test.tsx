@@ -62,7 +62,7 @@ describe("FashionFilters", () => {
     mockSearchParams = new URLSearchParams();
     render(<FashionFilters />);
 
-    const stockCheckbox = screen.getByRole("checkbox");
+    const stockCheckbox = screen.getByLabelText("In stock only");
     fireEvent.click(stockCheckbox);
 
     expect(mockReplace).toHaveBeenCalledWith("?stock_status=in_stock", { scroll: false });

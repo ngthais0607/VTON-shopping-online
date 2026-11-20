@@ -33,13 +33,16 @@ export interface Product {
   name: string;
   slug?: string;
   price: number;
+  compare_at_price?: number | null;
+  on_sale?: boolean;
+  discount_percent?: number;
   description: string | null;
   brand?: string | null;
   gender?: "male" | "female" | "unisex" | "kids" | string;
   material?: string | null;
   fit?: string | null;
   care_instructions?: string | null;
-  size_chart?: Record<string, Record<string, string | number>> | null;
+  size_chart?: SizeChart | null;
   created_at: string | null;
   updated_at: string | null;
   stock_quantity: number;
@@ -62,9 +65,40 @@ export interface Product {
   review_count?: number;
 }
 
+/** `{ size: { metric: value } }` as stored on a product (cm). */
+export type SizeChart = Record<string, Record<string, string | number>>;
+
+/** Chart the backend proposes for a garment type (category) and gender. */
+export interface SizeChartPreset {
+  preset_key: string;
+  label: string;
+  cloth_type: "upper" | "lower" | "overall";
+  /** "shared" when several categories use the same table, "own" when only this one does. */
+  sharing: "shared" | "own";
+  shared_with: string[];
+  note: string;
+  /** Table used for the gender: men's, women's, unisex (average of both) or one table for everybody. */
+  gender_table: "male" | "female" | "unisex" | "any";
+  unit: "cm";
+  size_chart: SizeChart;
+}
+
+/** One chart family from the catalog the admin picks a chart type from. */
+export interface SizeChartFamily {
+  preset_key: string;
+  label: string;
+  cloth_type: "upper" | "lower" | "overall";
+  sharing: "shared" | "own";
+  shared_with: string[];
+  note: string;
+  metrics: string[];
+  genders: string[];
+}
+
 export interface ProductFormData {
   name: string;
   price: number;
+  compare_at_price?: number | null;
   description?: string | null;
   category_id?: number | null;
   stock_quantity?: number;
@@ -78,7 +112,7 @@ export interface ProductFormData {
   material?: string | null;
   fit?: string | null;
   care_instructions?: string | null;
-  size_chart?: Record<string, Record<string, string | number>> | null;
+  size_chart?: SizeChart | null;
 }
 
 export interface Category {
