@@ -5,7 +5,8 @@ import { GARMENT_SIZES, SIZES } from "@/lib/demo-upper/demoCatalog";
 import { BODY_PRESETS, DEFAULT_BODY, WOMENS_PRESETS } from "@/lib/demo-upper/demoPresets";
 import { polygonPerimeter } from "@/lib/demo-upper/ellipse";
 import { Color } from "three";
-import { buildGarmentDisplay, buildGarmentGeometry, buildGarmentModel, dimensionsFromFrontPhoto, TIGHT_MAX_MIX } from "@/lib/demo-upper/garmentGeometry";
+import { buildGarmentDisplay, buildGarmentGeometry, buildGarmentModel, dimensionsFromFrontPhoto, sleeveLengthFromFrontPhoto, TIGHT_MAX_MIX } from "@/lib/demo-upper/garmentGeometry";
+import { detectFrontSleeve, tracePhotoRows } from "@/lib/demo-upper/photoRegistration";
 import { diagnoseGeometry } from "@/lib/demo-upper/geometryDiagnostics";
 import { useDisposableGeometry } from "@/lib/demo-upper/useDisposableGeometry";
 import { getBodyField } from "@/lib/demo-upper/bodyField";
@@ -220,4 +221,28 @@ it("can show a waist-length cut while the size chart keeps its supplied length",
   expect(model.garment.lengthCm).toBe(chart.lengthCm);
   expect(model.hemY).toBeCloseTo(body.levels.waist - 1.5);
   expect(diagnoseGeometry(buildGarmentGeometry(buildGarmentDisplay(body, model))).degenerateTriangles).toBe(0);
+});
+
+it.each([
+  [46, "short", 58, 14, 34],
+  [99, "long", 16, 48, 65],
+  [69, null, 32, 32, 32],
+] as const)("uses front cuffs at row %i to resolve the sleeve shown in 3D", (cuff, style, sleeveLengthCm, min, max) => {
+  const mask = new Uint8Array(101 * 101);
+  for (let y = 0; y <= 100; y++) {
+    const halfWidth = y < 17 ? 13 + y : 30;
+    mask.fill(1, y * 101 + 50 - halfWidth, y * 101 + 51 + halfWidth);
+    if (y < 17 || y > cuff) continue;
+    mask.fill(1, y * 101, y * 101 + 17);
+    mask.fill(1, y * 101 + 84, (y + 1) * 101);
+  }
+  const box = { x0: 0, x1: 100, y0: 0, y1: 100 };
+  const photo = { box, outline: tracePhotoRows(mask, 101, box) };
+  const sleeve = detectFrontSleeve(photo);
+  expect(sleeve?.style ?? null).toBe(style);
+  const chart = { ...GARMENT_SIZES.M, lengthCm: 58, sleeveLengthCm };
+  const length = sleeveLengthFromFrontPhoto(chart, sleeve);
+  expect(length).toBeGreaterThanOrEqual(min);
+  expect(length).toBeLessThanOrEqual(max);
+  expect(chart.sleeveLengthCm).toBe(sleeveLengthCm);
 });

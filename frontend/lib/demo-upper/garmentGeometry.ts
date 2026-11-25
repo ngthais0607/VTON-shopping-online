@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, Color } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { getBodyField } from "./bodyField";
 import { armRadiusAt, armRing, torsoRadiiAt, type BodyModel } from "./bodyGeometry";
-import type { FrontCut } from "./photoRegistration";
+import type { FrontCut, FrontSleeve } from "./photoRegistration";
 import { polygonPerimeter, RING_SEGMENTS, solveSuperellipse, superellipseRadii, TORSO_EXPONENT } from "./ellipse";
 import { sampleLevels, sampleRadiiAt } from "./ringInterpolation";
 import { horizontalRing, ringPoint, ringsToGeometry } from "./ringsToGeometry";
@@ -108,6 +108,17 @@ export function dimensionsFromFrontPhoto(garment: GarmentSize, cut: FrontCut): G
   const sleeveLengthCm = Math.max(garment.sleeveLengthCm * 0.72,
     Math.min(garment.sleeveLengthCm * 1.16, lengthCm * cut.sleeveDropFraction));
   return { ...garment, lengthCm, sleeveLengthCm };
+}
+
+const LONG_SLEEVE_MIN_CM = 42;
+
+/** Correct a mismatch between the chart and the photographed cut for the preview. */
+export function sleeveLengthFromFrontPhoto(garment: GarmentSize, sleeve: FrontSleeve | null): number {
+  if (!sleeve || (sleeve.style === "long") === (garment.sleeveLengthCm >= LONG_SLEEVE_MIN_CM)) {
+    return garment.sleeveLengthCm;
+  }
+  const estimated = garment.lengthCm * sleeve.dropToBodyLength;
+  return sleeve.style === "long" ? Math.max(48, Math.min(75, estimated)) : Math.max(8, Math.min(34, estimated));
 }
 
 /** Redistribute a small amount of width/depth to match the photo outline
@@ -285,7 +296,7 @@ export function buildGarmentDisplay(body: BodyModel, model: GarmentModel, polo =
       });
       return { ...ring, radii };
     };
-    const longSleeve = g.sleeveLengthCm >= 42;
+    const longSleeve = g.sleeveLengthCm >= LONG_SLEEVE_MIN_CM;
     // Surplus length collects at the wrist instead of extending the cuff past the hand.
     const sleeveSpan = longSleeve ? Math.min(g.sleeveLengthCm, arm.lengthCm + 1 - t0) : g.sleeveLengthCm;
     const excess = g.sleeveLengthCm - sleeveSpan;

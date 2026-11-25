@@ -59,6 +59,31 @@ export type FrontCut = {
   sleeveDropFraction: number;
 };
 
+export type FrontSleeve = { style: "short" | "long"; dropToBodyLength: number };
+
+/** Compare the bottoms of both outer bands with the centre hem in a front view. */
+export function detectFrontSleeve({ box, outline }: { box: BBox; outline: ReturnType<typeof tracePhotoRows> }): FrontSleeve | null {
+  const width = box.x1 - box.x0;
+  const height = box.y1 - box.y0;
+  if (width < 24 || height < 24 || width / height < 0.5 || width / height > 1.65) return null;
+
+  const shoulder = outline.right.findIndex((right, row) => right - outline.left[row] >= width * 0.62);
+  if (shoulder < ROWS * 0.04 || shoulder > ROWS * 0.34) return null;
+  const shoulderY = box.y0 + shoulder / (ROWS - 1) * height;
+  const bottomAt = (fraction: number) => outline.columnBottom[Math.round(box.x0 + width * fraction)];
+  const median = (a: number, b: number, c: number) => a + b + c - Math.min(a, b, c) - Math.max(a, b, c);
+  const hem = median(bottomAt(0.4), bottomAt(0.5), bottomAt(0.6));
+  const left = median(bottomAt(0.05), bottomAt(0.09), bottomAt(0.13));
+  const right = median(bottomAt(0.87), bottomAt(0.91), bottomAt(0.95));
+  const bodyLength = hem - shoulderY;
+  if (bodyLength < height * 0.45 || Math.min(left, right) <= shoulderY || Math.abs(left - right) > bodyLength * 0.16) return null;
+
+  const dropToBodyLength = ((left + right) * 0.5 - shoulderY) / bodyLength;
+  if (dropToBodyLength >= 0.72) return { style: "long", dropToBodyLength };
+  if (dropToBodyLength <= 0.52 && cuffRow(outline)) return { style: "short", dropToBodyLength };
+  return null;
+}
+
 function averageSpan(outline: Outline, fraction: number) {
   const center = Math.round(fraction * (ROWS - 1));
   let sum = 0;
