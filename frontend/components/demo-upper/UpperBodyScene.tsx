@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { registerPhoto } from "@/lib/demo-upper/photoRegistration";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, View } from "@react-three/drei";
+import { Rotate3d } from "lucide-react";
 import { BufferAttribute, CanvasTexture, Matrix4, Quaternion, SRGBColorSpace, Vector3, type BufferGeometry } from "three";
 import { buildBodyGeometry, MESH_STEP_CM } from "@/lib/demo-upper/bodyField";
 import type { BodyModel } from "@/lib/demo-upper/bodyGeometry";
@@ -61,7 +62,7 @@ function useBackMarkerTexture() {
 function SceneContent(props: { bodyGeometry: BufferGeometry; garmentGeometry: BufferGeometry; garment: GarmentDisplay; marker: CanvasTexture | null; visible: boolean; teeVisible: boolean; teeOpacity: number; opacity: number; photos: GarmentPhoto[] }) {
   return (
     <>
-      <color attach="background" args={["#EDE8E0"]} />
+      <color attach="background" args={["#DFE3D5"]} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[2, 3, 4]} intensity={1.6} />
       <directionalLight position={[-3, 1.5, -3]} intensity={0.7} />
@@ -131,19 +132,23 @@ export default function UpperBodyScene({ body, garment, activeAngle, onSelectAng
   const marker = useBackMarkerTexture();
   const content = useMemo(
     () => <SceneContent bodyGeometry={bodyGeometry} garmentGeometry={garmentGeometry} garment={garment} marker={marker} visible={mannequinVisible} teeVisible={teeVisible} teeOpacity={teeOpacity} opacity={mannequinOpacity} photos={photos} />,
-    [bodyGeometry, garmentGeometry, garment, marker, mannequinVisible, teeVisible, teeOpacity, showPressure, mannequinOpacity, photos],
+    [bodyGeometry, garmentGeometry, garment, marker, mannequinVisible, teeVisible, teeOpacity, mannequinOpacity, photos],
   );
   const activeLabel = VIEW_ANGLES.find((v) => v.angle === activeAngle)?.label;
 
   return (
     <div ref={container} className="relative">
-      <div className="relative aspect-[4/5] w-full overflow-hidden border border-[#E8E3DB] sm:aspect-[5/4] lg:aspect-auto lg:h-[560px]">
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-[#DFE3D5] sm:aspect-[5/4] lg:aspect-auto lg:h-[500px]">
         <View className="absolute inset-0">
           <PerspectiveCamera key={activeAngle} makeDefault fov={CAMERA_FOV} position={cameraPosition(activeAngle)} />
           <OrbitControls makeDefault target={CAMERA_TARGET} enablePan={false} minDistance={1.1} maxDistance={3.4} />
           {content}
         </View>
-        <p className="pointer-events-none absolute left-3 top-3 z-10 bg-white/85 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#1C1C1C]">Drag to rotate · {activeLabel}</p>
+        <p className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-[#384030] px-4 py-2 text-sm font-semibold text-white sm:left-6 sm:top-6 sm:text-base" aria-live="polite">{activeLabel}</p>
+        <p className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-2 rounded-full bg-white px-3.5 py-2 text-sm font-medium text-[#1F2418] sm:right-6 sm:top-6 sm:text-base">
+          <Rotate3d className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
+          Drag to rotate
+        </p>
       </div>
       <FourViewsPanel activeAngle={activeAngle} onSelect={onSelectAngle}>
         {(angle) => (
@@ -159,7 +164,7 @@ export default function UpperBodyScene({ body, garment, activeAngle, onSelectAng
         className="!pointer-events-none !fixed !inset-0 !z-[1]"
         dpr={[1, 2]}
         gl={{ antialias: true }}
-        fallback={<p className="p-4 text-sm text-[#6B6761]">Your browser does not support WebGL, so the 3D model cannot be shown.</p>}
+        fallback={<p className="p-4 text-sm text-[#5E6557]">Your browser does not support WebGL, so the 3D model cannot be shown.</p>}
       >
         <View.Port />
       </Canvas>

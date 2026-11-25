@@ -10,10 +10,10 @@ type FourViewsPanelProps = {
   children: (angle: ViewAngle) => ReactNode;
 };
 
-/** 4 góc cố định 0/45/90/180, không có OrbitControls. Bấm vào để đưa view chính về góc đó. */
+/** 4 góc cố định 0/45/90/180. Bấm vào để đưa view chính về góc đó. */
 export function FourViewsPanel({ activeAngle, onSelect, children }: FourViewsPanelProps) {
   return (
-    <div className="mt-3 grid grid-cols-4 gap-2 sm:gap-3" role="group" aria-label="Four fixed views">
+    <div className="mt-4 grid grid-cols-4 gap-2 sm:gap-4" role="group" aria-label="Four fixed views">
       {VIEW_ANGLES.map(({ angle, label }) => {
         const active = angle === activeAngle;
         return (
@@ -22,10 +22,13 @@ export function FourViewsPanel({ activeAngle, onSelect, children }: FourViewsPan
             type="button"
             onClick={() => onSelect(angle)}
             aria-pressed={active}
-            className={"group relative aspect-[3/4] overflow-hidden border text-left transition-colors " + (active ? "border-[#1C1C1C]" : "border-[#E8E3DB] hover:border-[#b89b6a]")}
+            aria-label={`Show ${label} view`}
+            className={"group relative flex flex-col overflow-hidden border text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#384030]" + (active ? "border-[#384030]" : "border-[#DAD7CA] hover:border-[#384030]")}
           >
-            <View className="absolute inset-0">{children(angle)}</View>
-            <span className={"absolute inset-x-0 bottom-0 z-10 px-2 py-1.5 text-[9px] font-semibold uppercase tracking-[0.16em] sm:text-[10px] " + (active ? "bg-[#1C1C1C] text-white" : "bg-white/90 text-[#1C1C1C]")}>{label}</span>
+            <span className="relative block aspect-[3/4] w-full bg-[#DFE3D5] sm:aspect-[7/5]">
+              <View className="absolute inset-0">{children(angle)}</View>
+            </span>
+            <span className={"relative z-10 block px-1 py-2 text-center text-[11px] font-semibold sm:py-2.5 sm:text-sm " + (active ? "bg-[#384030] text-white" : "bg-white text-[#1F2418]")}>{label}</span>
           </button>
         );
       })}

@@ -1,23 +1,26 @@
 "use client";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowLeft, ChevronDown } from "lucide-react";
 import { Header } from "@/app/store/components/Header";
 import { Footer } from "@/app/store/components/Footer";
 import { measureBody } from "@/lib/demo-upper/bodyField";
 import { buildBodyModel, type BodyForm } from "@/lib/demo-upper/bodyGeometry";
 import { apiGet } from "@/lib/api";
 import type { Product } from "@/lib/types";
-import { BODY_PRESETS, WOMENS_PRESETS, DEFAULT_OPACITY, OPACITY_RANGE } from "@/lib/demo-upper/demoPresets";
+import { BODY_PRESETS, WOMENS_PRESETS, DEFAULT_OPACITY } from "@/lib/demo-upper/demoPresets";
 import { computeFitHints } from "@/lib/demo-upper/fitHints";
-import { hasRaisedCollar, isCompactFittedTee, measureFrontCut } from "@/lib/demo-upper/photoRegistration";
-import { buildGarmentDisplay, buildGarmentModel, dimensionsFromFrontPhoto } from "@/lib/demo-upper/garmentGeometry";
+import { detectFrontSleeve, hasRaisedCollar, isCompactFittedTee, measureFrontCut } from "@/lib/demo-upper/photoRegistration";
+import { buildGarmentDisplay, buildGarmentModel, dimensionsFromFrontPhoto, sleeveLengthFromFrontPhoto } from "@/lib/demo-upper/garmentGeometry";
 import { MEASUREMENT_FIELDS, validateField, validateMeasurements } from "@/lib/demo-upper/measurementValidation";
 import { fitSizeOptions, resolveProductFit, usesStandardTeeChart } from "@/lib/demo-upper/productFit";
 import type { MeasurementField, Size, UpperBodyMeasurements, ViewAngle } from "@/lib/demo-upper/types";
 import { BodyPresetButtons } from "./BodyPresetButtons";
+import { DisplaySettings } from "./DisplaySettings";
 import { FitHints } from "./FitHints";
 import { MeasurementsPanel } from "./MeasurementsPanel";
 import { SizeSwitcher } from "./SizeSwitcher";
+import { CARD, CONTROL, CONTROL_ACTIVE, CONTROL_IDLE, FOCUS, HEADING, LABEL } from "./ui";
 import { useGarmentPhotos } from "./useGarmentPhotos";
 import { ViewerClient } from "./ViewerClient";
 
@@ -69,7 +72,8 @@ export function TryOn3DPage({ productSlug = null, colorName = null, initialSize 
   const validation = useMemo(() => validateMeasurements(raw, lastValid), [raw, lastValid]);
   const values = useDeferredValue(validation.values);
   const frontPhoto = photosState.photos.find(photo => photo.view === "front");
-  const photoCut = useMemo(() => frontPhoto ? measureFrontCut(frontPhoto) : null, [frontPhoto]);
+  const photoSleeve = useMemo(() => frontPhoto ? detectFrontSleeve(frontPhoto) : null, [frontPhoto]);
+  const photoCut = useMemo(() => frontPhoto && photoSleeve?.style !== "long" ? measureFrontCut(frontPhoto) : null, [frontPhoto, photoSleeve]);
   const compactFitted = !!frontPhoto && isCompactFittedTee(frontPhoto, photoCut);
   const usesSharedChart = fit.chartSource === "sample" || usesStandardTeeChart(fit.sizes, gender);
   const product = loaded?.product;
@@ -99,12 +103,14 @@ export function TryOn3DPage({ productSlug = null, colorName = null, initialSize 
   const garmentDisplay = useMemo(() => {
     if (!garment) return null;
     let visual = usesSharedChart && photoCut ? dimensionsFromFrontPhoto(garment, photoCut) : garment;
+    const sleeveLengthCm = sleeveLengthFromFrontPhoto(visual, photoSleeve);
+    if (sleeveLengthCm !== visual.sleeveLengthCm) visual = { ...visual, sleeveLengthCm };
     if (cropLength !== undefined && cropLength < garment.lengthCm) {
       const flare = photoCut ? Math.max(0.02, photoCut.hemToChest - photoCut.waistToChest) : 0.04;
       visual = { ...visual, hemCircCm: Math.min(visual.hemCircCm, visual.waistCircCm + visual.chestCircCm * flare) };
     }
     return buildGarmentDisplay(bodyModel, buildGarmentModel(bodyModel, visual, cropLength), polo, photoNeckline, compactFitted, photoCut);
-  }, [bodyModel, garment, cropLength, polo, photoNeckline, compactFitted, photoCut, usesSharedChart]);
+  }, [bodyModel, garment, cropLength, polo, photoNeckline, compactFitted, photoCut, photoSleeve, usesSharedChart]);
   const hints = useMemo(() => {
     const valid = Object.fromEntries(MEASUREMENT_FIELDS.map((f) => [f, validation.fields[f].status === "ok"]));
     return garment ? computeFitHints(validation.values, garment, valid) : null;
@@ -124,102 +130,37 @@ export function TryOn3DPage({ productSlug = null, colorName = null, initialSize 
   const applyBody = (body: UpperBodyMeasurements) =>
     setInputs(prev => ({ ...prev, [form]: { raw: toRaw(body), lastValid: body } }));
 
+  type Note = { text: string; error?: boolean; info?: boolean };
+  const rawNotes: (Note | false | null | undefined)[] = [
+    loaded?.failed && { text: "This product could not be loaded, so a sample tee is shown.", error: true },
+    loaded?.product && fit.chartSource === "sample" && { text: "This product has no size chart yet, so sample tee sizes are used." },
+    useCompactPreview
+      ? { text: "Waist-length preview. Size advice uses the shared size chart.", info: true }
+      : photoCut && { text: "The front photo guides the 3D silhouette. Size advice uses the chart.", info: true },
+    photosState.status === "loading" && { text: "Preparing product photos…" },
+    photosState.status === "error" && { text: "The product photos could not be used, so the tee shows the plain fabric colour." },
+    fit.photos?.recolor && photosState.status === "ready" && { text: "This colour uses reference photos in their original colour.", info: true },
+    loaded?.product && !fit.photos && { text: "No garment-only photos for this colour, so the tee shows the plain fabric colour." },
+  ];
+  const productNotes = rawNotes.filter((note): note is Note => !!note);
+  const alerts = productNotes.filter(note => !note.info);
+  const infoNotes = productNotes.filter(note => note.info);
+
   return (
-    <div className="flex min-h-screen flex-col bg-[#FAF8F5] text-[#1C1C1C]">
+    <div className="flex min-h-screen flex-col bg-[#F2EFE7] text-[#1F2418]">
       <Header />
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-20 pt-24 sm:px-8 lg:px-12 lg:pt-36">
-        <div className="border-b border-[#E8E3DB] pb-8 sm:pb-10">
-          <Link href="/store" className="mb-6 inline-flex items-center gap-2 text-xs font-medium text-[#6B6761] hover:text-[#1C1C1C]">TrueLook <span aria-hidden="true">/</span> 3D Try-On</Link>
-          <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr] lg:items-end lg:gap-16">
-            <h1 className="text-4xl font-medium leading-[1.04] tracking-[-0.045em] sm:text-6xl" style={{ fontFamily: "var(--font-display)" }}>Try the tee on a 3D mannequin</h1>
-            <p className="max-w-xl text-sm leading-7 text-[#6B6761]">Enter your upper-body measurements and the mannequin reshapes to match. Pick a size to see the tee, true to its size chart, from four angles.</p>
-          </div>
-        </div>
+      <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 pb-16 pt-24 sm:px-8 lg:px-10 lg:pt-28">
+        <Link href="/store" className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-[#5E6557] hover:text-[#1F2418]">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Back to store
+        </Link>
 
-        <div className="grid gap-10 pt-8 lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-14 lg:pt-12">
-          <aside className="space-y-8 lg:order-none">
-            <div className="border border-[#E8E3DB] bg-[#F1ECE4] p-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6B6761]">Product</p>
-              <p className="mt-1 text-lg font-medium" style={{ fontFamily: "var(--font-display)" }}>{productLoading ? "Loading product…" : fit.name}</p>
-              {fit.colorName && <p className="mt-1 text-xs text-[#6B6761]">Colour: {fit.colorName}</p>}
-              {loaded?.failed && <p className="mt-2 text-xs text-[#b13d36]">This product could not be loaded, so a sample tee is shown.</p>}
-              {loaded?.product && fit.chartSource === "sample" && <p className="mt-2 text-xs text-[#6B6761]">{"This product has no size chart yet, so sample tee sizes are used."}</p>}
-              {useCompactPreview ? (
-                <p className="mt-2 text-xs text-[#6B6761]">Waist-length preview. Size advice uses the shared size chart.</p>
-              ) : photoCut && (
-                <p className="mt-2 text-xs text-[#6B6761]">The front photo guides the 3D silhouette. Size advice uses the chart.</p>
-              )}
-              {photosState.status === "loading" && <p className="mt-2 text-xs text-[#6B6761]">Preparing product photos…</p>}
-              {photosState.status === "error" && <p className="mt-2 text-xs text-[#6B6761]">The product photos could not be used, so the tee shows the plain fabric colour.</p>}
-              {fit.photos?.recolor && photosState.status === "ready" && (
-                <p className="mt-2 text-xs text-[#6B6761]">This colour uses reference photos in their original colour.</p>
-              )}
-              {loaded?.product && !fit.photos && <p className="mt-2 text-xs text-[#6B6761]">No garment-only photos for this colour, so the tee shows the plain fabric colour.</p>}
-            </div>
-            {canChooseForm && <fieldset>
-              <legend className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6B6761]">Mannequin form</legend>
-              <div className="flex gap-2">
-                {(["female", "male"] as const).map(option => (
-                  <button type="button" key={option} aria-pressed={form === option} onClick={() => setForm(option)}
-                    className={"min-h-11 flex-1 border text-sm " + (form === option ? "bg-[#1C1C1C] text-white" : "bg-white")}>
-                    {option === "female" ? "Women" : "Men"}
-                  </button>
-                ))}
-              </div>
-            </fieldset>}
-            <BodyPresetButtons presets={presets} activeId={activePreset} onSelect={preset => applyBody(preset.body)} />
-            <MeasurementsPanel raw={raw} fields={validation.fields} onChange={changeField} onReset={() => applyBody(defaultBody)} measured={measured} />
-            {loaded?.product && (
-              <label className="flex items-center justify-between gap-3 text-sm">Collar style
-                <select className="border border-[#E8E3DB] bg-white px-3 py-2" value={photoNeckline ? "photo" : polo ? "polo" : "crew"}
-                  onChange={(event) => setCollarChoice({ slug: productSlug, style: event.target.value as "crew" | "polo" | "photo" })}>
-                  {fit.photos && <option value="photo">From product photos</option>}
-                  <option value="crew">Crew neck</option><option value="polo">Polo</option>
-                </select>
-              </label>
-            )}
-            {!productLoading && <SizeSwitcher options={sizeOptions} size={size} onChange={setSize} />}
-            <div>
-              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#6B6761]">Mannequin</p>
-              <label className="flex min-h-11 items-center gap-3 text-sm">
-                <input type="checkbox" checked={mannequinVisible} onChange={(e) => setMannequinVisible(e.target.checked)} className="h-4 w-4 accent-[#1C1C1C]" />
-                Show mannequin
-              </label>
-              <label className="flex min-h-11 items-center gap-3 text-sm">
-                <input type="checkbox" checked={teeVisible} onChange={(e) => setTeeVisible(e.target.checked)} className="h-4 w-4 accent-[#1C1C1C]" />
-                Show tee
-              </label>
-              {!photoSizedPreview && (
-                <label className="flex min-h-11 items-center gap-3 text-sm">
-                  <input type="checkbox" checked={showPressure} disabled={!teeVisible} onChange={event => setShowPressure(event.target.checked)} className="h-4 w-4 accent-[#1C1C1C]" />
-                  Highlight tight areas
-                </label>
-              )}
-              <label htmlFor="demo-upper-tee-opacity" className="mt-2 flex items-center justify-between text-xs text-[#6B6761]">
-                <span>Tee opacity (see how snug it is)</span>
-                <span className="tabular-nums">{Math.round(teeOpacity * 100) / 100}</span>
-              </label>
-              <input id="demo-upper-tee-opacity" type="range" min={OPACITY_RANGE.min} max={OPACITY_RANGE.max} step={0.05} value={teeOpacity} disabled={!teeVisible} onChange={(e) => setTeeOpacity(Number(e.target.value))} className="mt-2 w-full accent-[#1C1C1C] disabled:opacity-40" />
-              <label htmlFor="demo-upper-opacity" className="mt-2 flex items-center justify-between text-xs text-[#6B6761]">
-                <span>Opacity</span>
-                <span className="tabular-nums">{Math.round(mannequinOpacity * 100) / 100}</span>
-              </label>
-              <input
-                id="demo-upper-opacity"
-                type="range"
-                min={OPACITY_RANGE.min}
-                max={OPACITY_RANGE.max}
-                step={0.05}
-                value={mannequinOpacity}
-                disabled={!mannequinVisible}
-                onChange={(e) => setMannequinOpacity(Number(e.target.value))}
-                className="mt-2 w-full accent-[#1C1C1C] disabled:opacity-40"
-              />
-            </div>
-            {hints && size && garmentDisplay && <FitHints hints={hints} size={size} tightZones={photoSizedPreview ? [] : garmentDisplay.tightZones} />}
-          </aside>
-
-          <section aria-label="3D model" className="min-w-0 lg:sticky lg:top-28 lg:self-start">
+        {/* Two balanced columns on desktop: preview + fit result on the left, inputs on the right. On mobile the `contents` wrappers
+            dissolve and `order` gives the flow preview → size → measurements → fit guide → settings. */}
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_430px]">
+          <div className="contents min-w-0 lg:flex lg:flex-col lg:gap-5">
+          <section aria-labelledby="fit-preview-title" className={`order-1 min-w-0 ${CARD}`}>
+            <h1 id="fit-preview-title" className={`mb-4 text-4xl ${HEADING}`}>Fit preview</h1>
             {garmentDisplay ? <ViewerClient
               body={bodyModel}
               garment={garmentDisplay}
@@ -233,14 +174,92 @@ export function TryOn3DPage({ productSlug = null, colorName = null, initialSize 
               fabricColor={fit.fabricColor}
               photos={photosState.photos}
             /> : (
-              <p className="border border-[#E8E3DB] p-5 text-sm text-[#6B6761]">{size ? `Size ${size} needs measurements for a 3D preview.` : "No sizes are configured for this colour."}</p>
+              <p className="flex min-h-64 items-center justify-center bg-[#DFE3D5] p-6 text-center text-base text-[#5E6557]">{productLoading ? "Loading product…" : size ? `Size ${size} needs measurements for a 3D preview.` : "No sizes are configured for this colour."}</p>
             )}
-            <div className="mt-6 border-l-2 border-[#b89b6a] bg-white px-4 py-3 text-xs leading-6 text-[#6B6761]">
-              <p><strong className="font-medium text-[#1C1C1C]">A visual fit preview</strong>, not an exact sizing tool. The mannequin and tee are built from a few measurements using assumed proportions; hip size is estimated and the mannequin ends at the upper hip. Girths measured on the mannequin are close to, but not exactly, your inputs.</p>
-              <p className="mt-1">The tee always keeps the true dimensions of the selected size. When a size is smaller than your measurements, it is not stretched to fit; tight areas are listed in the fit guide and can be highlighted in the preview.</p>
-              {photosState.photos.length > 0 && <p className="mt-1">The preview uses the product photos and a fitted garment shape. Details near seams and sleeve openings are approximate.</p>}
-            </div>
+            <details className="group mt-5 border-t border-[#E3E0D4] pt-1">
+              <summary className={`flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-base font-semibold text-[#2F3627] [&::-webkit-details-marker]:hidden ${FOCUS}`}>
+                How the preview works
+                <ChevronDown className="h-5 w-5 transition-transform group-open:rotate-180" aria-hidden="true" />
+              </summary>
+              <div className="space-y-2 pb-2 text-sm leading-6 text-[#5E6557]">
+                <p>Enter your upper-body measurements and the mannequin reshapes to match. Pick a size to see the tee, true to its size chart, from four angles.</p>
+                {infoNotes.map(note => <p key={note.text}>{note.text}</p>)}
+                <p><strong className="font-semibold text-[#1F2418]">A visual fit preview</strong>, not an exact sizing tool. The mannequin and tee are built from a few measurements using assumed proportions; hip size is estimated and the mannequin ends at the upper hip. Girths measured on the mannequin are close to, but not exactly, your inputs.</p>
+                <p>The tee always keeps the true dimensions of the selected size. When a size is smaller than your measurements, it is not stretched to fit; tight areas are listed in the fit guide and can be highlighted in the preview.</p>
+                {photosState.photos.length > 0 && <p>The preview uses the product photos and a fitted garment shape. Details near seams and sleeve openings are approximate.</p>}
+              </div>
+            </details>
           </section>
+
+          {hints && size && garmentDisplay && (
+            <div className="order-4 min-w-0">
+              <FitHints
+                hints={hints}
+                size={size}
+                tightZones={photoSizedPreview ? [] : garmentDisplay.tightZones}
+                pressureAvailable={!photoSizedPreview}
+                showPressure={showPressure}
+                pressureDisabled={!teeVisible}
+                onShowPressureChange={setShowPressure}
+              />
+            </div>
+          )}
+          </div>
+
+          <div className="contents min-w-0 lg:flex lg:flex-col lg:gap-5">
+            <section aria-label="Product and size" className={`order-2 min-w-0 ${CARD}`}>
+              <div className="rounded-2xl bg-[#DFE3D5] p-4 sm:p-5">
+                <p className={`text-3xl sm:text-4xl ${HEADING}`}>{productLoading ? "Loading product…" : fit.name}</p>
+                {fit.colorName && (
+                  <p className="mt-2 inline-flex items-center gap-2 rounded-full bg-white/70 py-1 pl-1.5 pr-3 text-sm font-medium text-[#2F3627]">
+                    <span className="h-4 w-4 rounded-full border border-black/15" style={{ backgroundColor: fit.fabricColor }} aria-hidden="true" />
+                    {fit.colorName}
+                  </p>
+                )}
+                {alerts.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-sm leading-6" role="status">
+                    {alerts.map(note => <li key={note.text} className={note.error ? "text-[#A3362F]" : "text-[#4A5242]"}>{note.text}</li>)}
+                  </ul>
+                )}
+              </div>
+              {!productLoading && <div className="mt-5"><SizeSwitcher options={sizeOptions} size={size} onChange={setSize} /></div>}
+            </section>
+
+            <section aria-labelledby="measurements-title" className={`order-3 min-w-0 ${CARD} space-y-5`}>
+              <h2 id="measurements-title" className={`text-3xl ${HEADING}`}>Your measurements</h2>
+              {canChooseForm && <fieldset>
+                <legend className={`mb-3 ${LABEL}`}>Mannequin form</legend>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {(["female", "male"] as const).map(option => (
+                    <button type="button" key={option} aria-pressed={form === option} onClick={() => setForm(option)}
+                      className={`${CONTROL} font-medium ${form === option ? CONTROL_ACTIVE : CONTROL_IDLE}`}>
+                      {option === "female" ? "Women" : "Men"}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>}
+              <BodyPresetButtons presets={presets} activeId={activePreset} onSelect={preset => applyBody(preset.body)} />
+              <MeasurementsPanel raw={raw} fields={validation.fields} onChange={changeField} onReset={() => applyBody(defaultBody)} measured={measured} />
+            </section>
+
+            <div className="order-5 min-w-0">
+            <DisplaySettings
+              mannequinVisible={mannequinVisible}
+              onMannequinVisible={setMannequinVisible}
+              teeVisible={teeVisible}
+              onTeeVisible={setTeeVisible}
+              teeOpacity={teeOpacity}
+              onTeeOpacity={setTeeOpacity}
+              mannequinOpacity={mannequinOpacity}
+              onMannequinOpacity={setMannequinOpacity}
+              collar={loaded?.product ? {
+                value: photoNeckline ? "photo" : polo ? "polo" : "crew",
+                hasPhotos: !!fit.photos,
+                onChange: style => setCollarChoice({ slug: productSlug, style }),
+              } : undefined}
+            />
+            </div>
+          </div>
         </div>
       </main>
       <Footer />
