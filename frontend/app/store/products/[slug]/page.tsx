@@ -215,7 +215,7 @@ export default function ProductDetailPage() {
       <div className="min-h-screen bg-background pt-24 lg:pt-36">
         <Header />
         <main aria-busy="true" className="mx-auto grid max-w-[1440px] gap-8 px-5 py-12 md:grid-cols-2 md:px-10 lg:px-20">
-          <div className="aspect-[4/5] bg-secondary motion-safe:animate-pulse" />
+          <div className="aspect-square max-h-[min(68svh,36rem)] bg-secondary motion-safe:animate-pulse" />
           <div className="space-y-5 pt-5"><p role="status" className="text-sm text-muted-foreground">Loading product...</p><div className="h-12 w-4/5 bg-secondary" /><div className="h-7 w-1/3 bg-secondary" /></div>
         </main>
         <Footer />
@@ -278,15 +278,17 @@ export default function ProductDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12">
           {/* Gallery Column */}
           <div className="lg:col-span-7 flex flex-col gap-4">
-            <div className="relative aspect-[4/5] w-full overflow-hidden bg-[#F1ECE4]">
-              <Image
-                src={mainImage.url}
-                alt={product.name}
-                fill
-                priority
-                sizes="(max-width: 1024px) 90vw, 55vw"
-                className="object-cover transition-all duration-300"
-              />
+            <div className="relative aspect-square w-full max-h-[min(68svh,36rem)] overflow-hidden bg-white">
+              <div className="absolute inset-[8%]">
+                <Image
+                  src={mainImage.url}
+                  alt={product.name}
+                  fill
+                  priority
+                  sizes="(max-width: 1024px) 76vw, 44vw"
+                  className="object-contain"
+                />
+              </div>
               <button type="button" onClick={() => setZoomOpen(true)} aria-label="Zoom product image" className="absolute bottom-4 right-4 flex h-11 w-11 items-center justify-center border border-border bg-background/95 hover:bg-white"><ZoomIn className="h-4 w-4" /></button>
               {isOutOfStock && (
                 <div className="absolute left-4 top-4 pointer-events-none">
