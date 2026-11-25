@@ -21,7 +21,9 @@ def test_create_violations_are_refused(client, mock_admin_auth, label):
 
 
 def test_patch_violations_are_refused(client, mock_admin_auth):
-    cid = client.post(CATEGORIES, json={"name": "Parent", "slug": "parent"}).json()["id"]
+    cid = client.post(CATEGORIES, json={"name": "Parent", "slug": "parent"}).json()[
+        "id"
+    ]
     assert_rejected(client.patch(f"{CATEGORIES}/{cid}", json={"name": None}), 422)
     assert_rejected(client.patch(f"{CATEGORIES}/{cid}", json={"name": "  "}), 422)
     assert_rejected(client.patch(f"{CATEGORIES}/{cid}", json={"parent_id": cid}), 400)
@@ -30,13 +32,19 @@ def test_patch_violations_are_refused(client, mock_admin_auth):
 
 def test_a_category_cannot_become_its_own_ancestor(client, mock_admin_auth):
     parent = client.post(CATEGORIES, json={"name": "Parent"}).json()
-    kid = client.post(CATEGORIES, json={"name": "Kid", "parent_id": parent["id"]}).json()
-    assert_rejected(client.patch(f"{CATEGORIES}/{parent['id']}", json={"parent_id": kid["id"]}), 400)
+    kid = client.post(
+        CATEGORIES, json={"name": "Kid", "parent_id": parent["id"]}
+    ).json()
+    assert_rejected(
+        client.patch(f"{CATEGORIES}/{parent['id']}", json={"parent_id": kid["id"]}), 400
+    )
 
 
 def test_category_in_use_cannot_be_deleted(client, mock_admin_auth):
     parent = client.post(CATEGORIES, json={"name": "Parent"}).json()
-    kid = client.post(CATEGORIES, json={"name": "Kid", "parent_id": parent["id"]}).json()
+    kid = client.post(
+        CATEGORIES, json={"name": "Kid", "parent_id": parent["id"]}
+    ).json()
     assert_rejected(client.delete(f"{CATEGORIES}/{parent['id']}"), 409)  # has a child
     client.post(PRODUCTS, json=product_body(category_id=kid["id"]))
     assert_rejected(client.delete(f"{CATEGORIES}/{kid['id']}"), 409)  # has a product

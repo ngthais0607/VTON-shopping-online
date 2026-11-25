@@ -45,10 +45,14 @@ def test_create_category_uses_authenticated_admin_for_audit(
 
 def test_client_cannot_spoof_audit_columns(client, db_session, mock_admin_auth):
     """created_by / updated_by come from the session; sending them is refused, not silently ignored."""
-    created = client.post("/api/v1/categories", json={"name": "Spoof", "created_by": 123})
+    created = client.post(
+        "/api/v1/categories", json={"name": "Spoof", "created_by": 123}
+    )
     assert created.status_code == 422
     category = persist_category(db_session, name="Keep")
-    patched = client.patch(f"/api/v1/categories/{category.id}", json={"name": "Changed", "updated_by": 123})
+    patched = client.patch(
+        f"/api/v1/categories/{category.id}", json={"name": "Changed", "updated_by": 123}
+    )
     assert patched.status_code == 422
     db_session.refresh(category)
     assert category.name == "Keep"

@@ -84,7 +84,9 @@ def test_unisex_is_the_average_of_men_and_women():
     assert chart["XXL"] == size_charts.build_chart(tee, "male")["XXL"]
     # one table for everybody stays untouched
     skirt = size_charts.PRESETS_BY_KEY["chan-vay"]
-    assert size_charts.build_chart(skirt, "unisex") == size_charts.build_chart(skirt, "male")
+    assert size_charts.build_chart(skirt, "unisex") == size_charts.build_chart(
+        skirt, "male"
+    )
 
 
 def test_every_unisex_chart_is_complete_and_ordered():
@@ -97,6 +99,7 @@ def test_every_unisex_chart_is_complete_and_ordered():
                 values = [row[metric] for row in chart.values()]
                 assert values == sorted(values), (preset.key, metric)
 
+
 def test_gender_neutral_family_ignores_gender():
     a = size_charts.resolve_size_chart(cat("chan-vay-chu-a"), "female")
     b = size_charts.resolve_size_chart(cat("chan-vay-chu-a"), "male")
@@ -108,10 +111,21 @@ def test_kids_has_no_preset():
 
 
 def test_custom_child_falls_back_to_parent_then_cloth_type():
-    assert size_charts.resolve_size_chart(cat("ao-ba-lo", "ao"), "male")["preset_key"] == "ao-phong"
-    assert size_charts.resolve_size_chart(cat("quan-moi", "quan"), "male")["preset_key"] == "quan-dai"
+    assert (
+        size_charts.resolve_size_chart(cat("ao-ba-lo", "ao"), "male")["preset_key"]
+        == "ao-phong"
+    )
+    assert (
+        size_charts.resolve_size_chart(cat("quan-moi", "quan"), "male")["preset_key"]
+        == "quan-dai"
+    )
     # A child of a known family inherits that family.
-    assert size_charts.resolve_size_chart(cat("ao-so-mi-moi", "ao-so-mi"), "male")["preset_key"] == "ao-so-mi"
+    assert (
+        size_charts.resolve_size_chart(cat("ao-so-mi-moi", "ao-so-mi"), "male")[
+            "preset_key"
+        ]
+        == "ao-so-mi"
+    )
 
 
 def test_unknown_or_ambiguous_category_has_no_preset():
@@ -127,10 +141,13 @@ def make_category(db, slug, name=None):
     return category
 
 
-def test_preset_endpoint_returns_chart_for_picked_category(client, db_session, mock_admin_auth):
+def test_preset_endpoint_returns_chart_for_picked_category(
+    client, db_session, mock_admin_auth
+):
     category = make_category(db_session, "ao-polo")
     response = client.get(
-        f"{PRODUCTS}/size-chart-preset", params={"category_id": category.id, "gender": "female"}
+        f"{PRODUCTS}/size-chart-preset",
+        params={"category_id": category.id, "gender": "female"},
     )
     assert response.status_code == 200
     body = response.json()
@@ -138,15 +155,24 @@ def test_preset_endpoint_returns_chart_for_picked_category(client, db_session, m
     assert "XS" in body["size_chart"]
 
 
-def test_preset_endpoint_returns_null_when_no_chart(client, db_session, mock_admin_auth):
+def test_preset_endpoint_returns_null_when_no_chart(
+    client, db_session, mock_admin_auth
+):
     category = make_category(db_session, "phu-kien")
-    response = client.get(f"{PRODUCTS}/size-chart-preset", params={"category_id": category.id})
+    response = client.get(
+        f"{PRODUCTS}/size-chart-preset", params={"category_id": category.id}
+    )
     assert response.status_code == 200 and response.json() is None
 
 
 def test_preset_endpoints_require_admin(client, db_session, mock_user_auth):
     category = make_category(db_session, "ao-thun")
-    assert client.get(f"{PRODUCTS}/size-chart-preset", params={"category_id": category.id}).status_code == 403
+    assert (
+        client.get(
+            f"{PRODUCTS}/size-chart-preset", params={"category_id": category.id}
+        ).status_code
+        == 403
+    )
     assert client.get(f"{PRODUCTS}/size-chart-presets").status_code == 403
 
 
@@ -159,7 +185,12 @@ def test_catalog_lists_shared_and_own_families(client, mock_admin_auth):
 
 
 def product_payload(category_id, **overrides):
-    payload = {"name": "Polo Test", "price": 100000, "category_id": category_id, "gender": "male"}
+    payload = {
+        "name": "Polo Test",
+        "price": 100000,
+        "category_id": category_id,
+        "gender": "male",
+    }
     payload.update(overrides)
     return payload
 
@@ -174,12 +205,16 @@ def test_create_product_fills_chart_from_category(client, db_session, mock_admin
 def test_create_product_keeps_an_explicit_chart(client, db_session, mock_admin_auth):
     category = make_category(db_session, "ao-thun")
     custom = {"M": {"chest": 99}}
-    response = client.post(PRODUCTS, json=product_payload(category.id, size_chart=custom))
+    response = client.post(
+        PRODUCTS, json=product_payload(category.id, size_chart=custom)
+    )
     assert response.status_code == 201
     assert response.json()["size_chart"] == custom
 
 
-def test_create_product_without_known_category_has_no_chart(client, db_session, mock_admin_auth):
+def test_create_product_without_known_category_has_no_chart(
+    client, db_session, mock_admin_auth
+):
     category = make_category(db_session, "phu-kien")
     response = client.post(PRODUCTS, json=product_payload(category.id))
     assert response.status_code == 201
@@ -189,23 +224,40 @@ def test_create_product_without_known_category_has_no_chart(client, db_session, 
 def test_explicit_family_overrides_the_category():
     chart = size_charts.resolve_size_chart(cat("ao-thun"), "male", "ao-hoodie")
     assert chart["preset_key"] == "ao-hoodie"
-    assert size_charts.resolve_size_chart(None, "male", "quan-short")["preset_key"] == "quan-short"
+    assert (
+        size_charts.resolve_size_chart(None, "male", "quan-short")["preset_key"]
+        == "quan-short"
+    )
     assert size_charts.resolve_size_chart(None, "male", "nope") is None
 
 
 def test_preset_endpoint_accepts_a_chosen_family(client, mock_admin_auth):
-    response = client.get(f"{PRODUCTS}/size-chart-preset", params={"preset_key": "ao-blazer", "gender": "female"})
+    response = client.get(
+        f"{PRODUCTS}/size-chart-preset",
+        params={"preset_key": "ao-blazer", "gender": "female"},
+    )
     assert response.status_code == 200
     assert response.json()["preset_key"] == "ao-blazer"
 
 
-def test_preset_endpoint_rejects_unknown_family_and_empty_request(client, db_session, mock_admin_auth):
-    assert client.get(f"{PRODUCTS}/size-chart-preset", params={"preset_key": "nope"}).status_code == 400
+def test_preset_endpoint_rejects_unknown_family_and_empty_request(
+    client, db_session, mock_admin_auth
+):
+    assert (
+        client.get(
+            f"{PRODUCTS}/size-chart-preset", params={"preset_key": "nope"}
+        ).status_code
+        == 400
+    )
     assert client.get(f"{PRODUCTS}/size-chart-preset").status_code == 400
     category = make_category(db_session, "ao-thun")
-    assert client.get(
-        f"{PRODUCTS}/size-chart-preset", params={"category_id": category.id, "preset_key": "ao-hoodie"}
-    ).json()["preset_key"] == "ao-hoodie"
+    assert (
+        client.get(
+            f"{PRODUCTS}/size-chart-preset",
+            params={"category_id": category.id, "preset_key": "ao-hoodie"},
+        ).json()["preset_key"]
+        == "ao-hoodie"
+    )
 
 
 def test_response_says_which_gender_table_was_used():
@@ -213,5 +265,11 @@ def test_response_says_which_gender_table_was_used():
     assert size_charts.gender_table_for(tee, "unisex") == "unisex"
     assert size_charts.gender_table_for(tee, "female") == "female"
     assert size_charts.gender_table_for(tee, "kids") is None
-    assert size_charts.gender_table_for(size_charts.PRESETS_BY_KEY["dam-xoe"], "male") == "any"
-    assert size_charts.resolve_size_chart(None, "female", "ao-phong")["gender_table"] == "female"
+    assert (
+        size_charts.gender_table_for(size_charts.PRESETS_BY_KEY["dam-xoe"], "male")
+        == "any"
+    )
+    assert (
+        size_charts.resolve_size_chart(None, "female", "ao-phong")["gender_table"]
+        == "female"
+    )

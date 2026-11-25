@@ -5,7 +5,12 @@ import pytest
 from app.features.users.model import User
 from tests.rule_helpers import USERS, assert_rejected
 
-BASE = {"username": "tester", "email": "a@b.co", "password": "Passw0rd!x", "first_name": "T"}
+BASE = {
+    "username": "tester",
+    "email": "a@b.co",
+    "password": "Passw0rd!x",
+    "first_name": "T",
+}
 
 REGISTER_CASES = {
     "bad email": ({"email": "nope"}, 422),
@@ -23,7 +28,9 @@ REGISTER_CASES = {
 @pytest.mark.parametrize("label", REGISTER_CASES)
 def test_register_violations_are_refused(client, label):
     overrides, status = REGISTER_CASES[label]
-    assert_rejected(client.post(f"{USERS}/register", json={**BASE, **overrides}), status)
+    assert_rejected(
+        client.post(f"{USERS}/register", json={**BASE, **overrides}), status
+    )
 
 
 def test_register_without_fields_is_refused(client):
@@ -48,30 +55,48 @@ def test_duplicate_registration_conflicts(client):
 
 def test_login_failures_are_uniform_and_clean(client):
     client.post(f"{USERS}/register", json=BASE)
-    wrong = client.post(f"{USERS}/login", json={"identifier": "a@b.co", "password": "wrong-password"})
-    unknown = client.post(f"{USERS}/login", json={"identifier": "no@b.co", "password": "wrong-password"})
+    wrong = client.post(
+        f"{USERS}/login", json={"identifier": "a@b.co", "password": "wrong-password"}
+    )
+    unknown = client.post(
+        f"{USERS}/login", json={"identifier": "no@b.co", "password": "wrong-password"}
+    )
     assert_rejected(wrong, 401)
     assert_rejected(unknown, 401)
-    assert wrong.json()["message"] == unknown.json()["message"]  # no account enumeration
+    assert (
+        wrong.json()["message"] == unknown.json()["message"]
+    )  # no account enumeration
 
 
 @pytest.mark.parametrize(
     "body",
-    [{}, {"identifier": "", "password": ""}, {"identifier": "x"}, {"identifier": "a" * 5000, "password": "p"}],
+    [
+        {},
+        {"identifier": "", "password": ""},
+        {"identifier": "x"},
+        {"identifier": "a" * 5000, "password": "p"},
+    ],
 )
 def test_malformed_login_is_refused(client, body):
     assert client.post(f"{USERS}/login", json=body).status_code in (401, 422)
 
 
 def test_login_with_binary_garbage_body_is_refused(client):
-    response = client.post(f"{USERS}/login", content=b"\xff\xfe", headers={"content-type": "application/json"})
+    response = client.post(
+        f"{USERS}/login",
+        content=b"\xff\xfe",
+        headers={"content-type": "application/json"},
+    )
     assert response.status_code == 422
 
 
 def test_repeated_login_failures_are_throttled_not_crashed(client):
     client.post(f"{USERS}/register", json=BASE)
     codes = [
-        client.post(f"{USERS}/login", json={"identifier": "a@b.co", "password": "wrong-password"}).status_code
+        client.post(
+            f"{USERS}/login",
+            json={"identifier": "a@b.co", "password": "wrong-password"},
+        ).status_code
         for _ in range(8)
     ]
     assert set(codes) <= {401, 429} and 429 in codes
@@ -79,7 +104,10 @@ def test_repeated_login_failures_are_throttled_not_crashed(client):
 
 def test_registration_flood_is_throttled(client):
     codes = [
-        client.post(f"{USERS}/register", json={**BASE, "username": f"u{i}", "email": f"u{i}@b.co"}).status_code
+        client.post(
+            f"{USERS}/register",
+            json={**BASE, "username": f"u{i}", "email": f"u{i}@b.co"},
+        ).status_code
         for i in range(8)
     ]
     assert set(codes) <= {201, 429} and 429 in codes

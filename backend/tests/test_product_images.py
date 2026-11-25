@@ -783,7 +783,10 @@ def test_reorder_images_stores_the_new_order(db_session):
     assert [image.id for image in result] == ["img-b", "img-a"]
     assert [image.is_primary for image in result] == [True, False]
     db_session.expire_all()
-    assert [image.id for image in db_session.get(Product, product.id).images] == ["img-b", "img-a"]
+    assert [image.id for image in db_session.get(Product, product.id).images] == [
+        "img-b",
+        "img-a",
+    ]
     assert db_session.get(ProductImage, "img-b").sort_order == 0
     assert db_session.get(ProductImage, "img-a").sort_order == 1
 
@@ -794,10 +797,35 @@ def test_reorder_keeps_fitting_room_slots_and_cover_in_the_gallery(db_session):
     product = make_product(db_session)
     db_session.add_all(
         [
-            ProductImage(id="front", product_id=product.id, object_name="f.png", kind="vton_garment", sort_order=900, is_primary=True),
-            ProductImage(id="side", product_id=product.id, object_name="s.png", kind="catalog", sort_order=902),
-            ProductImage(id="g1", product_id=product.id, object_name="1.png", kind="model_photo", sort_order=904),
-            ProductImage(id="g2", product_id=product.id, object_name="2.png", kind="model_photo", sort_order=905),
+            ProductImage(
+                id="front",
+                product_id=product.id,
+                object_name="f.png",
+                kind="vton_garment",
+                sort_order=900,
+                is_primary=True,
+            ),
+            ProductImage(
+                id="side",
+                product_id=product.id,
+                object_name="s.png",
+                kind="catalog",
+                sort_order=902,
+            ),
+            ProductImage(
+                id="g1",
+                product_id=product.id,
+                object_name="1.png",
+                kind="model_photo",
+                sort_order=904,
+            ),
+            ProductImage(
+                id="g2",
+                product_id=product.id,
+                object_name="2.png",
+                kind="model_photo",
+                sort_order=905,
+            ),
         ]
     )
     db_session.commit()
@@ -805,7 +833,9 @@ def test_reorder_keeps_fitting_room_slots_and_cover_in_the_gallery(db_session):
     # Even with a slot photo listed first, the cover is the first gallery photo and slots keep their marker.
     reorder_product_images(db_session, product.id, ["front", "g2", "side", "g1"])
     db_session.expire_all()
-    got = {i.id: (i.sort_order, i.is_primary) for i in db_session.query(ProductImage).all()}
+    got = {
+        i.id: (i.sort_order, i.is_primary) for i in db_session.query(ProductImage).all()
+    }
     assert got["front"] == (900, False)
     assert got["side"] == (902, False)
     assert got["g2"] == (1, True)
@@ -830,7 +860,11 @@ def test_angle_slot_table_matches_the_frontend():
     from app.features.products.images import _ANGLE_SLOT_KINDS
 
     source = (
-        Path(__file__).resolve().parents[2] / "frontend" / "lib" / "demo-upper" / "productFit.ts"
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "lib"
+        / "demo-upper"
+        / "productFit.ts"
     ).read_text(encoding="utf-8")
     declared = dict(
         (int(order), kind)

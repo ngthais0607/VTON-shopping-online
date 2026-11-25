@@ -57,7 +57,9 @@ def test_access_token_works_while_session_is_active(client, db_session):
 
 
 def test_request_id_rejects_unsafe_values(client):
-    response = client.get("/api/v1/health", headers={"X-Request-ID": "bad id\twith spaces"})
+    response = client.get(
+        "/api/v1/health", headers={"X-Request-ID": "bad id\twith spaces"}
+    )
     echoed = response.headers["x-request-id"]
     assert echoed != "bad id\twith spaces"
     assert len(echoed) == 36
@@ -85,6 +87,16 @@ def test_checkout_rejects_empty_and_oversized_carts(client, db_session):
     user = _user(db_session)
     token = create_access_token({"sub": str(user.id)})
     headers = {"Authorization": f"Bearer {token}"}
-    assert client.post("/api/v1/orders/checkout-cart", json={"items": []}, headers=headers).status_code == 422
+    assert (
+        client.post(
+            "/api/v1/orders/checkout-cart", json={"items": []}, headers=headers
+        ).status_code
+        == 422
+    )
     too_many = [{"variant_id": 1, "quantity": 1}] * 51
-    assert client.post("/api/v1/orders/checkout-cart", json={"items": too_many}, headers=headers).status_code == 422
+    assert (
+        client.post(
+            "/api/v1/orders/checkout-cart", json={"items": too_many}, headers=headers
+        ).status_code
+        == 422
+    )

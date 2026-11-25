@@ -5,7 +5,10 @@ import pytest
 from tests.rule_helpers import ORDERS, PRODUCTS, SHIPPING, assert_rejected, make_product
 
 ITEM = {"variant_id": 1, "quantity": 1}
-STOCK = [{"size": "M", "color_name": "Red", "stock_quantity": 3}, {"size": "L", "color_name": "Red", "stock_quantity": 0}]
+STOCK = [
+    {"size": "M", "color_name": "Red", "stock_quantity": 3},
+    {"size": "L", "color_name": "Red", "stock_quantity": 0},
+]
 
 CHECKOUT_CASES = {
     "no items": ({"items": []}, 422),
@@ -29,12 +32,16 @@ CHECKOUT_CASES = {
 @pytest.mark.parametrize("label", CHECKOUT_CASES)
 def test_checkout_violations_are_refused(client, mock_user_auth, label):
     body, status = CHECKOUT_CASES[label]
-    assert_rejected(client.post(f"{ORDERS}/checkout-cart", json={**SHIPPING, **body}), status)
+    assert_rejected(
+        client.post(f"{ORDERS}/checkout-cart", json={**SHIPPING, **body}), status
+    )
 
 
 def checkout(client, variant_id, quantity, **extra):
     items = [{"variant_id": variant_id, "quantity": quantity}]
-    return client.post(f"{ORDERS}/checkout-cart", json={**SHIPPING, "items": items, **extra})
+    return client.post(
+        f"{ORDERS}/checkout-cart", json={**SHIPPING, "items": items, **extra}
+    )
 
 
 def test_stock_is_never_oversold(client, db_session, mock_admin_auth, mock_user_auth):
@@ -45,7 +52,9 @@ def test_stock_is_never_oversold(client, db_session, mock_admin_auth, mock_user_
     assert_rejected(checkout(client, medium, 4), 409)  # more than in stock
     assert_rejected(checkout(client, large, 1), 409)  # nothing in stock
     twice = {**SHIPPING, "items": [{"variant_id": medium, "quantity": 2}] * 2}
-    assert_rejected(client.post(f"{ORDERS}/checkout-cart", json=twice), 409)  # lines add up to 4
+    assert_rejected(
+        client.post(f"{ORDERS}/checkout-cart", json=twice), 409
+    )  # lines add up to 4
 
     assert checkout(client, medium, 3, payment_method="cod").status_code == 201
     assert_rejected(checkout(client, medium, 1), 409)  # sold out now
@@ -69,12 +78,16 @@ def test_unknown_order_actions_are_404(client, mock_admin_auth, mock_user_auth):
     assert_rejected(client.put(f"{ORDERS}/99999/status", json={"status": "paid"}), 404)
 
 
-@pytest.mark.parametrize("body", [{"status": "teleported"}, {}, {"status": "paid", "x": 1}])
+@pytest.mark.parametrize(
+    "body", [{"status": "teleported"}, {}, {"status": "paid", "x": 1}]
+)
 def test_order_status_violations_are_refused(client, mock_admin_auth, body):
     assert client.put(f"{ORDERS}/99999/status", json=body).status_code in (404, 422)
 
 
-@pytest.mark.parametrize("params", [{"limit": 0}, {"limit": 10000}, {"limit": -1}, {"offset": -1}])
+@pytest.mark.parametrize(
+    "params", [{"limit": 0}, {"limit": 10000}, {"limit": -1}, {"offset": -1}]
+)
 def test_order_list_paging_violations_are_422(client, mock_admin_auth, params):
     assert_rejected(client.get(ORDERS, params=params), 422)
 
@@ -93,8 +106,15 @@ def test_dashboard_limits_are_422(client, mock_admin_auth, path, params):
 def test_webhook_rejects_missing_wrong_secret_and_bad_amount(client):
     body = {"transaction_id": "t", "amount": 1, "content": "x"}
     assert client.post(f"{ORDERS}/vietqr-webhook", json=body).status_code in (401, 422)
-    assert_rejected(client.post(f"{ORDERS}/vietqr-webhook", headers={"X-Webhook-Secret": "bad"}, json=body), 401)
-    assert_rejected(client.post(f"{ORDERS}/vietqr-webhook", json={**body, "amount": -5}), 422)
+    assert_rejected(
+        client.post(
+            f"{ORDERS}/vietqr-webhook", headers={"X-Webhook-Secret": "bad"}, json=body
+        ),
+        401,
+    )
+    assert_rejected(
+        client.post(f"{ORDERS}/vietqr-webhook", json={**body, "amount": -5}), 422
+    )
 
 
 def test_checkout_flood_is_throttled(client, mock_user_auth):

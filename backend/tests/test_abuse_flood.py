@@ -25,17 +25,23 @@ STOCKED = [{"size": "M", "color_name": "Red", "stock_quantity": 5}]
 # --------------------------------------------------------------------- request flood
 
 
-def test_hundreds_of_catalogue_requests_never_fail_or_slow_down(client, db_session, mock_admin_auth):
+def test_hundreds_of_catalogue_requests_never_fail_or_slow_down(
+    client, db_session, mock_admin_auth
+):
     make_product(client, db_session, variants=STOCKED, active=True)
     started = time.monotonic()
-    codes = {client.get(PRODUCTS, params={"limit": 100}).status_code for _ in range(300)}
+    codes = {
+        client.get(PRODUCTS, params={"limit": 100}).status_code for _ in range(300)
+    }
     assert codes == {200}
     assert time.monotonic() - started < 30
 
 
 def test_login_flood_is_throttled_not_crashed(client):
     codes = [
-        client.post(f"{USERS}/login", json={"identifier": "ghost", "password": "wrong-password"}).status_code
+        client.post(
+            f"{USERS}/login", json={"identifier": "ghost", "password": "wrong-password"}
+        ).status_code
         for _ in range(80)
     ]
     assert 429 in codes
@@ -47,7 +53,11 @@ def test_register_flood_is_throttled(client):
     codes = [
         client.post(
             f"{USERS}/register",
-            json={"username": f"flood{i}", "email": f"flood{i}@example.com", "password": "longenough1"},
+            json={
+                "username": f"flood{i}",
+                "email": f"flood{i}@example.com",
+                "password": "longenough1",
+            },
         ).status_code
         for i in range(15)
     ]
@@ -55,7 +65,9 @@ def test_register_flood_is_throttled(client):
     assert all(code < 500 for code in codes)
 
 
-def test_one_client_cannot_borrow_another_clients_budget_with_a_spoofed_forwarded_header(client):
+def test_one_client_cannot_borrow_another_clients_budget_with_a_spoofed_forwarded_header(
+    client,
+):
     # An untrusted peer sending X-Forwarded-For must not get a fresh bucket per request.
     codes = [
         client.post(
@@ -69,17 +81,31 @@ def test_one_client_cannot_borrow_another_clients_budget_with_a_spoofed_forwarde
 
 
 def test_order_creation_flood_is_throttled(client, db_session, mock_user_auth):
-    body = {"customer_name": "Tester", "customer_phone": "0901234567", "shipping_address": "1 Street, HCM city", "items": [{"variant_id": 999999, "quantity": 1}]}
-    codes = [client.post(f"{ORDERS}/checkout-cart", json=body).status_code for _ in range(80)]
+    body = {
+        "customer_name": "Tester",
+        "customer_phone": "0901234567",
+        "shipping_address": "1 Street, HCM city",
+        "items": [{"variant_id": 999999, "quantity": 1}],
+    }
+    codes = [
+        client.post(f"{ORDERS}/checkout-cart", json=body).status_code for _ in range(80)
+    ]
     assert 429 in codes
     assert all(code < 500 for code in codes)
 
 
-def test_a_user_cannot_pile_up_unpaid_orders(client, db_session, mock_admin_auth, mock_user_auth):
+def test_a_user_cannot_pile_up_unpaid_orders(
+    client, db_session, mock_admin_auth, mock_user_auth
+):
     from app.features.orders.service import MAX_OPEN_PENDING_ORDERS
     from tests.rule_helpers import SHIPPING, make_product
 
-    make_product(client, db_session, variants=[{"size": "M", "color_name": "Red", "stock_quantity": 500}], active=True)
+    make_product(
+        client,
+        db_session,
+        variants=[{"size": "M", "color_name": "Red", "stock_quantity": 500}],
+        active=True,
+    )
     body = {**SHIPPING, "items": [{"variant_id": 1, "quantity": 1}]}
     codes = []
     for _ in range(MAX_OPEN_PENDING_ORDERS + 3):
@@ -93,7 +119,10 @@ def test_a_user_cannot_pile_up_unpaid_orders(client, db_session, mock_admin_auth
 
 def test_try_on_upload_flood_is_throttled(client, db_session, mock_user_auth):
     files = {"person_image": ("p.png", PNG_HEADER + b"junk", "image/png")}
-    codes = [client.post(f"{VTON}/tasks", files=files, data={"product_id": "1"}).status_code for _ in range(30)]
+    codes = [
+        client.post(f"{VTON}/tasks", files=files, data={"product_id": "1"}).status_code
+        for _ in range(30)
+    ]
     assert 429 in codes
     assert all(code < 500 for code in codes)
 
@@ -122,11 +151,16 @@ def test_a_huge_variant_lookup_list_is_refused_or_bounded(client):
 
 def test_variant_lookup_rejects_garbage_ids(client):
     for ids in ["1,abc", "1;DROP TABLE products", "1, ,2,,", "9" * 400, "-1,-2"]:
-        assert client.get(f"{PRODUCTS}/variants/lookup", params={"ids": ids}).status_code < 500
+        assert (
+            client.get(f"{PRODUCTS}/variants/lookup", params={"ids": ids}).status_code
+            < 500
+        )
 
 
 def test_thousands_of_filter_values_do_not_crash(client):
-    params = [("brand", f"b{i}") for i in range(2000)] + [("size", f"s{i}") for i in range(2000)]
+    params = [("brand", f"b{i}") for i in range(2000)] + [
+        ("size", f"s{i}") for i in range(2000)
+    ]
     response = client.get(PRODUCTS, params=params)
     assert response.status_code < 500
 
@@ -149,13 +183,18 @@ def test_wildcard_search_matches_literally(client, db_session, mock_admin_auth):
 def test_variant_bulk_is_capped(client, db_session, mock_admin_auth):
     created, _ = make_product(client, db_session)
     variants = [{"size": f"s{i}", "color_name": f"c{i}"} for i in range(5000)]
-    response = client.post(f"{PRODUCTS}/{created['id']}/variants/bulk", json={"variants": variants})
+    response = client.post(
+        f"{PRODUCTS}/{created['id']}/variants/bulk", json={"variants": variants}
+    )
     assert_rejected(response, 422)
 
 
 def test_matrix_cannot_explode_into_a_million_rows(client, db_session, mock_admin_auth):
     created, _ = make_product(client, db_session)
-    body = {"sizes": [f"s{i}" for i in range(30)], "colors": [{"name": f"c{i}"} for i in range(30)]}
+    body = {
+        "sizes": [f"s{i}" for i in range(30)],
+        "colors": [{"name": f"c{i}"} for i in range(30)],
+    }
     response = client.post(f"{PRODUCTS}/{created['id']}/variants/bulk", json=body)
     assert response.status_code < 500
     assert response.status_code in (200, 201, 422)
@@ -163,40 +202,71 @@ def test_matrix_cannot_explode_into_a_million_rows(client, db_session, mock_admi
 
 def test_a_product_cannot_carry_unlimited_variants_at_creation(client, mock_admin_auth):
     variants = [{"size": f"s{i}", "color_name": f"c{i}"} for i in range(3000)]
-    assert_rejected(client.post(PRODUCTS, json={"name": "Big", "price": 1, "gender": "male", "variants": variants}), 422)
+    assert_rejected(
+        client.post(
+            PRODUCTS,
+            json={"name": "Big", "price": 1, "gender": "male", "variants": variants},
+        ),
+        422,
+    )
 
 
 def test_oversized_text_fields_are_refused(client, mock_admin_auth):
     huge = "x" * 1_000_000
     for field in ("name", "description", "brand"):
-        response = client.post(PRODUCTS, json={"name": "N", "price": 1, "gender": "male", field: huge})
+        response = client.post(
+            PRODUCTS, json={"name": "N", "price": 1, "gender": "male", field: huge}
+        )
         assert_rejected(response, 422)
 
 
 def test_deeply_nested_json_is_a_client_error(client, mock_admin_auth):
     nested = "[" * 5000 + "]" * 5000
-    response = client.post(PRODUCTS, content=nested, headers={"content-type": "application/json"})
+    response = client.post(
+        PRODUCTS, content=nested, headers={"content-type": "application/json"}
+    )
     assert response.status_code in (400, 413, 422)
 
 
-@pytest.mark.parametrize("payload", ["", "{", "null", "[]", '"str"', "\x00", "{'a': 1}", "NaN"])
+@pytest.mark.parametrize(
+    "payload", ["", "{", "null", "[]", '"str"', "\x00", "{'a': 1}", "NaN"]
+)
 def test_malformed_bodies_are_client_errors(client, mock_admin_auth, payload):
-    for url in (PRODUCTS, CATEGORIES, f"{ORDERS}/checkout-cart", f"{USERS}/register", f"{USERS}/login"):
-        response = client.post(url, content=payload, headers={"content-type": "application/json"})
+    for url in (
+        PRODUCTS,
+        CATEGORIES,
+        f"{ORDERS}/checkout-cart",
+        f"{USERS}/register",
+        f"{USERS}/login",
+    ):
+        response = client.post(
+            url, content=payload, headers={"content-type": "application/json"}
+        )
         assert response.status_code < 500, (url, response.status_code)
 
 
 @pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity", "1e999"])
 def test_nan_and_infinity_prices_are_refused(client, mock_admin_auth, value):
     raw = f'{{"name":"N","price":{value},"gender":"male"}}'
-    response = client.post(PRODUCTS, content=raw, headers={"content-type": "application/json"})
+    response = client.post(
+        PRODUCTS, content=raw, headers={"content-type": "application/json"}
+    )
     assert response.status_code in (400, 422), (value, response.status_code)
 
 
 def test_oversized_order_is_refused(client, db_session, mock_user_auth):
     items = [{"variant_id": 1, "quantity": 1}] * 5000
-    body = {"customer_name": "T", "customer_phone": "0901234567", "shipping_address": "1 Street, HCM", "items": items}
-    assert client.post(f"{ORDERS}/checkout-cart", json=body).status_code in (400, 413, 422)
+    body = {
+        "customer_name": "T",
+        "customer_phone": "0901234567",
+        "shipping_address": "1 Street, HCM",
+        "items": items,
+    }
+    assert client.post(f"{ORDERS}/checkout-cart", json=body).status_code in (
+        400,
+        413,
+        422,
+    )
 
 
 # --------------------------------------------------------------------- uploads (user + admin, incl. try-on)
@@ -210,7 +280,9 @@ def upload(client, content, *, name="p.png", mime="image/png", data=None):
     )
 
 
-def test_user_try_on_rejects_non_images_and_fake_extensions(client, db_session, mock_user_auth):
+def test_user_try_on_rejects_non_images_and_fake_extensions(
+    client, db_session, mock_user_auth
+):
     cases = [
         (b"", "p.png", "image/png"),
         (b"MZ\x90\x00" + b"\x00" * 100, "p.png", "image/png"),
@@ -222,7 +294,11 @@ def test_user_try_on_rejects_non_images_and_fake_extensions(client, db_session, 
     ]
     for content, name, mime in cases:
         response = upload(client, content, name=name, mime=mime)
-        assert 400 <= response.status_code < 500, (name, response.status_code, response.text[:150])
+        assert 400 <= response.status_code < 500, (
+            name,
+            response.status_code,
+            response.text[:150],
+        )
 
 
 def test_user_try_on_rejects_oversized_photo(client, db_session, mock_user_auth):
@@ -249,7 +325,17 @@ def test_try_on_without_a_photo_part_is_a_client_error(client, mock_user_auth):
     assert_rejected(client.post(f"{VTON}/tasks", data={"product_id": "1"}), 422)
 
 
-@pytest.mark.parametrize("task_id", ["../../etc/passwd", "%2e%2e%2f", "x" * 5000, "'; DROP TABLE vton_tasks;--", "0", "null"])
+@pytest.mark.parametrize(
+    "task_id",
+    [
+        "../../etc/passwd",
+        "%2e%2e%2f",
+        "x" * 5000,
+        "'; DROP TABLE vton_tasks;--",
+        "0",
+        "null",
+    ],
+)
 def test_try_on_task_ids_are_never_trusted(client, mock_user_auth, task_id):
     for suffix in ("", "/person", "/result"):
         assert client.get(f"{VTON}/tasks/{task_id}{suffix}").status_code < 500
@@ -263,21 +349,46 @@ def test_try_on_history_page_is_bounded(client, mock_user_auth):
 def test_try_on_requires_login(client):
     assert client.get(f"{VTON}/quota").status_code == 401
     assert client.get(f"{VTON}/tasks").status_code == 401
-    assert client.post(f"{VTON}/tasks", files={"person_image": ("p.png", b"x", "image/png")}, data={"product_id": "1"}).status_code == 401
+    assert (
+        client.post(
+            f"{VTON}/tasks",
+            files={"person_image": ("p.png", b"x", "image/png")},
+            data={"product_id": "1"},
+        ).status_code
+        == 401
+    )
 
 
 def test_a_customer_cannot_use_the_admin_lab(client, mock_user_auth):
     assert client.get(f"{LAB}/engines").status_code in (401, 403)
-    files = {"person": ("p.png", PNG_HEADER, "image/png"), "garment": ("g.png", PNG_HEADER, "image/png")}
+    files = {
+        "person": ("p.png", PNG_HEADER, "image/png"),
+        "garment": ("g.png", PNG_HEADER, "image/png"),
+    }
     assert client.post(f"{LAB}/try-on", files=files).status_code in (401, 403)
 
 
 def test_the_lab_rejects_hostile_admin_input(client, mock_admin_auth):
-    junk = {"person": ("p.png", b"not an image", "image/png"), "garment": ("g.png", b"", "image/png")}
+    junk = {
+        "person": ("p.png", b"not an image", "image/png"),
+        "garment": ("g.png", b"", "image/png"),
+    }
     assert client.post(f"{LAB}/try-on", files=junk).status_code < 500
-    png = {"person": ("p.png", PNG_HEADER, "image/png"), "garment": ("g.png", PNG_HEADER, "image/png")}
-    for data in [{"seed": "-1"}, {"seed": str(BIG)}, {"seed": "x"}, {"cloth_type": "x" * 10000}, {"engine": "../../x"}, {"cloth_type": "nope"}]:
-        assert client.post(f"{LAB}/try-on", files=png, data=data).status_code < 500, data
+    png = {
+        "person": ("p.png", PNG_HEADER, "image/png"),
+        "garment": ("g.png", PNG_HEADER, "image/png"),
+    }
+    for data in [
+        {"seed": "-1"},
+        {"seed": str(BIG)},
+        {"seed": "x"},
+        {"cloth_type": "x" * 10000},
+        {"engine": "../../x"},
+        {"cloth_type": "nope"},
+    ]:
+        assert client.post(f"{LAB}/try-on", files=png, data=data).status_code < 500, (
+            data
+        )
 
 
 def test_the_lab_refuses_oversized_uploads(client, mock_admin_auth):
@@ -304,12 +415,25 @@ ADMIN_ROUTES = [
 
 
 @pytest.mark.parametrize("method,url", ADMIN_ROUTES)
-def test_anonymous_and_customer_cannot_use_admin_routes(client, mock_user_auth, method, url):
+def test_anonymous_and_customer_cannot_use_admin_routes(
+    client, mock_user_auth, method, url
+):
     response = client.request(method.upper(), url, json={})
     assert response.status_code in (401, 403), (method, url, response.status_code)
 
 
-@pytest.mark.parametrize("token", ["", "Bearer", "Bearer ", "Bearer x", "Bearer " + "a" * 10000, "Basic abc", "Bearer null"])
+@pytest.mark.parametrize(
+    "token",
+    [
+        "",
+        "Bearer",
+        "Bearer ",
+        "Bearer x",
+        "Bearer " + "a" * 10000,
+        "Basic abc",
+        "Bearer null",
+    ],
+)
 def test_garbage_authorization_headers_are_401_not_500(client, token):
     response = client.get(f"{VTON}/quota", headers={"Authorization": token})
     assert response.status_code == 401

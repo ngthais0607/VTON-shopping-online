@@ -28,7 +28,10 @@ CREATE_CASES = {
     "chart value is text": ({"size_chart": {"M": {"chest": "abc"}}}, 422),
     "chart value is bool": ({"size_chart": {"M": {"chest": True}}}, 422),
     "chart value absurd": ({"size_chart": {"M": {"chest": 10**9}}}, 422),
-    "chart with 5000 sizes": ({"size_chart": {f"S{i}": {"chest": 1} for i in range(5000)}}, 422),
+    "chart with 5000 sizes": (
+        {"size_chart": {f"S{i}": {"chest": 1} for i in range(5000)}},
+        422,
+    ),
     "chart size name too long": ({"size_chart": {"S" * 21: {"chest": 1}}}, 422),
     "activate without variants": ({"is_active": True}, 400),
     "unknown category": ({"category_id": 99999}, 404),
@@ -45,10 +48,14 @@ def test_create_rule_violations_are_refused(client, mock_admin_auth, label):
     assert_rejected(response, status)
 
 
-def test_a_chart_in_the_documented_shape_is_accepted(client, db_session, mock_admin_auth):
+def test_a_chart_in_the_documented_shape_is_accepted(
+    client, db_session, mock_admin_auth
+):
     category = make_category(db_session)
     chart = {"M": {"chest": 102.5, "length": 68}}
-    response = client.post(PRODUCTS, json=product_body(category_id=category.id, size_chart=chart))
+    response = client.post(
+        PRODUCTS, json=product_body(category_id=category.id, size_chart=chart)
+    )
     assert response.status_code == 201 and response.json()["size_chart"] == chart
 
 
@@ -125,6 +132,8 @@ def test_odd_but_legal_list_queries_do_not_crash(client, params):
         ("get", "/size-chart-presets", None),
     ],
 )
-def test_customers_cannot_use_admin_product_endpoints(client, mock_user_auth, method, path, body):
+def test_customers_cannot_use_admin_product_endpoints(
+    client, mock_user_auth, method, path, body
+):
     kwargs = {"json": body} if body is not None else {}
     assert_rejected(getattr(client, method)(f"{PRODUCTS}{path}", **kwargs), 403)

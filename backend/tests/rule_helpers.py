@@ -42,15 +42,26 @@ def make_product(client, db, *, variants=None, active=False, **overrides):
     assert response.status_code == 201, response.text
     product = response.json()
     if active:
-        assert client.patch(f"{PRODUCTS}/{product['id']}", json={"is_active": True}).status_code == 200
+        assert (
+            client.patch(
+                f"{PRODUCTS}/{product['id']}", json={"is_active": True}
+            ).status_code
+            == 200
+        )
     ids = [
         v.id
-        for v in db.query(ProductVariant).filter_by(product_id=product["id"]).order_by(ProductVariant.id)
+        for v in db.query(ProductVariant)
+        .filter_by(product_id=product["id"])
+        .order_by(ProductVariant.id)
     ]
     return product, ids
 
 
 def assert_rejected(response, status):
     """The request is refused with the expected 4xx and never a server error."""
-    assert response.status_code < 500, f"server error: {response.status_code} {response.text[:200]}"
-    assert response.status_code == status, f"{response.status_code} {response.text[:200]}"
+    assert response.status_code < 500, (
+        f"server error: {response.status_code} {response.text[:200]}"
+    )
+    assert response.status_code == status, (
+        f"{response.status_code} {response.text[:200]}"
+    )
